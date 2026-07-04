@@ -144,6 +144,62 @@ export const createGliderNotGate = (
   };
 };
 
+// --- Inhibit cascade (A AND NOT B1 AND NOT B2 ...) ---
+//
+// The first physical composition of gates on one grid: a single carrier gun (A)
+// crossed by N mirrored deleter guns (B1..BN) along the SAME SE carrier lane.
+// Each crossing subtracts one `AND NOT Bi`, so the surviving carrier past the
+// last crossing is A AND NOT B1 AND ... AND NOT BN. Turn-free — one gate's
+// output stream is literally the next gate's input, no reflector, pure p30. The
+// per-stage spacing and output distance are calibrated against the CPU oracle
+// (see test/substrate.test.ts): deleter i sits at (+71 + 14i, -1 + 14i), which
+// walks its crossing one gun-glider further down the carrier per stage.
+
+/** Deleter spacing per cascade stage, along the carrier's SE diagonal. */
+const CASCADE_STAGE_STRIDE = 14;
+
+export interface InhibitCascade {
+  /** Carrier A (when `aHigh`) plus a deleter for each high bit in `bs`.
+   *  `bs.length` must equal the `stages` the cascade was built for. */
+  seed(aHigh: boolean, bs: readonly boolean[]): Cell[];
+  /** Detector on the output (carrier) lane, past the last crossing. */
+  readonly output: Detector;
+}
+
+export const createInhibitCascade = (
+  baseX: number,
+  baseY: number,
+  stages: number,
+): InhibitCascade => {
+  const gun = mustParse(GOSPER_GUN_RLE, "GOSPER_GUN_RLE");
+  const deleter = flipH(gun);
+  const carrierSeed = placePattern(gun, baseX, baseY);
+  const deleterSeed = (i: number) =>
+    placePattern(
+      deleter,
+      baseX + INHIBIT_B_DX + CASCADE_STAGE_STRIDE * i,
+      baseY + INHIBIT_B_DY + CASCADE_STAGE_STRIDE * i,
+    );
+  // Output sits past the final crossing; distance grows with stage count.
+  const d = 75 + 20 * (stages - 2);
+
+  return {
+    seed: (aHigh, bs) => {
+      if (bs.length !== stages)
+        throw new Error(`cascade built for ${stages} stages, got ${bs.length}`);
+      return [
+        ...(aHigh ? carrierSeed : []),
+        ...bs.flatMap((b, i) => (b ? deleterSeed(i) : [])),
+      ];
+    },
+    output: {
+      x: baseX + LANE_DIAGONAL_OFFSET + d - 3,
+      y: baseY + d - 3,
+      size: 6,
+    },
+  };
+};
+
 // --- Glider reflector (Snark, 90 degrees) ---
 //
 // The Snark still-life turns an NE-bound glider into an SE-bound one: routing,

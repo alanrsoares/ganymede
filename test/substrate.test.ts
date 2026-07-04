@@ -5,6 +5,7 @@ import { createNotGate } from "~/components/not-gate";
 import { createWire } from "~/components/wire";
 import { type CircuitConfig, type CircuitState, step } from "~/domain/circuit";
 import { aliveCells, createGrid, population, stepGrid } from "~/domain/gol";
+import { inhibit } from "~/domain/logic";
 import type { Polarity, Pulse } from "~/domain/pulses";
 import {
   createDuplicator,
@@ -12,6 +13,7 @@ import {
   createGliderInhibitGate,
   createGliderNotGate,
   createGunClock,
+  createInhibitCascade,
   createReflector,
   createReflectorSE,
   type Detector,
@@ -219,6 +221,53 @@ describe("glider NOT gate vs component oracle", () => {
     );
     const oracle = [0, 1].map((p) => oracleOutput(p as Polarity));
     expect(substrate).toEqual(oracle);
+  });
+});
+
+describe("inhibit cascade (A AND NOT B1 AND NOT B2 ...)", () => {
+  const GENS = 560;
+  const GRID = 200;
+
+  // The physical output as a bit, for a carrier A and a vector of deleter bits.
+  const substrateOut = (stages: number, a: boolean, bs: boolean[]): 0 | 1 => {
+    const cascade = createInhibitCascade(4, 4, stages);
+    return countDetections(cascade.seed(a, bs), cascade.output, GENS, GRID) > 0
+      ? 1
+      : 0;
+  };
+
+  // Oracle: fold the physical inhibit primitive (logic.ts) over the deleter
+  // bits — out = inhibit(...inhibit(a, b1)..., bn) = a AND NOT b1 ... AND NOT bn.
+  const oracle = (a: boolean, bs: boolean[]): 0 | 1 =>
+    bs.reduce<0 | 1>((acc, b) => inhibit(acc, b ? 1 : 0), a ? 1 : 0);
+
+  const two: { a: boolean; bs: [boolean, boolean] }[] = [];
+  for (const a of [false, true])
+    for (const b1 of [false, true])
+      for (const b2 of [false, true]) two.push({ a, bs: [b1, b2] });
+
+  test.each(
+    two,
+  )("2 stages: A=$a bs=$bs matches inhibit fold (physical streams)", ({
+    a,
+    bs,
+  }) => {
+    expect(substrateOut(2, a, bs)).toBe(oracle(a, bs));
+  });
+
+  // A representative 3-stage vector: any present deleter darkens the output.
+  test("3 stages: A=1 [F,T,F] darkens (middle deleter cuts the carrier)", () => {
+    expect(substrateOut(3, true, [false, true, false])).toBe(0);
+    expect(oracle(true, [false, true, false])).toBe(0);
+  });
+
+  test("3 stages: A=1 [F,F,F] flows (no deleter present)", () => {
+    expect(substrateOut(3, true, [false, false, false])).toBe(1);
+    expect(oracle(true, [false, false, false])).toBe(1);
+  });
+
+  test("seed rejects a bs vector of the wrong length", () => {
+    expect(() => createInhibitCascade(4, 4, 2).seed(true, [true])).toThrow();
   });
 });
 
