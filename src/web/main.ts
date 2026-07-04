@@ -5,7 +5,7 @@ import { GLIDER_RLE, parseRle, placePattern } from "~/domain/patterns";
 import {
   countWindow,
   createEdgeDetector,
-  createGliderNotGate,
+  createGliderInhibitGate,
   createGunClock,
   GLIDER_GENS_PER_CELL,
 } from "~/domain/substrate";
@@ -78,17 +78,20 @@ const main = async () => {
 
   const glider = unwrapOk(parseRle(GLIDER_RLE));
   const gunClock = createGunClock(GUN_X, GUN_Y);
-  const notGate = createGliderNotGate(NOT_BASE_X, NOT_BASE_Y);
+  const inhibitGate = createGliderInhibitGate(NOT_BASE_X, NOT_BASE_Y);
 
-  // The scene: the clock/wire/eater lane plus a live glider NOT gate whose
-  // input can be toggled to watch stream annihilation flip the output.
-  let notInputHigh = true;
-  const buildScene = (inputHigh: boolean): Cell[] => [
+  // The scene: the clock/wire/eater lane plus a live glider inhibit gate
+  // (A AND NOT B) whose inputs toggle to watch stream annihilation flip the
+  // output. This gate is functionally complete, so it is the whole computer's
+  // primitive; NOT is the A-always-on case.
+  let inputA = true;
+  let inputB = true;
+  const buildScene = (a: boolean, b: boolean): Cell[] => [
     ...gunClock.seed,
     ...gunClock.laneEater(EATER_DISTANCE),
-    ...notGate.seed(inputHigh),
+    ...inhibitGate.seed(a, b),
   ];
-  const seed = buildScene(notInputHigh);
+  const seed = buildScene(inputA, inputB);
   const engine = createGolEngine(gpu.device, GRID_W, GRID_H, seed);
 
   // GPU ≡ CPU parity: run both engines from the same seed and compare the
@@ -129,24 +132,23 @@ const main = async () => {
 
   // NOT gate output: edge-detect the control lane past the crossing, and
   // report whether the output is flowing (high) over a recent window.
-  const notOut = notGate.output;
-  let notOutEdge = createEdgeDetector();
-  let notOutFlash = 0;
+  const gateOut = inhibitGate.output;
+  let gateOutEdge = createEdgeDetector();
+  let gateOutFlash = 0;
 
-  const sampleNotGate = () => {
+  const sampleGate = () => {
     void engine
-      .readRegion(notOut.x, notOut.y, notOut.size, notOut.size)
+      .readRegion(gateOut.x, gateOut.y, gateOut.size, gateOut.size)
       .then((cells) => {
-        if (notOutEdge.sample(countWindow(cells))) {
-          notOutFlash = performance.now() + 400;
+        if (gateOutEdge.sample(countWindow(cells))) {
+          gateOutFlash = performance.now() + 400;
         }
       });
   };
 
-  const toggleNotInput = () => {
-    notInputHigh = !notInputHigh;
-    engine.reset(buildScene(notInputHigh));
-    notOutEdge = createEdgeDetector();
+  const rebuildGate = () => {
+    engine.reset(buildScene(inputA, inputB));
+    gateOutEdge = createEdgeDetector();
   };
 
   const renderer = createRenderer(gpu, canvas, engine);
@@ -161,9 +163,16 @@ const main = async () => {
     engine.inject(placePattern(glider, cx, cy));
   });
 
-  // Press "i" to toggle the NOT gate's input stream.
+  // Press "a"/"b" to toggle the inhibit gate's input streams.
   window.addEventListener("keydown", (e) => {
-    if (e.key === "i" || e.key === "I") toggleNotInput();
+    const key = e.key.toLowerCase();
+    if (key === "a") {
+      inputA = !inputA;
+      rebuildGate();
+    } else if (key === "b") {
+      inputB = !inputB;
+      rebuildGate();
+    }
   });
 
   // Population readback once a second — exercises the same readRegion path
@@ -194,7 +203,7 @@ const main = async () => {
       engine.step(golSteps);
       golAccumulator -= golSteps;
       sampleDetectors();
-      sampleNotGate();
+      sampleGate();
     }
 
     const w = canvas.width;
@@ -265,18 +274,18 @@ const main = async () => {
       );
     });
 
-    // NOT gate output detector: green when flowing, dim red when annihilated
-    const notFlowing = now - notOutFlash < 1200;
-    const notFlash = now < notOutFlash ? 0.4 : 0;
+    // Inhibit gate output detector: green when flowing, dim red when dark
+    const gateFlowing = now - gateOutFlash < 1200;
+    const gateFlash = now < gateOutFlash ? 0.4 : 0;
     pushInstance(
-      (notOut.x + notOut.size / 2) * cellPx,
-      (notOut.y + notOut.size / 2) * cellPy,
-      (notOut.size / 2) * cellPx,
-      (notOut.size / 2) * cellPy,
+      (gateOut.x + gateOut.size / 2) * cellPx,
+      (gateOut.y + gateOut.size / 2) * cellPy,
+      (gateOut.size / 2) * cellPx,
+      (gateOut.size / 2) * cellPy,
       0,
       0,
-      notFlowing
-        ? [0.35, 0.9, 0.55, 0.25 + notFlash]
+      gateFlowing
+        ? [0.35, 0.9, 0.55, 0.25 + gateFlash]
         : [0.85, 0.35, 0.35, 0.22],
     );
 
@@ -292,11 +301,10 @@ const main = async () => {
       (laneDelay !== null
         ? `, delay ${laneDelay} gens (wire model: ${EXPECTED_LANE_DELAY})`
         : "");
-    const notOut01 = notFlowing ? 1 : 0;
+    const gateOut01 = gateFlowing ? 1 : 0;
     notGateText.textContent =
-      `NOT gate (press "i" to toggle input): in ${notInputHigh ? 1 : 0}` +
-      ` → out ${notOut01}` +
-      ` — ${notInputHigh ? "input stream annihilates output" : "control stream flows through"}`;
+      `inhibit gate A∧¬B (keys "a"/"b"): A=${inputA ? 1 : 0} B=${inputB ? 1 : 0}` +
+      ` → out ${gateOut01} — functionally complete: every gate + the adder derive from this`;
     status.textContent = `tick ${sim.tick()} — sram bit: ${sim.sramValue()}${populationText}`;
     requestAnimationFrame(frame);
   };
