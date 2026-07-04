@@ -127,6 +127,10 @@ export const mountUi = (cfg: UiConfig): Ui => {
     ),
     p(
       { class: HUD_P },
+      "purple windows: routing outputs — reflector (90° turn) + duplicator (fan-out →2)",
+    ),
+    p(
+      { class: HUD_P },
       '♪ generative audio (Elementary): lane crossings pluck pentatonic voices, A∧¬B gates a drone, "m" mutes',
     ),
   );

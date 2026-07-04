@@ -11,9 +11,11 @@ import {
 import { GLIDER_RLE, parseRle, placePattern } from "~/domain/patterns";
 import {
   countWindow,
+  createDuplicator,
   createEdgeDetector,
   createGliderInhibitGate,
   createGunClock,
+  createReflector,
   GLIDER_GENS_PER_CELL,
 } from "~/domain/substrate";
 import { createAutomataAudio } from "./audio";
@@ -37,6 +39,13 @@ const FAR_DISTANCE = MUSIC_DISTANCES[MUSIC_DISTANCES.length - 1];
 const EATER_DISTANCE = 40;
 const NOT_BASE_X = 40;
 const NOT_BASE_Y = 150;
+// Routing showcase (step 1 primitives): a reflector turning a spaced glider
+// stream 90 degrees, and a duplicator fanning one p30 stream into two.
+const REFLECT_BASE_X = 320;
+const REFLECT_BASE_Y = 30;
+const REFLECT_INJECT_PERIOD = 64; // > Snark 43-gen recovery time
+const DUP_BASE_X = 300;
+const DUP_BASE_Y = 150;
 const EXPECTED_LANE_DELAY =
   (FAR_DISTANCE - NEAR_DISTANCE) * GLIDER_GENS_PER_CELL;
 const PARITY_GENERATIONS = 120;
@@ -50,6 +59,8 @@ const SUBSTRATE_LABELS = [
   { x: 58, y: 144, text: "A · carrier gun" },
   { x: 129, y: 143, text: "B · deleter gun" },
   { x: 118, y: 218, text: "OUT · A∧¬B" },
+  { x: 330, y: 20, text: "REFLECTOR · 90° turn" },
+  { x: 315, y: 205, text: "DUPLICATOR · fan-out →2" },
 ];
 
 type Rgb = readonly [number, number, number];
@@ -119,17 +130,24 @@ const main = async () => {
     const glider = unwrapOk(parseRle(GLIDER_RLE));
     const gunClock = createGunClock(GUN_X, GUN_Y);
     const inhibitGate = createGliderInhibitGate(NOT_BASE_X, NOT_BASE_Y);
+    // Routing primitives (step 1): a 90-degree reflector and a fan-out
+    // duplicator. Both are fed live in the frame loop.
+    const reflector = createReflector(REFLECT_BASE_X, REFLECT_BASE_Y);
+    const duplicator = createDuplicator(DUP_BASE_X, DUP_BASE_Y);
 
-    // The scene: the clock/wire/eater lane plus a live glider inhibit gate
-    // (A AND NOT B) whose inputs toggle to watch stream annihilation flip the
-    // output. This gate is functionally complete, so it is the whole computer's
-    // primitive; NOT is the A-always-on case.
+    // The scene: the clock/wire/eater lane, a live glider inhibit gate
+    // (A AND NOT B), and a routing showcase (reflector + duplicator). The
+    // duplicator machine is seeded with its first input so the parity check
+    // sees a clean, non-chaotic machine.
     let inputA = true;
     let inputB = true;
     const buildScene = (a: boolean, b: boolean): Cell[] => [
       ...gunClock.seed,
       ...gunClock.laneEater(EATER_DISTANCE),
       ...inhibitGate.seed(a, b),
+      ...reflector.seed,
+      ...duplicator.seed,
+      ...duplicator.inputGlider(),
     ];
     const seed = buildScene(inputA, inputB);
     const engine = createGolEngine(gpu.device, GRID_W, GRID_H, seed);
@@ -249,10 +267,28 @@ const main = async () => {
       sim.advance(simTime);
 
       golAccumulator += dt * golRate;
-      const golSteps = Math.floor(golAccumulator);
-      if (golSteps > 0) {
-        engine.step(golSteps);
-        golAccumulator -= golSteps;
+      let golSteps = Math.floor(golAccumulator);
+      golAccumulator -= golSteps;
+      const stepped = golSteps > 0;
+      // Step in chunks that land on multiples of 30, feeding the routing
+      // showcase: the duplicator needs a p30-aligned input stream; the stable
+      // reflector accepts spaced gliders at any phase.
+      while (golSteps > 0) {
+        const gen = engine.generation();
+        const nextBoundary = (Math.floor(gen / 30) + 1) * 30;
+        const chunk = Math.min(golSteps, nextBoundary - gen);
+        engine.step(chunk);
+        golSteps -= chunk;
+        const nowGen = engine.generation();
+        if (nowGen % 30 === 0) engine.inject(duplicator.inputGlider());
+        if (
+          Math.floor(nowGen / REFLECT_INJECT_PERIOD) >
+          Math.floor(gen / REFLECT_INJECT_PERIOD)
+        ) {
+          engine.inject(reflector.inputGlider(2));
+        }
+      }
+      if (stepped) {
         sampleDetectors();
         sampleGate();
       }
@@ -324,6 +360,24 @@ const main = async () => {
           [0.95, 0.72, 0.25, 0.18 + flash],
         );
       });
+
+      // Routing output markers (purple): where the reflector delivers its
+      // turned glider and the duplicator delivers its two fan-out copies.
+      for (const m of [
+        reflector.outputDetector(30),
+        duplicator.outputNE(45),
+        duplicator.outputSE(45),
+      ]) {
+        pushInstance(
+          (m.x + m.size / 2) * cellPx,
+          (m.y + m.size / 2) * cellPy,
+          (m.size / 2) * cellPx,
+          (m.size / 2) * cellPy,
+          0,
+          0,
+          [0.62, 0.42, 0.95, 0.32],
+        );
+      }
 
       // Inhibit gate output detector: green when flowing, dim red when dark.
       // Render audio from current CA state: each lane window gates a voice, the
