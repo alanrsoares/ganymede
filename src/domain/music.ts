@@ -1,15 +1,20 @@
 // Pure generative composition: turns automaton observations into a musical
-// state with three layers — beat, harmony, melody. No audio here; `audio.ts`
-// synthesizes the returned MusicState. Deterministic given (observations,
-// params), so it is unit-testable. The GoL substrate is the source of timing
-// (step = generation / STEP_GENS) and expression (population, glider activity,
-// and the inhibit gate's output steer harmony, register, and beat intensity).
+// state with four layers — beat, sub-bass, harmony, melody. No audio here;
+// `audio.ts` synthesizes the returned MusicState. Deterministic given
+// (observations, params), so it is unit-testable. The GoL substrate is the
+// source of timing (step = generation / STEP_GENS) and expression (population,
+// glider activity, and the inhibit gate's output steer harmony, register, beat
+// intensity, and the filter cutoff that drives the downtempo movement).
 
 /** Scales as semitone offsets from the root; degrees wrap up by octaves. */
 const SCALES = {
   "minor pentatonic": [0, 3, 5, 7, 10],
   "major pentatonic": [0, 2, 4, 7, 9],
   dorian: [0, 2, 3, 5, 7, 9, 10],
+  lydian: [0, 2, 4, 6, 7, 9, 11],
+  mixolydian: [0, 2, 4, 5, 7, 9, 10],
+  aeolian: [0, 2, 3, 5, 7, 8, 10],
+  locrian: [0, 1, 3, 5, 6, 8, 10],
   "whole tone": [0, 2, 4, 6, 8, 10],
   chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
 } as const satisfies Record<string, readonly number[]>;
@@ -27,6 +32,10 @@ const PROGRESSION = [0, 3, 4, 2] as const;
 const LEAD_PATTERN = [1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0] as const;
 /** Lead melodic contour as scale-degree offsets, off the downbeat. */
 const LEAD_CONTOUR = [0, 2, 1, 3, 4, 2, 3, 5] as const;
+/** Syncopated bass groove (1 = note): downbeat plus pushed off-beats. */
+const BASS_PATTERN = [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0] as const;
+/** Chord-tone offset per step for a walking root/fifth bass movement. */
+const BASS_MOVE = [0, 0, 0, 4, 0, 0, 2, 0, 0, 0, 0, 4, 0, 2, 0, 0] as const;
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
@@ -66,10 +75,14 @@ export interface MusicState {
   kick: number;
   snare: number;
   hat: number;
-  /** Harmony layer: held chord tones (Hz). */
+  /** Sub-bass layer (deep root, sidechained to the kick in the synth). */
+  bass: Voice;
+  /** Harmony layer: held chord tones (Hz), a 7th voicing. */
   chord: number[];
   /** Melody layer. */
   lead: Voice;
+  /** Filter-cutoff openness 0..1 (drives pad/lead movement in the synth). */
+  cutoff: number;
 }
 
 /** Composes one step of the generative track from automaton observations. */
@@ -83,10 +96,18 @@ export const compose = (
   const bar = Math.floor(s / STEPS_PER_BAR);
   const deg = PROGRESSION[bar % PROGRESSION.length];
 
-  // Harmony: a diatonic triad an octave below the lead, moving once per bar.
-  const chord = [deg, deg + 2, deg + 4].map(
+  // Harmony: a diatonic 7th voicing an octave below the lead (root/3rd/5th/7th),
+  // moving once per bar — the lush, slightly melancholic Röyksopp chord colour.
+  const chord = [deg, deg + 2, deg + 4, deg + 6].map(
     (i) => noteHz(params.root, degree(scale, i)) * 0.5,
   );
+
+  // Sub-bass: two octaves below the chord, on a syncopated groove that walks
+  // between root and fifth. Sidechained to the kick in the synth for the pump.
+  const bass: Voice = {
+    freq: noteHz(params.root, degree(scale, deg + BASS_MOVE[inBar])) * 0.25,
+    gate: BASS_PATTERN[inBar] === 1 ? 1 : 0,
+  };
 
   // Beat: four-on-the-floor; the logic gate thins the kick when its output is
   // low, and dense glider activity fills in extra hats.
@@ -94,6 +115,12 @@ export const compose = (
   const kick = inBar % (obs.gateHigh ? 4 : 8) === 0 ? 1 : 0;
   const snare = inBar % 8 === 4 ? 1 : 0;
   const hat = inBar % 2 === 0 || busy ? 1 : 0;
+
+  // Filter cutoff: glider activity and population open the pad/lead filter —
+  // the automaton breathing the downtempo movement.
+  const cutoff = clamp01(
+    0.28 + 0.46 * obs.activity + 0.3 * clamp01(obs.population),
+  );
 
   // Melody: chord tone on the downbeat, contour otherwise; population lifts the
   // register, and glider activity opens the line beyond its base pattern.
@@ -108,5 +135,5 @@ export const compose = (
     gate: LEAD_PATTERN[s % LEAD_PATTERN.length] === 1 || busy ? 1 : 0,
   };
 
-  return { kick, snare, hat, chord, lead };
+  return { kick, snare, hat, bass, chord, lead, cutoff };
 };

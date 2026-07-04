@@ -48,10 +48,13 @@ describe("compose — beat layer", () => {
 });
 
 describe("compose — harmony layer", () => {
-  test("three positive chord tones", () => {
+  test("four positive chord tones (7th voicing)", () => {
     const { chord } = compose(obs(), PARAMS);
-    expect(chord).toHaveLength(3);
+    expect(chord).toHaveLength(4);
     for (const f of chord) expect(f).toBeGreaterThan(0);
+    // Ascending voicing (root < 3rd < 5th < 7th).
+    for (let i = 1; i < chord.length; i++)
+      expect(chord[i]).toBeGreaterThan(chord[i - 1]);
   });
 
   test("chord moves across bars (4-bar loop)", () => {
@@ -79,6 +82,35 @@ describe("compose — melody layer", () => {
     const low = compose(obs({ step: 1 }), PARAMS).lead.freq;
     const high = compose(obs({ step: 1, population: 1 }), PARAMS).lead.freq;
     expect(high).toBeGreaterThan(low);
+  });
+});
+
+describe("compose — sub-bass layer", () => {
+  test("bass sits well below the chord root and is in-scale", () => {
+    const { bass, chord } = compose(obs({ step: 0 }), PARAMS);
+    expect(bass.freq).toBeGreaterThan(0);
+    expect(bass.freq).toBeLessThan(chord[0]);
+  });
+
+  test("bass groove has notes and rests across the bar", () => {
+    const gates = Array.from(
+      { length: 16 },
+      (_, step) => compose(obs({ step }), PARAMS).bass.gate,
+    );
+    expect(gates).toContain(1);
+    expect(gates).toContain(0);
+    // Downbeat always plays.
+    expect(gates[0]).toBe(1);
+  });
+});
+
+describe("compose — filter cutoff", () => {
+  test("cutoff stays in 0..1 and opens with activity", () => {
+    const calm = compose(obs({ activity: 0 }), PARAMS).cutoff;
+    const busy = compose(obs({ activity: 1, population: 1 }), PARAMS).cutoff;
+    expect(calm).toBeGreaterThanOrEqual(0);
+    expect(busy).toBeLessThanOrEqual(1);
+    expect(busy).toBeGreaterThan(calm);
   });
 });
 
