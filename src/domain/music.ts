@@ -93,6 +93,12 @@ export interface MusicState {
   padGate: number;
   /** Melody arp, retriggered by real glider arrivals on the lane taps. */
   lead: Voice;
+  /** Poly mallet/bell ensemble — one voice per lane tap (each glider stream). */
+  mallets: Voice[];
+  /** Electric-piano chord-stab gate (plays `chord` on the off-beats). */
+  keysGate: number;
+  /** Rim/ghost percussion trigger (0/1). */
+  rim: number;
   /** Filter-cutoff openness 0..1 (drives pad/lead movement in the synth). */
   cutoff: number;
 }
@@ -154,5 +160,32 @@ export const compose = (
     gate: fired >= 0 ? 1 : 0,
   };
 
-  return { kick, snare, hat, bass, chord, padGate, lead, cutoff };
+  // Mallets: every firing lane sounds its own bell, an octave below the lead —
+  // the full polyphony of the glider streams (the lead only takes the top one).
+  const mallets: Voice[] = obs.laneTriggers.map((on, i) => ({
+    freq: noteHz(
+      params.root,
+      degree(scale, shift + ARP_DEGREES[i % ARP_DEGREES.length]),
+    ),
+    gate: on ? 1 : 0,
+  }));
+
+  // Keys: an electric-piano stab of the chord on the off-beats (the "and").
+  const keysGate = inBar % 4 === 2 ? 1 : 0;
+  // Rim: a syncopated ghost note for groove.
+  const rim = inBar % 4 === 3 ? 1 : 0;
+
+  return {
+    kick,
+    snare,
+    hat,
+    bass,
+    chord,
+    padGate,
+    lead,
+    mallets,
+    keysGate,
+    rim,
+    cutoff,
+  };
 };

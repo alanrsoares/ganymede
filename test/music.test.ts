@@ -134,6 +134,45 @@ describe("compose — arp (physics-timed melody)", () => {
   });
 });
 
+describe("compose — mallet ensemble (poly lanes)", () => {
+  test("one mallet voice per lane tap, gated by its arrival", () => {
+    const { mallets } = compose(obs({ laneTriggers: fireLane(2) }), PARAMS);
+    expect(mallets).toHaveLength(5);
+    expect(mallets[2].gate).toBe(1);
+    expect(mallets.filter((m) => m.gate === 1)).toHaveLength(1);
+    for (const m of mallets) expect(m.freq).toBeGreaterThan(0);
+  });
+
+  test("mallet pitches climb with lane index", () => {
+    const { mallets } = compose(obs({ laneTriggers: fireLane(0) }), PARAMS);
+    for (let i = 1; i < mallets.length; i++)
+      expect(mallets[i].freq).toBeGreaterThan(mallets[i - 1].freq);
+  });
+
+  test("no arrivals = no mallet voices sounding", () => {
+    const { mallets } = compose(obs({ laneTriggers: [] }), PARAMS);
+    expect(mallets.every((m) => m.gate === 0)).toBe(true);
+  });
+});
+
+describe("compose — keys + rim", () => {
+  test("keys stab on the off-beats, silent on the beat", () => {
+    const gates = Array.from(
+      { length: 16 },
+      (_, step) => compose(obs({ step }), PARAMS).keysGate,
+    );
+    expect(gates).toEqual([0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0]);
+  });
+
+  test("rim ghost note on the syncopated step", () => {
+    const gates = Array.from(
+      { length: 16 },
+      (_, step) => compose(obs({ step }), PARAMS).rim,
+    );
+    expect(gates).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  });
+});
+
 describe("compose — sub-bass layer", () => {
   test("bass sits well below the chord root and is in-scale", () => {
     const { bass, chord } = compose(obs({ step: 0 }), PARAMS);
