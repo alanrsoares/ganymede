@@ -5,11 +5,12 @@ import { createNotGate } from "~/components/not-gate";
 import { createWire } from "~/components/wire";
 import { type CircuitConfig, type CircuitState, step } from "~/domain/circuit";
 import { aliveCells, createGrid, population, stepGrid } from "~/domain/gol";
-import { inhibit } from "~/domain/logic";
+import { and, inhibit } from "~/domain/logic";
 import type { Polarity, Pulse } from "~/domain/pulses";
 import {
   createDuplicator,
   createEdgeDetector,
+  createGliderAndGate,
   createGliderInhibitGate,
   createGliderNotGate,
   createGunClock,
@@ -268,6 +269,27 @@ describe("inhibit cascade (A AND NOT B1 AND NOT B2 ...)", () => {
 
   test("seed rejects a bs vector of the wrong length", () => {
     expect(() => createInhibitCascade(4, 4, 2).seed(true, [true])).toThrow();
+  });
+});
+
+describe("physical AND gate (mirrored NOT wired into an inhibit)", () => {
+  // Two real GoL gates on one grid: gate 1 (mirrored NOT) computes ¬b as an SW
+  // stream that deletes gate 2's carrier A, so the output is A ∧ ¬(¬b) = A ∧ b.
+  const gate = createGliderAndGate(4, 4);
+  const GENS = 520;
+  const GRID = 220;
+
+  const substrateOut = (a: boolean, b: boolean): 0 | 1 =>
+    countDetections(gate.seed(a, b), gate.output, GENS, GRID) > 0 ? 1 : 0;
+
+  const cases: { a: boolean; b: boolean }[] = [];
+  for (const a of [false, true])
+    for (const b of [false, true]) cases.push({ a, b });
+
+  test.each(
+    cases,
+  )("A=$a B=$b matches logic.ts and() (two wired glider gates)", ({ a, b }) => {
+    expect(substrateOut(a, b)).toBe(and(a ? 1 : 0, b ? 1 : 0));
   });
 });
 

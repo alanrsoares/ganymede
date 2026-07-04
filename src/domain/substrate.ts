@@ -200,6 +200,62 @@ export const createInhibitCascade = (
   };
 };
 
+// --- Physical AND gate (two wired gates: mirrored NOT feeds an inhibit) ---
+//
+// and(a,b) = inhibit(a, not(b)); not(b) = inhibit(1, b). Gate 1 is a mirrored
+// NOT — the whole inhibit gate flipped horizontally — so its constant carrier
+// (the "1") runs SW and its ¬b output stream travels SW. That stream is the
+// deleter feeding gate 2's carrier A (SE); at their perpendicular crossing
+// gate 2 computes A AND NOT (NOT b) = A AND b. Turn-free: gate 1's output
+// stream IS gate 2's input, no reflector, pure p30 — the first time two real
+// GoL gates cooperate on one grid. The mirrored-NOT offset and the output
+// distance are calibrated against the CPU oracle (see test/substrate.test.ts).
+
+/** Mirrored-NOT (gate 1) base, relative to gate 2's carrier A. */
+const AND_G1_DX = 63;
+const AND_G1_DY = 15;
+/** Output detector distance along carrier A, past the ¬b × A crossing. */
+const AND_OUTPUT_DISTANCE = 95;
+
+export interface GliderAndGate {
+  /** Carrier A (when `aHigh`) plus the mirrored NOT of B; output = A AND B. */
+  seed(aHigh: boolean, bHigh: boolean): Cell[];
+  /** Detector on the output (carrier A) lane, downstream of the crossing. */
+  readonly output: Detector;
+}
+
+export const createGliderAndGate = (
+  baseX: number,
+  baseY: number,
+): GliderAndGate => {
+  const gate2 = createGliderInhibitGate(baseX, baseY);
+  // Gate 1 = flipH of an inhibit NOT (carrier = const 1, deleter = input b).
+  const proto = createGliderInhibitGate(0, 0);
+  const full = proto.seed(true, true);
+  const minX = Math.min(...full.map((c) => c[0]));
+  const minY = Math.min(...full.map((c) => c[1]));
+  const width = Math.max(...full.map((c) => c[0])) - minX + 1;
+  const g1x = baseX + AND_G1_DX;
+  const g1y = baseY + AND_G1_DY;
+  const mirroredNot = (bHigh: boolean): Cell[] =>
+    proto
+      .seed(true, bHigh)
+      .map(([x, y]) => [g1x + (width - 1 - (x - minX)), g1y + (y - minY)]);
+  const d = AND_OUTPUT_DISTANCE;
+
+  return {
+    seed: (aHigh, bHigh) => [
+      ...(aHigh ? gate2.seed(true, false) : []),
+      ...mirroredNot(bHigh),
+    ],
+    output: {
+      x: baseX + LANE_DIAGONAL_OFFSET + d - 3,
+      y: baseY + d - 3,
+      size: 6,
+    },
+  };
+};
+
 // --- Glider reflector (Snark, 90 degrees) ---
 //
 // The Snark still-life turns an NE-bound glider into an SE-bound one: routing,
