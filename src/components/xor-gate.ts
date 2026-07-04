@@ -1,8 +1,9 @@
-import { ok, Result } from "@onrails/result";
-import type { Component } from "../domain/component";
-import type { Polarity, Pulse } from "../domain/pulses";
+import { ok } from "@onrails/result";
+import type { Component } from "~/domain/component";
+import type { Polarity, Pulse } from "~/domain/pulses";
 
-export type XorGateState = {};
+// Stateless gate; state is a placeholder for the transition contract.
+export type XorGateState = Record<string, never>;
 
 export const createXorGate = (id: string): Component<XorGateState> => ({
   id,

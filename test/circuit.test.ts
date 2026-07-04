@@ -1,21 +1,22 @@
 import { describe, expect, test } from "bun:test";
+import { unwrapOk } from "@onrails/result";
 import { createClock } from "../src/components/clock";
 import { createNotGate } from "../src/components/not-gate";
 import { createWire } from "../src/components/wire";
 import {
   type CircuitConfig,
   type CircuitState,
-  Connection,
   step,
 } from "../src/domain/circuit";
+import type { Pulse } from "../src/domain/pulses";
 
 describe("Circuit Orchestration", () => {
   test("Pulse should propagate from Clock -> Wire -> NOT Gate", () => {
-    const clock = createClock("clk", 10);
-    const wire = createWire("w1", 5);
+    const clock = createClock("clk");
+    const wire = createWire("w1");
     const notGate = createNotGate("not1");
 
-    const config: CircuitConfig<any> = {
+    const config: CircuitConfig = {
       components: [clock, wire, notGate],
       connections: [
         { fromId: "clk", fromChannel: "out", toId: "w1" },
@@ -24,29 +25,22 @@ describe("Circuit Orchestration", () => {
     };
 
     let state: CircuitState = {
-      componentStates: new Map([
+      componentStates: new Map<string, unknown>([
         ["clk", { lastPulse: 0, period: 10 }],
         ["w1", { length: 5 }],
-        ["not1", { clockTick: 0 }],
+        ["not1", { period: 5 }],
       ]),
       inFlightPulses: [],
       currentTick: 0,
     };
 
-    const allEmittedPulses: any[] = [];
+    const allEmittedPulses: Pulse[] = [];
 
     for (let i = 0; i < 20; i++) {
-      state.componentStates.set("not1", { clockTick: state.currentTick });
-
-      const res = step(config, state);
-      expect(res._tag).toBe("Ok");
-      if (res._tag === "Ok") {
-        allEmittedPulses.push(...res.value.emittedPulses);
-        state = res.value.nextState;
-      }
+      const { nextState, emittedPulses } = unwrapOk(step(config, state));
+      allEmittedPulses.push(...emittedPulses);
+      state = nextState;
     }
-
-    console.log("Total Emitted Pulses:", allEmittedPulses);
 
     const clockPulse = allEmittedPulses.find((p) => p.channelId === "out-clk");
     expect(clockPulse).toBeDefined();

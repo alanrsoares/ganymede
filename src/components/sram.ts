@@ -1,6 +1,6 @@
-import { ok, Result } from "@onrails/result";
-import type { Component } from "../domain/component";
-import type { Polarity, Pulse } from "../domain/pulses";
+import { ok } from "@onrails/result";
+import type { Component } from "~/domain/component";
+import type { Polarity, Pulse } from "~/domain/pulses";
 
 export interface SRAMState {
   readonly value: 1 | 0;

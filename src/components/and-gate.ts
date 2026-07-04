@@ -1,6 +1,6 @@
-import { err, ok, Result } from "@onrails/result";
-import type { Component } from "../domain/component";
-import { type Polarity, type Pulse, TimingError } from "../domain/pulses";
+import { err, ok } from "@onrails/result";
+import type { Component } from "~/domain/component";
+import type { Polarity, Pulse } from "~/domain/pulses";
 
 export interface AndGateState {
   readonly arrivalWindow?: number;
@@ -9,7 +9,6 @@ export interface AndGateState {
 export const createAndGate = (id: string): Component<AndGateState> => ({
   id,
   transition: (_tick, state, inputs) => {
-    const s = state || {};
     const presencePulses = inputs.filter((p) => p.polarity === 1);
 
     if (presencePulses.length < 2) {
@@ -29,7 +28,7 @@ export const createAndGate = (id: string): Component<AndGateState> => ({
     const min = Math.min(...timestamps);
     const max = Math.max(...timestamps);
 
-    const window = s.arrivalWindow ?? 2;
+    const window = state.arrivalWindow ?? 2;
     if (max - min > window) {
       return err({
         _tag: "Collision",

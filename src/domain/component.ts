@@ -7,9 +7,11 @@ export type ComponentError =
 
 export interface Component<S> {
   readonly id: string;
-  readonly transition: (
+  // Method syntax (bivariant) so Component<ConcreteState> is assignable to
+  // Component<unknown> where the circuit stores heterogeneous components.
+  transition(
     tick: number,
     state: S,
     inputs: Pulse[],
-  ) => Result<[S, Pulse[]], ComponentError>;
+  ): Result<[S, Pulse[]], ComponentError>;
 }
