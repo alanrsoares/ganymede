@@ -10,12 +10,15 @@ import { el, type NodeRepr_t } from "@elemaudio/core";
 import WebRenderer from "@elemaudio/web-renderer";
 import type { MusicState } from "~/domain/music";
 
-/** Live-tweakable layer mix (driven by the on-screen knobs). */
+/** Live-tweakable layer mix + pedal FX (driven by the on-screen knobs). */
 export interface AudioParams {
   master: number; // 0..1
   beat: number; // 0..1
   harmony: number; // 0..1
   melody: number; // 0..1
+  drive: number; // 0..1 — master saturation (tanh pre-gain)
+  delay: number; // 0..1 — ping-pong echo send on the lead
+  reverb: number; // 0..1 — send-reverb amount on pad + lead
 }
 
 const DEFAULTS: AudioParams = {
@@ -23,6 +26,9 @@ const DEFAULTS: AudioParams = {
   beat: 0.9,
   harmony: 0.7,
   melody: 0.8,
+  drive: 0.2,
+  delay: 0.64,
+  reverb: 0.7,
 };
 
 export interface AutomataAudio {
@@ -223,22 +229,34 @@ export const createAutomataAudio = (): AutomataAudio => {
         el.const({ key: "leadLvl", value: params.melody * 0.42 }),
         leadVoice(music.lead.freq, music.lead.gate),
       );
-      // Dotted-eighth ping-pong delay on the pluck — the Röyksopp arp shimmer.
-      const echoL = el.mul(0.32, echo(lead, 380, "l"));
-      const echoR = el.mul(0.32, echo(lead, 500, "r"));
+      // Dotted-eighth ping-pong delay on the pluck (the "delay" pedal).
+      const echoLvl = 0.5 * params.delay;
+      const echoL = el.mul(echoLvl, echo(lead, 380, "l"));
+      const echoR = el.mul(echoLvl, echo(lead, 500, "r"));
 
-      // Send reverb on the pad + lead for the wide, atmospheric tail.
+      // Send reverb on the pad + lead for width (the "reverb" pedal).
+      const revLvl = 0.7 * params.reverb;
       const send = el.add(el.mul(0.5, padSig), el.mul(0.45, lead));
-      const revL = el.mul(0.5, reverb(send, [79, 113, 167], "L"));
-      const revR = el.mul(0.5, reverb(send, [97, 131, 181], "R"));
+      const revL = el.mul(revLvl, reverb(send, [79, 113, 167], "L"));
+      const revR = el.mul(revLvl, reverb(send, [97, 131, 181], "R"));
 
       const dry = el.add(beat, bed, lead);
       const gain = el.const({
         key: "master",
         value: muted ? 0 : params.master,
       });
-      const left = el.tanh(el.mul(gain, el.add(dry, echoL, revL)));
-      const right = el.tanh(el.mul(gain, el.add(dry, echoR, revR)));
+      // Drive pedal: push the master into tanh, with makeup trim so it colours
+      // rather than just gets louder.
+      const drive = 1 + params.drive * 4;
+      const trim = 1 / (1 + params.drive * 1.4);
+      const left = el.mul(
+        trim,
+        el.tanh(el.mul(gain, drive, el.add(dry, echoL, revL))),
+      );
+      const right = el.mul(
+        trim,
+        el.tanh(el.mul(gain, drive, el.add(dry, echoR, revR))),
+      );
       void engine.core.render(left, right);
     },
   };

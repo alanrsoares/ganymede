@@ -54,6 +54,9 @@ const main = async () => {
     onBeat: (v) => audio.configure({ beat: v }),
     onHarmony: (v) => audio.configure({ harmony: v }),
     onMelody: (v) => audio.configure({ melody: v }),
+    onDrive: (v) => audio.configure({ drive: v }),
+    onDelay: (v) => audio.configure({ delay: v }),
+    onReverb: (v) => audio.configure({ reverb: v }),
   });
 
   try {

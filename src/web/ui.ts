@@ -34,6 +34,9 @@ export interface UiConfig {
   onBeat: (v: number) => void;
   onHarmony: (v: number) => void;
   onMelody: (v: number) => void;
+  onDrive: (v: number) => void;
+  onDelay: (v: number) => void;
+  onReverb: (v: number) => void;
 }
 
 /** Reactive handles the render loop writes into. */
@@ -101,6 +104,7 @@ const knob = (
 const CYAN = "#3fd8ff";
 const AMBER = "#f0b84a";
 const GREEN = "#4fd88a";
+const VIOLET = "#b07cff";
 const pct = (v: number) => `${v}%`;
 
 export const mountUi = (cfg: UiConfig): Ui => {
@@ -291,6 +295,32 @@ export const mountUi = (cfg: UiConfig): Ui => {
       (v) => cfg.onMelody(v / 100),
       pct,
       GREEN,
+    ),
+
+    groupHeader("fx", VIOLET),
+    knob(
+      "k-drive",
+      "drive",
+      { min: 0, max: 100, step: 1, value: 20 },
+      (v) => cfg.onDrive(v / 100),
+      pct,
+      VIOLET,
+    ),
+    knob(
+      "k-delay",
+      "delay",
+      { min: 0, max: 100, step: 1, value: 64 },
+      (v) => cfg.onDelay(v / 100),
+      pct,
+      VIOLET,
+    ),
+    knob(
+      "k-reverb",
+      "reverb",
+      { min: 0, max: 100, step: 1, value: 70 },
+      (v) => cfg.onReverb(v / 100),
+      pct,
+      VIOLET,
     ),
   );
 
