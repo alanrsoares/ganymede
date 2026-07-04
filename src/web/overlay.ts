@@ -146,10 +146,6 @@ export const createOverlay = (): Overlay => {
         marker(det, [0.95, 0.72, 0.25, 0.18 + (now < flashUntil ? 0.45 : 0)]);
       }
 
-      // Routing output markers (purple): reflector turn + duplicator fan-out
-      for (const det of scene.routingMarkers())
-        marker(det, [0.62, 0.42, 0.95, 0.32]);
-
       // Inhibit gate output: green when flowing, dim red when dark
       const gate = scene.gateView();
       const gateFlash = now < gate.flashUntil ? 0.4 : 0;

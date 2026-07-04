@@ -1,21 +1,21 @@
-// The GoL substrate scene: which real Game of Life constructs live on the grid
-// (clock gun + wire lane + eater, the A AND NOT B inhibit gate, and the routing
-// showcase of a reflector + duplicator), how they are seeded, fed, sampled, and
-// observed. main.ts owns the GPU engine and rendering; this module owns the
-// substrate. Detector/gate readback goes through the same readRegion path the
-// eventual computer will use to read pulses back out of the automaton.
+// The GoL substrate scene, laid out as a left→right datapath: a clock (Gosper
+// gun) drives a glider lane whose taps are the melody's arp; the zxcvbnm key row
+// is the machine's input register, feeding two real GoL logic gates (inhibit
+// A∧¬B and the wired AND A∧B) whose outputs are read back and mapped to the
+// music. Every construct on the grid does something — the step-1 routing
+// primitives (reflector/duplicator) stay in the codebase + tests but off-stage.
+// main.ts owns the GPU engine and rendering; this module owns the substrate.
+// Detector/gate readback goes through the same readRegion path the computer uses.
 
 import { unwrapOk } from "@onrails/result";
 import type { Cell } from "~/domain/gol";
 import { GLIDER_RLE, parseRle, placePattern } from "~/domain/patterns";
 import {
   countWindow,
-  createDuplicator,
   createEdgeDetector,
   createGliderAndGate,
   createGliderInhibitGate,
   createGunClock,
-  createReflector,
   type Detector,
   GLIDER_GENS_PER_CELL,
 } from "~/domain/substrate";
@@ -28,35 +28,29 @@ const GUN_Y = 6;
 // the crossings play a generative arpeggio timed by the automaton itself.
 const MUSIC_DISTANCES = [16, 21, 26, 31, 36];
 const EATER_DISTANCE = 40;
-const NOT_BASE_X = 40;
-const NOT_BASE_Y = 150;
-// Routing showcase (step 1 primitives).
-const REFLECT_BASE_X = 320;
-const REFLECT_BASE_Y = 30;
-const REFLECT_INJECT_PERIOD = 64; // > Snark 43-gen recovery time
-const DUP_BASE_X = 300;
-const DUP_BASE_Y = 150;
-// Physical AND gate (step 2): mirrored NOT wired into an inhibit, out = A ∧ B.
-// Placed in the clear right-center band, clear of reflector/duplicator.
+// Logic block, one band below the clock (verified collision-free on the
+// composed 480×270 grid): inhibit on the left, AND to its right — the datapath
+// reads clock → inputs → inhibit → AND → outputs.
+const INHIBIT_BASE_X = 40;
+const INHIBIT_BASE_Y = 150;
 const AND_BASE_X = 200;
-const AND_BASE_Y = 40;
+const AND_BASE_Y = 150;
 
 export const PARITY_GENERATIONS = 120;
 export const EXPECTED_LANE_DELAY =
   (MUSIC_DISTANCES[MUSIC_DISTANCES.length - 1] - MUSIC_DISTANCES[0]) *
   GLIDER_GENS_PER_CELL;
 
-/** Labels for the real GoL substrate, anchored at their actual grid cells. */
+/** Labels for the real GoL substrate, anchored at their actual grid cells and
+ *  reading as a datapath: clock/tape on top, the logic block below. */
 export const SUBSTRATE_LABELS: readonly UiLabel[] = [
   { x: 24, y: 18, text: "CLK · Gosper gun" },
-  { x: 60, y: 34, text: "WIRE · glider lane" },
+  { x: 60, y: 34, text: "WIRE · glider lane → arp" },
   { x: 74, y: 48, text: "EATER" },
-  { x: 58, y: 144, text: "A · carrier gun" },
-  { x: 129, y: 143, text: "B · deleter gun" },
-  { x: 118, y: 218, text: "OUT · A∧¬B" },
-  { x: 330, y: 20, text: "REFLECTOR · 90° turn" },
-  { x: 315, y: 205, text: "DUPLICATOR · fan-out →2" },
-  { x: 214, y: 30, text: 'AND · A∧B (keys "c"/"d")' },
+  { x: 58, y: 144, text: "INHIBIT A∧¬B · keys z/x" },
+  { x: 118, y: 218, text: "OUT → bass" },
+  { x: 214, y: 144, text: "AND A∧B · keys c/v" },
+  { x: 300, y: 250, text: "OUT → pad" },
 ];
 
 /** A detector window plus the wall-clock time until which it should flash. */
@@ -89,15 +83,12 @@ export interface Scene {
   toggleInput(engine: GolEngine, which: "a" | "b" | "c" | "d"): void;
   /** Drop a glider at a grid cell (the click interaction). */
   drop(engine: GolEngine, gx: number, gy: number): void;
-  /** Advance the engine by `golSteps`, feeding the routing constructs on a
-   *  30-gen-aligned schedule (duplicator stream + spaced reflector input). */
+  /** Advance the engine by `golSteps` (the gates are self-sustaining guns). */
   stepAndFeed(engine: GolEngine, golSteps: number): void;
   /** Async readback of the lane detectors and the gate output. */
   sample(engine: GolEngine): void;
   /** Lane detector windows with flash timing (for rendering). */
   detectorViews(): DetectorView[];
-  /** Purple routing output markers (for rendering). */
-  routingMarkers(): Detector[];
   /** The inhibit gate output window with flash timing. */
   gateView(): DetectorView;
   /** The AND gate output window with flash timing. */
@@ -109,9 +100,7 @@ export interface Scene {
 export const createScene = (): Scene => {
   const glider = unwrapOk(parseRle(GLIDER_RLE));
   const gunClock = createGunClock(GUN_X, GUN_Y);
-  const inhibitGate = createGliderInhibitGate(NOT_BASE_X, NOT_BASE_Y);
-  const reflector = createReflector(REFLECT_BASE_X, REFLECT_BASE_Y);
-  const duplicator = createDuplicator(DUP_BASE_X, DUP_BASE_Y);
+  const inhibitGate = createGliderInhibitGate(INHIBIT_BASE_X, INHIBIT_BASE_Y);
   const andGate = createGliderAndGate(AND_BASE_X, AND_BASE_Y);
 
   let inputA = true;
@@ -119,15 +108,10 @@ export const createScene = (): Scene => {
   let andA = true;
   let andB = true;
 
-  // The duplicator machine is seeded with its first input so the parity check
-  // sees a clean, non-chaotic machine.
   const buildSeed = (): Cell[] => [
     ...gunClock.seed,
     ...gunClock.laneEater(EATER_DISTANCE),
     ...inhibitGate.seed(inputA, inputB),
-    ...reflector.seed,
-    ...duplicator.seed,
-    ...duplicator.inputGlider(),
     ...andGate.seed(andA, andB),
   ];
 
@@ -176,22 +160,8 @@ export const createScene = (): Scene => {
       engine.inject(placePattern(glider, gx, gy));
     },
     stepAndFeed: (engine, golSteps) => {
-      let remaining = golSteps;
-      while (remaining > 0) {
-        const gen = engine.generation();
-        const nextBoundary = (Math.floor(gen / 30) + 1) * 30;
-        const chunk = Math.min(remaining, nextBoundary - gen);
-        engine.step(chunk);
-        remaining -= chunk;
-        const nowGen = engine.generation();
-        if (nowGen % 30 === 0) engine.inject(duplicator.inputGlider());
-        if (
-          Math.floor(nowGen / REFLECT_INJECT_PERIOD) >
-          Math.floor(gen / REFLECT_INJECT_PERIOD)
-        ) {
-          engine.inject(reflector.inputGlider(2));
-        }
-      }
+      // The gates are self-sustaining gun machines — just advance the engine.
+      engine.step(golSteps);
     },
     sample: (engine) => {
       detectors.forEach((det, i) => {
@@ -225,11 +195,6 @@ export const createScene = (): Scene => {
     },
     detectorViews: () =>
       detectors.map((det, i) => ({ det, flashUntil: detectorFlash[i] })),
-    routingMarkers: () => [
-      reflector.outputDetector(30),
-      duplicator.outputNE(45),
-      duplicator.outputSE(45),
-    ],
     gateView: () => ({ det: gateOut, flashUntil: gateOutFlash }),
     andView: () => ({ det: andOut, flashUntil: andOutFlash }),
     observe: (now) => {
