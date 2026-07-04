@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@onrails/result": "^0.3.0"
+    "@elemaudio/core": "^4.0.1",
+    "@elemaudio/web-renderer": "^4.0.3",
+    "@onrails/result": "^0.3.0",
+    "vanjs-core": "^1.6.0"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.71",
+    "bun-plugin-tailwind": "^0.1.2",
     "bun-types": "latest",
+    "tailwindcss": "^4.3.2",
     "typescript": "latest"
   },
   "scripts": {
