@@ -13,12 +13,18 @@ const obs = (over: Partial<CaObservations> = {}): CaObservations => ({
   population: 0,
   activity: 0,
   gateHigh: true,
+  andHigh: true,
+  laneTriggers: [],
   step: 0,
   ...over,
 });
 
+/** A lane-trigger vector of `len` with a single arrival at `fire`. */
+const fireLane = (fire: number, len = 5): boolean[] =>
+  Array.from({ length: len }, (_, i) => i === fire);
+
 describe("compose — beat layer", () => {
-  test("four-on-the-floor kick when the gate is high", () => {
+  test("steady four-on-the-floor kick (drums are the clock)", () => {
     const kicks = Array.from(
       { length: 16 },
       (_, step) => compose(obs({ step }), PARAMS).kick,
@@ -26,12 +32,17 @@ describe("compose — beat layer", () => {
     expect(kicks).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0]);
   });
 
-  test("gate low halves the kick (breakdown)", () => {
-    const kicks = Array.from(
+  test("kick is unaffected by the gate outputs (computation ≠ timing)", () => {
+    const on = Array.from(
       { length: 16 },
-      (_, step) => compose(obs({ step, gateHigh: false }), PARAMS).kick,
+      (_, step) => compose(obs({ step }), PARAMS).kick,
     );
-    expect(kicks).toEqual([1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]);
+    const off = Array.from(
+      { length: 16 },
+      (_, step) =>
+        compose(obs({ step, gateHigh: false, andHigh: false }), PARAMS).kick,
+    );
+    expect(off).toEqual(on);
   });
 
   test("snare on the backbeat", () => {
@@ -61,27 +72,65 @@ describe("compose — harmony layer", () => {
     const roots = [0, 1, 2, 3].map(
       (bar) => compose(obs({ step: bar * 16 }), PARAMS).chord[0],
     );
-    // Not a single static chord across the loop.
     expect(new Set(roots).size).toBeGreaterThan(1);
-    // Loops back on bar 4.
     expect(compose(obs({ step: 64 }), PARAMS).chord[0]).toBe(roots[0]);
+  });
+
+  test("the AND gate bit enables the pad", () => {
+    expect(compose(obs({ andHigh: true }), PARAMS).padGate).toBe(1);
+    expect(compose(obs({ andHigh: false }), PARAMS).padGate).toBe(0);
   });
 });
 
-describe("compose — melody layer", () => {
-  test("lead frequency is always a positive in-scale pitch", () => {
+describe("compose — gate word transposes harmony", () => {
+  test("setting a gate bit raises the tonal centre", () => {
+    const low = compose(obs({ gateHigh: false, andHigh: false }), PARAMS)
+      .chord[0];
+    const high = compose(obs({ gateHigh: true, andHigh: false }), PARAMS)
+      .chord[0];
+    expect(high).toBeGreaterThan(low);
+  });
+
+  test("both bits transpose further than one", () => {
+    const one = compose(obs({ gateHigh: true, andHigh: false }), PARAMS)
+      .chord[0];
+    const both = compose(obs({ gateHigh: true, andHigh: true }), PARAMS)
+      .chord[0];
+    expect(both).toBeGreaterThan(one);
+  });
+});
+
+describe("compose — arp (physics-timed melody)", () => {
+  test("no glider arrival = silent arp", () => {
+    const { lead } = compose(obs({ laneTriggers: [] }), PARAMS);
+    expect(lead.gate).toBe(0);
+  });
+
+  test("a lane arrival opens the arp gate", () => {
+    const { lead } = compose(obs({ laneTriggers: fireLane(0) }), PARAMS);
+    expect(lead.gate).toBe(1);
+    expect(lead.freq).toBeGreaterThan(0);
+  });
+
+  test("farther lane taps play higher arp notes", () => {
+    const near = compose(obs({ laneTriggers: fireLane(0) }), PARAMS).lead.freq;
+    const far = compose(obs({ laneTriggers: fireLane(3) }), PARAMS).lead.freq;
+    expect(far).toBeGreaterThan(near);
+  });
+
+  test("arp frequency is always a positive in-scale pitch", () => {
     for (const scale of SCALE_NAMES) {
       for (let step = 0; step < 32; step++) {
-        const { lead } = compose(obs({ step }), { root: 220, scale });
+        const { lead } = compose(
+          obs({ step, laneTriggers: fireLane(step % 5) }),
+          {
+            root: 220,
+            scale,
+          },
+        );
         expect(lead.freq).toBeGreaterThan(0);
       }
     }
-  });
-
-  test("population lifts the lead register", () => {
-    const low = compose(obs({ step: 1 }), PARAMS).lead.freq;
-    const high = compose(obs({ step: 1, population: 1 }), PARAMS).lead.freq;
-    expect(high).toBeGreaterThan(low);
   });
 });
 
@@ -92,15 +141,18 @@ describe("compose — sub-bass layer", () => {
     expect(bass.freq).toBeLessThan(chord[0]);
   });
 
-  test("bass groove has notes and rests across the bar", () => {
-    const gates = Array.from(
+  test("the inhibit gate bit enables the bass", () => {
+    const on = Array.from(
       { length: 16 },
-      (_, step) => compose(obs({ step }), PARAMS).bass.gate,
+      (_, step) => compose(obs({ step, gateHigh: true }), PARAMS).bass.gate,
     );
-    expect(gates).toContain(1);
-    expect(gates).toContain(0);
-    // Downbeat always plays.
-    expect(gates[0]).toBe(1);
+    const off = Array.from(
+      { length: 16 },
+      (_, step) => compose(obs({ step, gateHigh: false }), PARAMS).bass.gate,
+    );
+    expect(on).toContain(1);
+    expect(on[0]).toBe(1); // downbeat plays when enabled
+    expect(off.every((g) => g === 0)).toBe(true);
   });
 });
 
