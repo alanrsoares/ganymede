@@ -12,6 +12,7 @@ import {
   createGliderNotGate,
   createGunClock,
   createReflector,
+  createReflectorSE,
   type Detector,
   GLIDER_GENS_PER_CELL,
   GUN_PERIOD,
@@ -247,5 +248,50 @@ describe("glider reflector (Snark, 90 degrees)", () => {
     for (const [x, y] of refl.seed) {
       expect(grid.cells[y * grid.width + x]).toBe(1);
     }
+  });
+});
+
+describe("routing composition: two chained reflectors (S-bend)", () => {
+  // R1 turns an NE signal to SE; R2, downstream on R1's output lane, turns it
+  // back to NE. One glider routed through two 90-degree bends — the core of
+  // wiring one component's output into another's input.
+  const B1 = 60;
+  const r1 = createReflector(B1, B1);
+  const r2 = createReflectorSE(B1 + 20, B1 + 21);
+  const detector = r2.outputDetector(24);
+  const GENS = 400;
+  const GRID = 220;
+
+  test("one glider routed through two 90-degree turns reaches the output", () => {
+    const hits = countDetections(
+      [...r1.seed, ...r2.seed, ...r1.inputGlider(4)],
+      detector,
+      GENS,
+      GRID,
+    );
+    expect(hits).toBeGreaterThan(0);
+  });
+
+  test("no input glider means no output (both reflectors inert)", () => {
+    const hits = countDetections(
+      [...r1.seed, ...r2.seed],
+      detector,
+      GENS,
+      GRID,
+    );
+    expect(hits).toBe(0);
+  });
+
+  test("both reflectors are intact after routing (reusable wiring)", () => {
+    let grid = createGrid(GRID, GRID, [
+      ...r1.seed,
+      ...r2.seed,
+      ...r1.inputGlider(4),
+    ]);
+    for (let i = 0; i < GENS; i++) grid = stepGrid(grid);
+    for (const [x, y] of r1.seed)
+      expect(grid.cells[y * grid.width + x]).toBe(1);
+    for (const [x, y] of r2.seed)
+      expect(grid.cells[y * grid.width + x]).toBe(1);
   });
 });

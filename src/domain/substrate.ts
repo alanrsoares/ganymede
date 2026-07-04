@@ -9,6 +9,7 @@ import {
   EATER_RLE,
   flipH,
   GOSPER_GUN_RLE,
+  orientations,
   type Pattern,
   parseRle,
   placePattern,
@@ -186,6 +187,33 @@ export const createReflector = (baseX: number, baseY: number): Reflector => ({
   outputDetector: (distance, size = 6) => ({
     x: baseX + distance - Math.floor(size / 2),
     y: baseY + distance - 1 - Math.floor(size / 2),
+    size,
+  }),
+});
+
+// The mirror-turn reflector: a rotated Snark that accepts an SE-bound glider
+// and emits an NE-bound one. Chaining createReflector -> createReflectorSE
+// routes a single signal glider through two 90-degree bends (an S-bend),
+// delivering it to an arbitrary location — the essence of wiring. Placement and
+// the NE output lane (x + y = baseX + baseY + 23) are calibrated against the
+// CPU oracle (see test/substrate.test.ts).
+const SNARK_REFLECTOR_SE = orientations(SNARK_REFLECTOR)[5];
+
+export interface ReflectorSE {
+  /** The still-life reflector at the base position. */
+  readonly seed: Cell[];
+  /** Detector on the NE output lane, `distance` cells NE of the reflector. */
+  outputDetector(distance: number, size?: number): Detector;
+}
+
+export const createReflectorSE = (
+  baseX: number,
+  baseY: number,
+): ReflectorSE => ({
+  seed: placePattern(SNARK_REFLECTOR_SE, baseX, baseY),
+  outputDetector: (distance, size = 6) => ({
+    x: baseX + distance - Math.floor(size / 2),
+    y: baseY + (23 - distance) - Math.floor(size / 2),
     size,
   }),
 });
