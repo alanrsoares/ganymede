@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { unwrapOk } from "@onrails/result";
 import { createClock } from "~/components/clock";
+import { createNotGate } from "~/components/not-gate";
 import { createWire } from "~/components/wire";
 import { type CircuitConfig, type CircuitState, step } from "~/domain/circuit";
 import { aliveCells, createGrid, population, stepGrid } from "~/domain/gol";
+import type { Polarity, Pulse } from "~/domain/pulses";
 import {
   createEdgeDetector,
+  createGliderNotGate,
   createGunClock,
+  type Detector,
   GLIDER_GENS_PER_CELL,
   GUN_PERIOD,
   runSubstrate,
@@ -19,6 +23,30 @@ const WIRE_DELAY = LANE_CELLS * GLIDER_GENS_PER_CELL; // 96 generations
 
 const intervals = (xs: number[]): number[] =>
   xs.slice(1).map((x, i) => x - xs[i]);
+
+/** Runs the CPU substrate and counts glider crossings through a detector. */
+const countDetections = (
+  seed: readonly (readonly [number, number])[],
+  detector: Detector,
+  generations: number,
+  gridSize = 160,
+): number => {
+  let grid = createGrid(gridSize, gridSize, seed as [number, number][]);
+  const edge = createEdgeDetector();
+  let hits = 0;
+  for (let gen = 1; gen <= generations; gen++) {
+    grid = stepGrid(grid);
+    let count = 0;
+    for (let dy = 0; dy < detector.size; dy++) {
+      const row = (detector.y + dy) * grid.width;
+      for (let dx = 0; dx < detector.size; dx++) {
+        count += grid.cells[row + detector.x + dx];
+      }
+    }
+    if (edge.sample(count)) hits++;
+  }
+  return hits;
+};
 
 /** Runs the abstract circuit clk(period 30) -> wire(length 96) and returns
  *  the ticks at which the wire's output pulses are delivered. */
@@ -127,5 +155,40 @@ describe("GoL substrate vs circuit oracle", () => {
       (_, i) => farHits[i] - deliveries[i],
     );
     expect(new Set(offsets).size).toBe(1);
+  });
+});
+
+describe("glider NOT gate vs component oracle", () => {
+  const gate = createGliderNotGate(4, 4);
+  const GENS = 420;
+
+  const oracleOutput = (inputPolarity: Polarity): Polarity => {
+    const not = createNotGate("not");
+    // Sample on a period boundary so the gate emits.
+    const input: Pulse[] = [
+      { timestamp: 10, polarity: inputPolarity, channelId: "in" },
+    ];
+    const [, outputs] = unwrapOk(not.transition(10, { period: 10 }, input));
+    return outputs[0].polarity;
+  };
+
+  test("NOT(0) = 1: control stream flows when input is absent", () => {
+    const hits = countDetections(gate.seed(false), gate.output, GENS);
+    expect(hits).toBeGreaterThan(0);
+    expect(oracleOutput(0)).toBe(1);
+  });
+
+  test("NOT(1) = 0: input stream annihilates the output", () => {
+    const hits = countDetections(gate.seed(true), gate.output, GENS);
+    expect(hits).toBe(0);
+    expect(oracleOutput(1)).toBe(0);
+  });
+
+  test("substrate truth table matches the NOT component", () => {
+    const substrate = [false, true].map((high) =>
+      countDetections(gate.seed(high), gate.output, GENS) > 0 ? 1 : 0,
+    );
+    const oracle = [0, 1].map((p) => oracleOutput(p as Polarity));
+    expect(substrate).toEqual(oracle);
   });
 });

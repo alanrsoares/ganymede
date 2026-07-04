@@ -5,7 +5,13 @@
 
 import type { Cell } from "./gol";
 import { aliveCells, createGrid, type GolGrid, stepGrid } from "./gol";
-import { EATER_RLE, GOSPER_GUN_RLE, parseRle, placePattern } from "./patterns";
+import {
+  EATER_RLE,
+  flipH,
+  GOSPER_GUN_RLE,
+  parseRle,
+  placePattern,
+} from "./patterns";
 
 /** The Gosper gun emits one glider every 30 generations. */
 export const GUN_PERIOD = 30;
@@ -61,6 +67,54 @@ export const createGunClock = (gunX: number, gunY: number): GunClock => {
         gunX + LANE_DIAGONAL_OFFSET + distance,
         gunY + distance,
       ),
+  };
+};
+
+// --- Glider NOT gate ---
+//
+// Two perpendicular glider streams annihilate where they cross: a control gun
+// (SE lane) and an input gun (mirrored, SW lane). The control stream is the
+// output carrier. When the input stream is present, its gliders delete the
+// control gliders at the crossing, so the output lane goes dark (NOT 1 = 0);
+// when the input is absent, the control stream flows through (NOT 0 = 1).
+// Relative gun placement and the output detector are calibrated against the
+// CPU reference engine (see test/substrate.test.ts).
+
+/** Input gun offset relative to the control gun, for the crossing to land. */
+const NOT_INPUT_DX = 71;
+const NOT_INPUT_DY = -1;
+/** Output detector distance along the control lane, past the crossing. */
+const NOT_OUTPUT_DISTANCE = 60;
+
+export interface GliderNotGate {
+  /** Control gun, plus the input gun when `inputHigh`. */
+  seed(inputHigh: boolean): Cell[];
+  /** Detector on the output (control) lane, downstream of the crossing. */
+  readonly output: Detector;
+}
+
+export const createGliderNotGate = (
+  baseX: number,
+  baseY: number,
+): GliderNotGate => {
+  const gun = mustParse(GOSPER_GUN_RLE, "GOSPER_GUN_RLE");
+  const inputGun = flipH(gun);
+  const controlSeed = placePattern(gun, baseX, baseY);
+  const inputSeed = placePattern(
+    inputGun,
+    baseX + NOT_INPUT_DX,
+    baseY + NOT_INPUT_DY,
+  );
+  const d = NOT_OUTPUT_DISTANCE;
+
+  return {
+    seed: (inputHigh) =>
+      inputHigh ? [...controlSeed, ...inputSeed] : controlSeed,
+    output: {
+      x: baseX + LANE_DIAGONAL_OFFSET + d - 3,
+      y: baseY + d - 3,
+      size: 6,
+    },
   };
 };
 
