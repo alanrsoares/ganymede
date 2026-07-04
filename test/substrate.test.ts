@@ -11,6 +11,7 @@ import {
   createGliderInhibitGate,
   createGliderNotGate,
   createGunClock,
+  createReflector,
   type Detector,
   GLIDER_GENS_PER_CELL,
   GUN_PERIOD,
@@ -216,5 +217,35 @@ describe("glider NOT gate vs component oracle", () => {
     );
     const oracle = [0, 1].map((p) => oracleOutput(p as Polarity));
     expect(substrate).toEqual(oracle);
+  });
+});
+
+describe("glider reflector (Snark, 90 degrees)", () => {
+  const refl = createReflector(30, 30);
+  const detector = refl.outputDetector(30);
+  const GENS = 240;
+  const GRID = 120;
+
+  test("turns an input glider 90 degrees onto the output lane", () => {
+    const hits = countDetections(
+      [...refl.seed, ...refl.inputGlider(4)],
+      detector,
+      GENS,
+      GRID,
+    );
+    expect(hits).toBeGreaterThan(0);
+  });
+
+  test("no input glider means no output (reflector is inert still life)", () => {
+    const hits = countDetections(refl.seed, detector, GENS, GRID);
+    expect(hits).toBe(0);
+  });
+
+  test("the reflector still-life is intact after reflecting", () => {
+    let grid = createGrid(GRID, GRID, [...refl.seed, ...refl.inputGlider(4)]);
+    for (let i = 0; i < GENS; i++) grid = stepGrid(grid);
+    for (const [x, y] of refl.seed) {
+      expect(grid.cells[y * grid.width + x]).toBe(1);
+    }
   });
 });

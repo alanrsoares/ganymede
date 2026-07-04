@@ -9,8 +9,10 @@ import {
   EATER_RLE,
   flipH,
   GOSPER_GUN_RLE,
+  type Pattern,
   parseRle,
   placePattern,
+  SNARK_REFLECTOR,
 } from "./patterns";
 
 /** The Gosper gun emits one glider every 30 generations. */
@@ -139,6 +141,54 @@ export const createGliderNotGate = (
     output: inhibit.output,
   };
 };
+
+// --- Glider reflector (Snark, 90 degrees) ---
+//
+// The Snark still-life turns an NE-bound glider into an SE-bound one: routing,
+// the prerequisite for wiring one gate's output into another. Geometry is
+// calibrated against the CPU reference engine (see test/substrate.test.ts):
+// the input glider rides lane x + y = baseX + baseY + 23; the output rides
+// lane x - y = baseX - baseY + 1. Being a still life, the reflector is inert
+// until a glider arrives, and it recovers fully afterward (repeat time 43).
+
+/** The NE-bound glider phase/orientation the Snark accepts. */
+const REFLECTOR_GLIDER: Pattern = {
+  width: 3,
+  height: 3,
+  cells: [
+    [1, 2],
+    [2, 1],
+    [0, 0],
+    [1, 0],
+    [2, 0],
+  ],
+};
+/** Nearest calibrated input-glider top-left, relative to the reflector base. */
+const REFLECTOR_INPUT_ANCHOR: readonly [number, number] = [-10, 33];
+
+export interface Reflector {
+  /** The still-life reflector at the base position. */
+  readonly seed: Cell[];
+  /** A glider `distance` cells up the input lane (NE-bound); distance >= 0. */
+  inputGlider(distance: number): Cell[];
+  /** Detector on the output lane, `distance` cells SE of the reflector. */
+  outputDetector(distance: number, size?: number): Detector;
+}
+
+export const createReflector = (baseX: number, baseY: number): Reflector => ({
+  seed: placePattern(SNARK_REFLECTOR, baseX, baseY),
+  inputGlider: (distance) =>
+    placePattern(
+      REFLECTOR_GLIDER,
+      baseX + REFLECTOR_INPUT_ANCHOR[0] - distance,
+      baseY + REFLECTOR_INPUT_ANCHOR[1] + distance,
+    ),
+  outputDetector: (distance, size = 6) => ({
+    x: baseX + distance - Math.floor(size / 2),
+    y: baseY + distance - 1 - Math.floor(size / 2),
+    size,
+  }),
+});
 
 /** Sums alive cells inside a detector window (any 0/1 cell array). */
 export const countWindow = (cells: ArrayLike<number>): number => {
