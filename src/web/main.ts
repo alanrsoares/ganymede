@@ -83,14 +83,15 @@ const main = async () => {
       scene.drop(engine, cx, cy);
     });
 
-    // Keys: "a"/"b" toggle the inhibit gate's input streams; "m" mutes.
+    // Input register on the bottom key row: z/x = inhibit A/B, c/v = AND A/B
+    // (b/n reserved for the next gate); m mutes.
     window.addEventListener("keydown", (e) => {
       audio.resume();
       const key = e.key.toLowerCase();
-      if (key === "a") scene.toggleInput(engine, "a");
-      else if (key === "b") scene.toggleInput(engine, "b");
+      if (key === "z") scene.toggleInput(engine, "a");
+      else if (key === "x") scene.toggleInput(engine, "b");
       else if (key === "c") scene.toggleInput(engine, "c");
-      else if (key === "d") scene.toggleInput(engine, "d");
+      else if (key === "v") scene.toggleInput(engine, "d");
       else if (key === "m") muted = audio.toggleMute();
     });
 
@@ -167,10 +168,10 @@ const main = async () => {
           ? "muted (m)"
           : "on";
       ui.gate.val =
-        `inhibit gate A∧¬B (keys "a"/"b"): A=${scene.inputA ? 1 : 0} B=${scene.inputB ? 1 : 0}` +
+        `inhibit A∧¬B (keys z/x): A=${scene.inputA ? 1 : 0} B=${scene.inputB ? 1 : 0}` +
         ` → out ${obs.gateFlowing ? 1 : 0} enables the bass — sound: ${sound}`;
       ui.and.val =
-        `wired AND A∧B (keys "c"/"d"): A=${scene.andA ? 1 : 0} B=${scene.andB ? 1 : 0}` +
+        `wired AND A∧B (keys c/v): A=${scene.andA ? 1 : 0} B=${scene.andB ? 1 : 0}` +
         ` → out ${obs.andFlowing ? 1 : 0} enables the pad — 2-bit word transposes harmony`;
       ui.status.val = `tick ${sim.tick()} — sram bit: ${sim.sramValue()}${populationText}`;
       requestAnimationFrame(frame);

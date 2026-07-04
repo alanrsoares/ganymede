@@ -141,12 +141,12 @@ export const mountUi = (cfg: UiConfig): Ui => {
       : `${HUD_LIVE} text-[#8fb0a6]`;
 
   const legendLines = [
-    "pulse ● presence  ○ absence — background: Gosper gun (GPU compute)",
-    "amber windows: pulse detectors on the glider lane — click to drop a glider",
+    "datapath: CLK gun → glider lane (arp taps) → two wired GoL logic gates",
+    "amber windows: lane taps — a glider arrival plays an arp note (click drops one)",
     "◆ cyan labels: real GoL substrate — dim row: abstract spec circuit (not GoL)",
-    "purple windows: routing — reflector (90° turn) + duplicator (fan-out →2)",
-    'green/red window: physical AND gate (two wired GoL gates) — keys "c"/"d"',
-    '♪ audio (Elementary): lane crossings pluck pentatonic voices, "m" mutes',
+    "input register (bottom key row): z/x = inhibit A/B · c/v = AND A/B",
+    "green/red windows: gate outputs — inhibit → bass, AND → pad, word transposes",
+    '♪ audio (Elementary): the computer arranges the track, "m" mutes',
   ];
 
   const hud = div(
