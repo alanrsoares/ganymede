@@ -12,6 +12,7 @@
   },
   "scripts": {
     "dev": "bun run src/index.ts",
+    "web": "bun --hot src/web/server.ts",
     "test": "bun test",
     "check": "bun run lint && bun run typecheck",
     "lint": "bun x @biomejs/biome check .",

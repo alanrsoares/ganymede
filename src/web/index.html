@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GoL Computer — Circuit Visualizer</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+        background: #04070a;
+        color: #9fd8c8;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      #hud {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        pointer-events: none;
+        text-shadow: 0 0 8px #04070a;
+      }
+      #hud h1 {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #d3f5e9;
+      }
+      #hud p {
+        font-size: 12px;
+        margin-top: 4px;
+        color: #6fa899;
+      }
+      #labels {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .label {
+        position: absolute;
+        transform: translate(-50%, 0);
+        font-size: 11px;
+        color: #7fc4b1;
+        text-shadow: 0 0 6px #04070a;
+        white-space: nowrap;
+      }
+      #error {
+        position: absolute;
+        inset: 0;
+        display: none;
+        place-items: center;
+        font-size: 14px;
+        color: #f0a0a0;
+        text-align: center;
+        padding: 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gpu-canvas"></canvas>
+    <div id="labels"></div>
+    <div id="hud">
+      <h1>GoL Computer</h1>
+      <p id="status">tick 0</p>
+      <p id="substrate">substrate: verifying gpu≡cpu…</p>
+      <p>pulse ● presence &nbsp; ○ absence — background: Gosper gun in Conway's GoL (GPU compute)</p>
+      <p>amber windows: pulse detectors on the glider lane — click anywhere to drop a glider</p>
+    </div>
+    <div id="error"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
