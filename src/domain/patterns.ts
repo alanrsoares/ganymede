@@ -74,11 +74,39 @@ export const placePattern = (
   offsetY: number,
 ): Cell[] => pattern.cells.map(([x, y]) => [x + offsetX, y + offsetY]);
 
+/** Rotates a pattern 90° clockwise. */
+export const rotate90 = (p: Pattern): Pattern => ({
+  width: p.height,
+  height: p.width,
+  cells: p.cells.map(([x, y]) => [p.height - 1 - y, x]),
+});
+
+/** Mirrors a pattern horizontally. */
+export const flipH = (p: Pattern): Pattern => ({
+  ...p,
+  cells: p.cells.map(([x, y]) => [p.width - 1 - x, y]),
+});
+
+/** All 8 orientations of a pattern (4 rotations x optional mirror). */
+export const orientations = (p: Pattern): Pattern[] => {
+  const out: Pattern[] = [];
+  let current = p;
+  for (let i = 0; i < 4; i++) {
+    out.push(current, flipH(current));
+    current = rotate90(current);
+  }
+  return out;
+};
+
 // --- Canonical patterns ---
 
 export const GLIDER_RLE = "bob$2bo$3o!";
 
 export const BLINKER_RLE = "3o!";
+
+// Eater 1 (fishhook): still life that absorbs gliders arriving on the
+// right lane, recovering unchanged between hits.
+export const EATER_RLE = "2o$obo$2bo$2b2o!";
 
 // Gosper glider gun: emits one glider every 30 generations.
 export const GOSPER_GUN_RLE = [

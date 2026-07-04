@@ -3,7 +3,9 @@ import { unwrapOk } from "@onrails/result";
 import { createClock } from "~/components/clock";
 import { createWire } from "~/components/wire";
 import { type CircuitConfig, type CircuitState, step } from "~/domain/circuit";
+import { aliveCells, createGrid, population, stepGrid } from "~/domain/gol";
 import {
+  createEdgeDetector,
   createGunClock,
   GLIDER_GENS_PER_CELL,
   GUN_PERIOD,
@@ -71,6 +73,45 @@ describe("GoL substrate vs circuit oracle", () => {
     for (let i = 0; i < farHits.length; i++) {
       expect(farHits[i] - nearHits[i]).toBe(WIRE_DELAY);
     }
+  });
+
+  test("lane eater absorbs the glider stream", () => {
+    const eaten = [...gun.seed, ...gun.laneEater(36)];
+    const detectorBeforeEater = gun.laneDetector(NEAR_DISTANCE);
+
+    let grid = createGrid(128, 128, eaten);
+    const pops: number[] = [];
+    let escaped = false;
+    const edge = createEdgeDetector();
+    let hits = 0;
+
+    for (let gen = 1; gen <= 480; gen++) {
+      grid = stepGrid(grid);
+      let count = 0;
+      for (let dy = 0; dy < detectorBeforeEater.size; dy++) {
+        for (let dx = 0; dx < detectorBeforeEater.size; dx++) {
+          count +=
+            grid.cells[
+              (detectorBeforeEater.y + dy) * grid.width +
+                detectorBeforeEater.x +
+                dx
+            ];
+        }
+      }
+      if (edge.sample(count)) hits++;
+      if (gen % 30 === 0) {
+        pops.push(population(grid));
+        escaped ||= aliveCells(grid).some(([x, y]) => x > 58 || y > 44);
+      }
+    }
+
+    // Nothing gets past the eater...
+    expect(escaped).toBe(false);
+    // ...the whole system settles into a period-30 cycle...
+    const tail = pops.slice(-3);
+    expect(new Set(tail).size).toBe(1);
+    // ...and the stream still flows upstream of the eater.
+    expect(hits).toBeGreaterThanOrEqual(10);
   });
 
   test("substrate pulse train matches circuit sim modulo constant offset", () => {

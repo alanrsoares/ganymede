@@ -19,7 +19,8 @@ const GRID_H = 270;
 const GUN_X = 6;
 const GUN_Y = 6;
 const NEAR_DISTANCE = 20;
-const FAR_DISTANCE = 50;
+const FAR_DISTANCE = 32;
+const EATER_DISTANCE = 40;
 const EXPECTED_LANE_DELAY =
   (FAR_DISTANCE - NEAR_DISTANCE) * GLIDER_GENS_PER_CELL;
 const PARITY_GENERATIONS = 120;
@@ -72,14 +73,15 @@ const main = async () => {
 
   const glider = unwrapOk(parseRle(GLIDER_RLE));
   const gunClock = createGunClock(GUN_X, GUN_Y);
-  const engine = createGolEngine(gpu.device, GRID_W, GRID_H, gunClock.seed);
+  const seed = [...gunClock.seed, ...gunClock.laneEater(EATER_DISTANCE)];
+  const engine = createGolEngine(gpu.device, GRID_W, GRID_H, seed);
 
   // GPU ≡ CPU parity: run both engines from the same seed and compare the
   // whole grid. The CPU reference is the tested oracle; a mismatch means the
   // compute shader diverged from real Game of Life.
   engine.step(PARITY_GENERATIONS);
   const gpuCells = await engine.readRegion(0, 0, GRID_W, GRID_H);
-  let cpuGrid = createGrid(GRID_W, GRID_H, gunClock.seed);
+  let cpuGrid = createGrid(GRID_W, GRID_H, seed);
   for (let i = 0; i < PARITY_GENERATIONS; i++) cpuGrid = stepGrid(cpuGrid);
   let parityOk = true;
   for (let i = 0; i < gpuCells.length; i++) {

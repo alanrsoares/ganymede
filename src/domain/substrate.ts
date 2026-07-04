@@ -5,7 +5,7 @@
 
 import type { Cell } from "./gol";
 import { aliveCells, createGrid, type GolGrid, stepGrid } from "./gol";
-import { GOSPER_GUN_RLE, parseRle, placePattern } from "./patterns";
+import { EATER_RLE, GOSPER_GUN_RLE, parseRle, placePattern } from "./patterns";
 
 /** The Gosper gun emits one glider every 30 generations. */
 export const GUN_PERIOD = 30;
@@ -30,19 +30,37 @@ export interface GunClock {
   readonly seed: Cell[];
   /** Detector window centered on the glider lane, `distance` cells below the gun. */
   laneDetector(distance: number, size?: number): Detector;
+  /**
+   * Eater 1 placed to absorb the gun's gliders `distance` cells below the
+   * gun, terminating the lane cleanly. Calibrated: the as-parsed fishhook
+   * orientation absorbs at every distance in [24, 44] (phase-insensitive).
+   */
+  laneEater(distance: number): Cell[];
 }
 
+const mustParse = (rle: string, name: string) => {
+  const parsed = parseRle(rle);
+  if (parsed._tag === "Err") throw new Error(`${name} failed to parse`);
+  return parsed.value;
+};
+
 export const createGunClock = (gunX: number, gunY: number): GunClock => {
-  const gun = parseRle(GOSPER_GUN_RLE);
-  if (gun._tag === "Err") throw new Error("GOSPER_GUN_RLE failed to parse");
+  const gun = mustParse(GOSPER_GUN_RLE, "GOSPER_GUN_RLE");
+  const eater = mustParse(EATER_RLE, "EATER_RLE");
 
   return {
-    seed: placePattern(gun.value, gunX, gunY),
+    seed: placePattern(gun, gunX, gunY),
     laneDetector: (distance, size = 6) => ({
       x: gunX + LANE_DIAGONAL_OFFSET + distance - Math.floor(size / 2),
       y: gunY + distance - Math.floor(size / 2),
       size,
     }),
+    laneEater: (distance) =>
+      placePattern(
+        eater,
+        gunX + LANE_DIAGONAL_OFFSET + distance,
+        gunY + distance,
+      ),
   };
 };
 
