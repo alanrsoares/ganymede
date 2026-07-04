@@ -2,8 +2,11 @@
   "name": "gemma4-game-of-life",
   "version": "0.1.0",
   "type": "module",
-  "dependencies": {},
+  "dependencies": {
+    "@onrails/result": "^0.3.0"
+  },
   "devDependencies": {
+    "@webgpu/types": "^0.1.71",
     "bun-types": "latest",
     "typescript": "latest"
   },
