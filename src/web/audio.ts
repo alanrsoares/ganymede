@@ -197,7 +197,12 @@ export const createAutomataAudio = (): AutomataAudio => {
       const duck = el.sub(1, el.mul(0.75, kEnv));
 
       const bassSig = bassVoice(music.bass.freq, music.bass.gate);
-      const padSig = padLayer(music.chord, 240 + music.cutoff * 3600);
+      // Pad enabled by the AND gate bit — smoothed to avoid a click on toggle.
+      const padOn = el.sm(el.const({ key: "padOn", value: music.padGate }));
+      const padSig = el.mul(
+        padOn,
+        padLayer(music.chord, 240 + music.cutoff * 3600),
+      );
       const bed = el.mul(
         duck,
         el.add(

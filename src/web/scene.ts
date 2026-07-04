@@ -70,6 +70,8 @@ export interface SceneObservation {
   readonly activity: number;
   readonly gateFlowing: boolean;
   readonly andFlowing: boolean;
+  /** Per-lane glider-arrival note gates (drive the physics-timed arp). */
+  readonly laneTriggers: readonly boolean[];
   readonly laneNear: number;
   readonly laneFar: number;
   readonly laneDelay: number | null;
@@ -133,6 +135,9 @@ export const createScene = (): Scene => {
   const edgeDetectors = detectors.map(() => createEdgeDetector());
   const detections: number[][] = detectors.map(() => []);
   const detectorFlash = detectors.map(() => 0);
+  // Short per-lane note-gate window: a glider arrival opens the arp voice for
+  // ~110ms — long enough to retrigger the envelope, short enough to pluck.
+  const laneMusicUntil = detectors.map(() => 0);
   const windowLevel = detectors.map(() => 0);
 
   const gateOut = inhibitGate.output;
@@ -199,6 +204,7 @@ export const createScene = (): Scene => {
             if (edgeDetectors[i].sample(level)) {
               detections[i].push(gen);
               detectorFlash[i] = performance.now() + 400;
+              laneMusicUntil[i] = performance.now() + 110;
             }
           });
       });
@@ -238,6 +244,7 @@ export const createScene = (): Scene => {
         activity,
         gateFlowing: now - gateOutFlash < 1200,
         andFlowing: now - andOutFlash < 1200,
+        laneTriggers: laneMusicUntil.map((until) => now < until),
         laneNear: nearHits.length,
         laneFar: farHits.length,
         laneDelay:

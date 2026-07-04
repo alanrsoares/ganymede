@@ -133,6 +133,8 @@ const main = async () => {
         population: popNorm,
         activity: obs.activity,
         gateHigh: obs.gateFlowing,
+        andHigh: obs.andFlowing,
+        laneTriggers: obs.laneTriggers,
         step: Math.floor(engine.generation() / STEP_GENS),
       };
       audio.render(compose(observations, { root, scale }));
@@ -166,10 +168,10 @@ const main = async () => {
           : "on";
       ui.gate.val =
         `inhibit gate A∧¬B (keys "a"/"b"): A=${scene.inputA ? 1 : 0} B=${scene.inputB ? 1 : 0}` +
-        ` → out ${obs.gateFlowing ? 1 : 0} drives the beat — sound: ${sound}`;
+        ` → out ${obs.gateFlowing ? 1 : 0} enables the bass — sound: ${sound}`;
       ui.and.val =
         `wired AND A∧B (keys "c"/"d"): A=${scene.andA ? 1 : 0} B=${scene.andB ? 1 : 0}` +
-        ` → out ${obs.andFlowing ? 1 : 0} (mirrored NOT feeds an inhibit)`;
+        ` → out ${obs.andFlowing ? 1 : 0} enables the pad — 2-bit word transposes harmony`;
       ui.status.val = `tick ${sim.tick()} — sram bit: ${sim.sramValue()}${populationText}`;
       requestAnimationFrame(frame);
     };
