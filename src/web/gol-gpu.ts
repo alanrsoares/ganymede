@@ -45,6 +45,8 @@ export interface GolEngine {
   step(n?: number): void;
   /** Sets cells alive in the current generation (coordinates wrap). */
   inject(cells: Iterable<Cell>): void;
+  /** Clears the grid and seeds it fresh, resetting the generation counter. */
+  reset(cells: Iterable<Cell>): void;
   /** Reads back a rectangular region of the current generation. */
   readRegion(x: number, y: number, w: number, h: number): Promise<Uint32Array>;
 }
@@ -114,6 +116,14 @@ export const createGolEngine = (
     currentIndex: () => current,
     generation: () => generation,
     inject,
+    reset: (cells) => {
+      const empty = new Uint32Array(width * height);
+      device.queue.writeBuffer(cellBuffers[0], 0, empty);
+      device.queue.writeBuffer(cellBuffers[1], 0, empty);
+      current = 0;
+      generation = 0;
+      inject(cells);
+    },
     step: (n = 1) => {
       if (n <= 0) return;
       const encoder = device.createCommandEncoder();

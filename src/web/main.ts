@@ -1,9 +1,11 @@
 import { unwrapOk } from "@onrails/result";
+import type { Cell } from "~/domain/gol";
 import { createGrid, stepGrid } from "~/domain/gol";
 import { GLIDER_RLE, parseRle, placePattern } from "~/domain/patterns";
 import {
   countWindow,
   createEdgeDetector,
+  createGliderNotGate,
   createGunClock,
   GLIDER_GENS_PER_CELL,
 } from "~/domain/substrate";
@@ -21,6 +23,8 @@ const GUN_Y = 6;
 const NEAR_DISTANCE = 20;
 const FAR_DISTANCE = 32;
 const EATER_DISTANCE = 40;
+const NOT_BASE_X = 40;
+const NOT_BASE_Y = 150;
 const EXPECTED_LANE_DELAY =
   (FAR_DISTANCE - NEAR_DISTANCE) * GLIDER_GENS_PER_CELL;
 const PARITY_GENERATIONS = 120;
@@ -37,6 +41,7 @@ const nodeColors: Record<NodeView["kind"], Rgb> = {
 const canvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
 const status = document.getElementById("status") as HTMLElement;
 const substrate = document.getElementById("substrate") as HTMLElement;
+const notGateText = document.getElementById("notgate") as HTMLElement;
 const labels = document.getElementById("labels") as HTMLElement;
 const errorBox = document.getElementById("error") as HTMLElement;
 
@@ -73,7 +78,17 @@ const main = async () => {
 
   const glider = unwrapOk(parseRle(GLIDER_RLE));
   const gunClock = createGunClock(GUN_X, GUN_Y);
-  const seed = [...gunClock.seed, ...gunClock.laneEater(EATER_DISTANCE)];
+  const notGate = createGliderNotGate(NOT_BASE_X, NOT_BASE_Y);
+
+  // The scene: the clock/wire/eater lane plus a live glider NOT gate whose
+  // input can be toggled to watch stream annihilation flip the output.
+  let notInputHigh = true;
+  const buildScene = (inputHigh: boolean): Cell[] => [
+    ...gunClock.seed,
+    ...gunClock.laneEater(EATER_DISTANCE),
+    ...notGate.seed(inputHigh),
+  ];
+  const seed = buildScene(notInputHigh);
   const engine = createGolEngine(gpu.device, GRID_W, GRID_H, seed);
 
   // GPU ≡ CPU parity: run both engines from the same seed and compare the
@@ -112,6 +127,28 @@ const main = async () => {
     });
   };
 
+  // NOT gate output: edge-detect the control lane past the crossing, and
+  // report whether the output is flowing (high) over a recent window.
+  const notOut = notGate.output;
+  let notOutEdge = createEdgeDetector();
+  let notOutFlash = 0;
+
+  const sampleNotGate = () => {
+    void engine
+      .readRegion(notOut.x, notOut.y, notOut.size, notOut.size)
+      .then((cells) => {
+        if (notOutEdge.sample(countWindow(cells))) {
+          notOutFlash = performance.now() + 400;
+        }
+      });
+  };
+
+  const toggleNotInput = () => {
+    notInputHigh = !notInputHigh;
+    engine.reset(buildScene(notInputHigh));
+    notOutEdge = createEdgeDetector();
+  };
+
   const renderer = createRenderer(gpu, canvas, engine);
   const sim = createSimulation();
 
@@ -122,6 +159,11 @@ const main = async () => {
     const cx = Math.floor((e.clientX / canvas.clientWidth) * GRID_W);
     const cy = Math.floor((e.clientY / canvas.clientHeight) * GRID_H);
     engine.inject(placePattern(glider, cx, cy));
+  });
+
+  // Press "i" to toggle the NOT gate's input stream.
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "i" || e.key === "I") toggleNotInput();
   });
 
   // Population readback once a second — exercises the same readRegion path
@@ -152,6 +194,7 @@ const main = async () => {
       engine.step(golSteps);
       golAccumulator -= golSteps;
       sampleDetectors();
+      sampleNotGate();
     }
 
     const w = canvas.width;
@@ -208,18 +251,34 @@ const main = async () => {
 
     // Detector windows on the glider lane, flashing when a glider crosses
     const cellPx = w / GRID_W;
+    const cellPy = h / GRID_H;
     detectors.forEach((det, i) => {
       const flash = now < detectorFlash[i] ? 0.45 : 0;
       pushInstance(
         (det.x + det.size / 2) * cellPx,
-        (det.y + det.size / 2) * (h / GRID_H),
+        (det.y + det.size / 2) * cellPy,
         (det.size / 2) * cellPx,
-        (det.size / 2) * (h / GRID_H),
+        (det.size / 2) * cellPy,
         0,
         0,
         [0.95, 0.72, 0.25, 0.18 + flash],
       );
     });
+
+    // NOT gate output detector: green when flowing, dim red when annihilated
+    const notFlowing = now - notOutFlash < 1200;
+    const notFlash = now < notOutFlash ? 0.4 : 0;
+    pushInstance(
+      (notOut.x + notOut.size / 2) * cellPx,
+      (notOut.y + notOut.size / 2) * cellPy,
+      (notOut.size / 2) * cellPx,
+      (notOut.size / 2) * cellPy,
+      0,
+      0,
+      notFlowing
+        ? [0.35, 0.9, 0.55, 0.25 + notFlash]
+        : [0.85, 0.35, 0.35, 0.22],
+    );
 
     renderer.render(instances, instanceCount, now / 1000);
 
@@ -233,6 +292,11 @@ const main = async () => {
       (laneDelay !== null
         ? `, delay ${laneDelay} gens (wire model: ${EXPECTED_LANE_DELAY})`
         : "");
+    const notOut01 = notFlowing ? 1 : 0;
+    notGateText.textContent =
+      `NOT gate (press "i" to toggle input): in ${notInputHigh ? 1 : 0}` +
+      ` → out ${notOut01}` +
+      ` — ${notInputHigh ? "input stream annihilates output" : "control stream flows through"}`;
     status.textContent = `tick ${sim.tick()} — sram bit: ${sim.sramValue()}${populationText}`;
     requestAnimationFrame(frame);
   };
