@@ -6,6 +6,12 @@ export interface Connection {
   readonly fromId: string;
   readonly fromChannel: string;
   readonly toId: string;
+  /**
+   * Input port on the receiving component. Delivered pulses have their
+   * channelId rewritten to this, so components address inputs by port name
+   * instead of relying on array position (which is unordered).
+   */
+  readonly toPort: string;
 }
 
 export interface CircuitState {
@@ -66,7 +72,9 @@ export const step = (
         );
 
         if (connection) {
-          inputsForComponent.get(connection.toId)?.push(pulse);
+          inputsForComponent
+            .get(connection.toId)
+            ?.push({ ...pulse, channelId: connection.toPort });
         }
         // No route defined for this output: pulse vanishes.
       } else {

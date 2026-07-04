@@ -19,8 +19,8 @@ describe("Circuit Orchestration", () => {
     const config: CircuitConfig = {
       components: [clock, wire, notGate],
       connections: [
-        { fromId: "clk", fromChannel: "out", toId: "w1" },
-        { fromId: "w1", fromChannel: "out", toId: "not1" },
+        { fromId: "clk", fromChannel: "out", toId: "w1", toPort: "in" },
+        { fromId: "w1", fromChannel: "out", toId: "not1", toPort: "in" },
       ],
     };
 

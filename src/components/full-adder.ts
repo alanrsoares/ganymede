@@ -35,10 +35,12 @@ export const createFullAdder = (id: string): Component<FullAdderState> => {
     id,
     transition: (tick, state, inputs) =>
       tryGen(() => {
-        // Inputs: A (idx 0), B (idx 1), CarryIn (idx 2); missing = absence.
-        const a = inputs[0] ?? absentPulse(tick, "inA");
-        const b = inputs[1] ?? absentPulse(tick, "inB");
-        const cin = inputs[2] ?? absentPulse(tick, "inCin");
+        // Named input ports: "a", "b", "cin"; missing = absence.
+        const port = (name: string) =>
+          inputs.find((p) => p.channelId === name) ?? absentPulse(tick, name);
+        const a = port("a");
+        const b = port("b");
+        const cin = port("cin");
 
         // Step 1: First Half-Adder (A, B)
         const [nextS_ha1, outHA1] = $(

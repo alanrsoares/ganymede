@@ -49,10 +49,10 @@ export const nodes: NodeView[] = [
 const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
 const connections: Connection[] = [
-  { fromId: "clk", fromChannel: "out", toId: "w1" },
-  { fromId: "w1", fromChannel: "out", toId: "not1" },
-  { fromId: "not1", fromChannel: "out", toId: "w2" },
-  { fromId: "w2", fromChannel: "out", toId: "sram1" },
+  { fromId: "clk", fromChannel: "out", toId: "w1", toPort: "in" },
+  { fromId: "w1", fromChannel: "out", toId: "not1", toPort: "in" },
+  { fromId: "not1", fromChannel: "out", toId: "w2", toPort: "in" },
+  { fromId: "w2", fromChannel: "out", toId: "sram1", toPort: "in" },
 ];
 
 export const edges: EdgeView[] = connections.flatMap((c) => {

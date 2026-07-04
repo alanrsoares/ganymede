@@ -24,9 +24,9 @@ const circuitDeliveryTicks = (untilTick: number): number[] => {
   const config: CircuitConfig = {
     components: [createClock("clk"), createWire("w1")],
     connections: [
-      { fromId: "clk", fromChannel: "out", toId: "w1" },
+      { fromId: "clk", fromChannel: "out", toId: "w1", toPort: "in" },
       // Route the wire's output to a named sink so its pulses stay observable.
-      { fromId: "w1", fromChannel: "out", toId: "sink" },
+      { fromId: "w1", fromChannel: "out", toId: "sink", toPort: "in" },
     ],
   };
 
