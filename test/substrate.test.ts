@@ -8,6 +8,7 @@ import { aliveCells, createGrid, population, stepGrid } from "~/domain/gol";
 import type { Polarity, Pulse } from "~/domain/pulses";
 import {
   createEdgeDetector,
+  createGliderInhibitGate,
   createGliderNotGate,
   createGunClock,
   type Detector,
@@ -155,6 +156,31 @@ describe("GoL substrate vs circuit oracle", () => {
       (_, i) => farHits[i] - deliveries[i],
     );
     expect(new Set(offsets).size).toBe(1);
+  });
+});
+
+describe("glider inhibit gate (A AND NOT B)", () => {
+  const gate = createGliderInhibitGate(4, 4);
+  const GENS = 420;
+
+  const substrateOut = (a: boolean, b: boolean): 0 | 1 =>
+    countDetections(gate.seed(a, b), gate.output, GENS) > 0 ? 1 : 0;
+
+  const cases: { a: boolean; b: boolean; out: 0 | 1 }[] = [
+    { a: false, b: false, out: 0 },
+    { a: false, b: true, out: 0 },
+    { a: true, b: false, out: 1 },
+    { a: true, b: true, out: 0 },
+  ];
+
+  test.each(cases)("A=$a B=$b -> $out (physical glider streams)", ({
+    a,
+    b,
+    out,
+  }) => {
+    expect(substrateOut(a, b)).toBe(out);
+    // The primitive is exactly boolean AND-NOT.
+    expect(out).toBe(a && !b ? 1 : 0);
   });
 });
 
