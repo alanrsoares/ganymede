@@ -118,6 +118,20 @@ export const GOSPER_GUN_RLE = [
 // demonstration glider stripped — 52 still-life cells, so it is completely
 // static until a glider arrives. Turns an NE-bound glider into an SE-bound
 // one. Verified against the CPU oracle. https://conwaylife.com/wiki/Snark
+// Glider duplicator (fan-out): two internal Gosper guns split one input glider
+// into two identical outputs (one NE, one SE). From conwaylife.com/wiki/
+// Glider_duplicator (via github shuaitq/Game-of-Life). Includes a demo input
+// glider (top-left) which substrate.ts exposes and removes from the machine.
+export const GLIDER_DUPLICATOR_RLE = [
+  "x = 50, y = 47, rule = b3/s23",
+  "44b2o4b$44b2o4b9$41b2obob2o2b2$41bo5bo2b2$42b2ob2o3b$44bo5b3$38b2o6bo",
+  "3b$37bobo5bobo2b$12bo26bo4bo3bob$13bo30b5ob$11b3o29b2o3b2o$44b5ob$45b",
+  "3o2b$46bo3b$24b2o4b3o17b$24b2o6bo17b$31bo18b5$23b2o25b$22bobo21b2o2b$",
+  "24bo21b2o2b$13bo36b$12b4o34b$11b2obobo6bobo24b$2o8b3obo2bo3bo3bo24b$2o",
+  "9b2obobo4bo28b$12b4o4bo4bo24b$13bo7bo28b$21bo3bo6b2o16b$23bobo6bobo15b",
+  "$34bo15b$34b2o!",
+].join("\n");
+
 export const SNARK_REFLECTOR: Pattern = {
   width: 17,
   height: 23,

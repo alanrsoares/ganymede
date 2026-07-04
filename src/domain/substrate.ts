@@ -8,6 +8,7 @@ import { aliveCells, createGrid, type GolGrid, stepGrid } from "./gol";
 import {
   EATER_RLE,
   flipH,
+  GLIDER_DUPLICATOR_RLE,
   GOSPER_GUN_RLE,
   orientations,
   type Pattern,
@@ -217,6 +218,58 @@ export const createReflectorSE = (
     size,
   }),
 });
+
+// --- Glider duplicator (fan-out) ---
+//
+// Two internal Gosper guns split one input glider into two identical outputs,
+// letting a signal feed two consumers. Unlike the reflector, this is an active
+// period-30 machine (the guns run continuously; it is not inert when idle), so
+// the input must be phase-aligned to the guns. The packaged demo input glider
+// is exposed via inputGlider() and removed from the machine seed. Output lanes
+// (NE: x + y = base + 62; SE: x - y = base - 5) calibrated vs the CPU oracle.
+
+/** The input glider's cells, relative to the duplicator base. */
+const DUP_INPUT_CELLS: readonly (readonly [number, number])[] = [
+  [12, 20],
+  [13, 21],
+  [11, 22],
+  [12, 22],
+  [13, 22],
+];
+
+export interface Duplicator {
+  /** The duplicator machine (two guns), with the input glider removed. */
+  readonly seed: Cell[];
+  /** The input glider the machine fans out; feed this alongside the seed. */
+  inputGlider(): Cell[];
+  /** Detector on the NE output lane, `distance` cells from the base. */
+  outputNE(distance: number, size?: number): Detector;
+  /** Detector on the SE output lane, `distance` cells from the base. */
+  outputSE(distance: number, size?: number): Detector;
+}
+
+export const createDuplicator = (baseX: number, baseY: number): Duplicator => {
+  const pattern = mustParse(GLIDER_DUPLICATOR_RLE, "GLIDER_DUPLICATOR_RLE");
+  const full = placePattern(pattern, baseX, baseY);
+  const inputKey = new Set(
+    DUP_INPUT_CELLS.map(([x, y]) => `${baseX + x},${baseY + y}`),
+  );
+  return {
+    seed: full.filter(([x, y]) => !inputKey.has(`${x},${y}`)),
+    inputGlider: () =>
+      DUP_INPUT_CELLS.map(([x, y]) => [baseX + x, baseY + y] as Cell),
+    outputNE: (distance, size = 6) => ({
+      x: baseX + distance - Math.floor(size / 2),
+      y: baseY + (62 - distance) - Math.floor(size / 2),
+      size,
+    }),
+    outputSE: (distance, size = 6) => ({
+      x: baseX + distance - Math.floor(size / 2),
+      y: baseY + (distance + 5) - Math.floor(size / 2),
+      size,
+    }),
+  };
+};
 
 /** Sums alive cells inside a detector window (any 0/1 cell array). */
 export const countWindow = (cells: ArrayLike<number>): number => {

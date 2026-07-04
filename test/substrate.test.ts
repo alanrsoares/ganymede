@@ -7,6 +7,7 @@ import { type CircuitConfig, type CircuitState, step } from "~/domain/circuit";
 import { aliveCells, createGrid, population, stepGrid } from "~/domain/gol";
 import type { Polarity, Pulse } from "~/domain/pulses";
 import {
+  createDuplicator,
   createEdgeDetector,
   createGliderInhibitGate,
   createGliderNotGate,
@@ -293,5 +294,26 @@ describe("routing composition: two chained reflectors (S-bend)", () => {
       expect(grid.cells[y * grid.width + x]).toBe(1);
     for (const [x, y] of r2.seed)
       expect(grid.cells[y * grid.width + x]).toBe(1);
+  });
+});
+
+describe("glider duplicator (fan-out)", () => {
+  // One input glider is split into two identical outputs (NE + SE), so a
+  // signal can feed two consumers. This is an active period-30 gun machine.
+  const dup = createDuplicator(60, 60);
+  const seed = [...dup.seed, ...dup.inputGlider()];
+  const GENS = 260;
+  const GRID = 220;
+
+  test("the input glider produces an output on the NE lane", () => {
+    expect(countDetections(seed, dup.outputNE(45), GENS, GRID)).toBeGreaterThan(
+      0,
+    );
+  });
+
+  test("...and simultaneously on the SE lane (fan-out into two copies)", () => {
+    expect(countDetections(seed, dup.outputSE(45), GENS, GRID)).toBeGreaterThan(
+      0,
+    );
   });
 });
