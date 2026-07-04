@@ -198,7 +198,9 @@ export const createAutomataAudio = (): AutomataAudio => {
 
       const bassSig = bassVoice(music.bass.freq, music.bass.gate);
       // Pad enabled by the AND gate bit — smoothed to avoid a click on toggle.
-      const padOn = el.sm(el.const({ key: "padOn", value: music.padGate }));
+      const padOn = el.sm(
+        el.const({ key: "padOn", value: music.padGate ?? 1 }),
+      );
       const padSig = el.mul(
         padOn,
         padLayer(music.chord, 240 + music.cutoff * 3600),
