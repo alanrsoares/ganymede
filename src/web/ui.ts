@@ -41,6 +41,7 @@ export interface Ui {
   status: State<string>;
   substrate: State<string>;
   gate: State<string>;
+  and: State<string>;
   showError: (message: string) => void;
 }
 
@@ -73,6 +74,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
   const status = van.state("tick 0");
   const substrate = van.state("substrate: verifying gpu≡cpu…");
   const gate = van.state("inhibit gate: …");
+  const and = van.state("AND gate: …");
   const error = van.state("");
   const splashHidden = van.state(false);
 
@@ -113,6 +115,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
     p({ class: HUD_P }, () => status.val),
     p({ class: HUD_P }, () => substrate.val),
     p({ class: HUD_P }, () => gate.val),
+    p({ class: HUD_P }, () => and.val),
     p(
       { class: HUD_P },
       "pulse ● presence  ○ absence — background: Gosper gun in Conway's GoL (GPU compute)",
@@ -128,6 +131,10 @@ export const mountUi = (cfg: UiConfig): Ui => {
     p(
       { class: HUD_P },
       "purple windows: routing outputs — reflector (90° turn) + duplicator (fan-out →2)",
+    ),
+    p(
+      { class: HUD_P },
+      'green/red window: physical AND gate (two wired GoL gates) — keys "c"/"d" set A/B',
     ),
     p(
       { class: HUD_P },
@@ -235,6 +242,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
     status,
     substrate,
     gate,
+    and,
     showError: (message) => {
       error.val = message;
     },

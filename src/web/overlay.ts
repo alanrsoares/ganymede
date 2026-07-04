@@ -33,6 +33,7 @@ export interface OverlayFrame {
   sim: Simulation;
   scene: Scene;
   gateFlowing: boolean;
+  andFlowing: boolean;
 }
 
 export interface Overlay {
@@ -74,6 +75,7 @@ export const createOverlay = (): Overlay => {
       sim,
       scene,
       gateFlowing,
+      andFlowing,
     }) => {
       count = 0;
       const cellPx = w / gridW;
@@ -155,6 +157,16 @@ export const createOverlay = (): Overlay => {
         gate.det,
         gateFlowing
           ? [0.35, 0.9, 0.55, 0.25 + gateFlash]
+          : [0.85, 0.35, 0.35, 0.22],
+      );
+
+      // Physical AND gate output: same green/red convention
+      const andGate = scene.andView();
+      const andFlash = now < andGate.flashUntil ? 0.4 : 0;
+      marker(
+        andGate.det,
+        andFlowing
+          ? [0.35, 0.9, 0.55, 0.25 + andFlash]
           : [0.85, 0.35, 0.35, 0.22],
       );
 

@@ -12,6 +12,7 @@ import {
   countWindow,
   createDuplicator,
   createEdgeDetector,
+  createGliderAndGate,
   createGliderInhibitGate,
   createGunClock,
   createReflector,
@@ -35,6 +36,10 @@ const REFLECT_BASE_Y = 30;
 const REFLECT_INJECT_PERIOD = 64; // > Snark 43-gen recovery time
 const DUP_BASE_X = 300;
 const DUP_BASE_Y = 150;
+// Physical AND gate (step 2): mirrored NOT wired into an inhibit, out = A ∧ B.
+// Placed in the clear right-center band, clear of reflector/duplicator.
+const AND_BASE_X = 200;
+const AND_BASE_Y = 40;
 
 export const PARITY_GENERATIONS = 120;
 export const EXPECTED_LANE_DELAY =
@@ -51,6 +56,7 @@ export const SUBSTRATE_LABELS: readonly UiLabel[] = [
   { x: 118, y: 218, text: "OUT · A∧¬B" },
   { x: 330, y: 20, text: "REFLECTOR · 90° turn" },
   { x: 315, y: 205, text: "DUPLICATOR · fan-out →2" },
+  { x: 214, y: 30, text: 'AND · A∧B (keys "c"/"d")' },
 ];
 
 /** A detector window plus the wall-clock time until which it should flash. */
@@ -63,6 +69,7 @@ export interface DetectorView {
 export interface SceneObservation {
   readonly activity: number;
   readonly gateFlowing: boolean;
+  readonly andFlowing: boolean;
   readonly laneNear: number;
   readonly laneFar: number;
   readonly laneDelay: number | null;
@@ -74,8 +81,10 @@ export interface Scene {
   seed(): Cell[];
   readonly inputA: boolean;
   readonly inputB: boolean;
-  /** Toggle an inhibit input and rebuild the scene on the engine. */
-  toggleInput(engine: GolEngine, which: "a" | "b"): void;
+  readonly andA: boolean;
+  readonly andB: boolean;
+  /** Toggle an input (inhibit a/b, AND c/d) and rebuild the scene. */
+  toggleInput(engine: GolEngine, which: "a" | "b" | "c" | "d"): void;
   /** Drop a glider at a grid cell (the click interaction). */
   drop(engine: GolEngine, gx: number, gy: number): void;
   /** Advance the engine by `golSteps`, feeding the routing constructs on a
@@ -89,6 +98,8 @@ export interface Scene {
   routingMarkers(): Detector[];
   /** The inhibit gate output window with flash timing. */
   gateView(): DetectorView;
+  /** The AND gate output window with flash timing. */
+  andView(): DetectorView;
   /** Observations for the current frame. */
   observe(now: number): SceneObservation;
 }
@@ -99,19 +110,23 @@ export const createScene = (): Scene => {
   const inhibitGate = createGliderInhibitGate(NOT_BASE_X, NOT_BASE_Y);
   const reflector = createReflector(REFLECT_BASE_X, REFLECT_BASE_Y);
   const duplicator = createDuplicator(DUP_BASE_X, DUP_BASE_Y);
+  const andGate = createGliderAndGate(AND_BASE_X, AND_BASE_Y);
 
   let inputA = true;
   let inputB = true;
+  let andA = true;
+  let andB = true;
 
   // The duplicator machine is seeded with its first input so the parity check
   // sees a clean, non-chaotic machine.
-  const buildSeed = (a: boolean, b: boolean): Cell[] => [
+  const buildSeed = (): Cell[] => [
     ...gunClock.seed,
     ...gunClock.laneEater(EATER_DISTANCE),
-    ...inhibitGate.seed(a, b),
+    ...inhibitGate.seed(inputA, inputB),
     ...reflector.seed,
     ...duplicator.seed,
     ...duplicator.inputGlider(),
+    ...andGate.seed(andA, andB),
   ];
 
   const detectors = MUSIC_DISTANCES.map((d) => gunClock.laneDetector(d));
@@ -124,20 +139,33 @@ export const createScene = (): Scene => {
   let gateOutEdge = createEdgeDetector();
   let gateOutFlash = 0;
 
+  const andOut = andGate.output;
+  let andOutEdge = createEdgeDetector();
+  let andOutFlash = 0;
+
   return {
     labels: SUBSTRATE_LABELS,
-    seed: () => buildSeed(inputA, inputB),
+    seed: () => buildSeed(),
     get inputA() {
       return inputA;
     },
     get inputB() {
       return inputB;
     },
+    get andA() {
+      return andA;
+    },
+    get andB() {
+      return andB;
+    },
     toggleInput: (engine, which) => {
       if (which === "a") inputA = !inputA;
-      else inputB = !inputB;
-      engine.reset(buildSeed(inputA, inputB));
+      else if (which === "b") inputB = !inputB;
+      else if (which === "c") andA = !andA;
+      else andB = !andB;
+      engine.reset(buildSeed());
       gateOutEdge = createEdgeDetector();
+      andOutEdge = createEdgeDetector();
     },
     drop: (engine, gx, gy) => {
       engine.inject(placePattern(glider, gx, gy));
@@ -181,6 +209,13 @@ export const createScene = (): Scene => {
             gateOutFlash = performance.now() + 400;
           }
         });
+      void engine
+        .readRegion(andOut.x, andOut.y, andOut.size, andOut.size)
+        .then((cells) => {
+          if (andOutEdge.sample(countWindow(cells))) {
+            andOutFlash = performance.now() + 400;
+          }
+        });
     },
     detectorViews: () =>
       detectors.map((det, i) => ({ det, flashUntil: detectorFlash[i] })),
@@ -190,6 +225,7 @@ export const createScene = (): Scene => {
       duplicator.outputSE(45),
     ],
     gateView: () => ({ det: gateOut, flashUntil: gateOutFlash }),
+    andView: () => ({ det: andOut, flashUntil: andOutFlash }),
     observe: (now) => {
       const activity = Math.min(
         1,
@@ -201,6 +237,7 @@ export const createScene = (): Scene => {
       return {
         activity,
         gateFlowing: now - gateOutFlash < 1200,
+        andFlowing: now - andOutFlash < 1200,
         laneNear: nearHits.length,
         laneFar: farHits.length,
         laneDelay:

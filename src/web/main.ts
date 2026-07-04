@@ -89,6 +89,8 @@ const main = async () => {
       const key = e.key.toLowerCase();
       if (key === "a") scene.toggleInput(engine, "a");
       else if (key === "b") scene.toggleInput(engine, "b");
+      else if (key === "c") scene.toggleInput(engine, "c");
+      else if (key === "d") scene.toggleInput(engine, "d");
       else if (key === "m") muted = audio.toggleMute();
     });
 
@@ -147,6 +149,7 @@ const main = async () => {
         sim,
         scene,
         gateFlowing: obs.gateFlowing,
+        andFlowing: obs.andFlowing,
       });
       renderer.render(instances, count, now / 1000);
 
@@ -164,6 +167,9 @@ const main = async () => {
       ui.gate.val =
         `inhibit gate A∧¬B (keys "a"/"b"): A=${scene.inputA ? 1 : 0} B=${scene.inputB ? 1 : 0}` +
         ` → out ${obs.gateFlowing ? 1 : 0} drives the beat — sound: ${sound}`;
+      ui.and.val =
+        `wired AND A∧B (keys "c"/"d"): A=${scene.andA ? 1 : 0} B=${scene.andB ? 1 : 0}` +
+        ` → out ${obs.andFlowing ? 1 : 0} (mirrored NOT feeds an inhibit)`;
       ui.status.val = `tick ${sim.tick()} — sram bit: ${sim.sramValue()}${populationText}`;
       requestAnimationFrame(frame);
     };
