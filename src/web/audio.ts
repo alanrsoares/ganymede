@@ -111,6 +111,46 @@ const leadVoice = (freq: number, gate: number): NodeRepr_t => {
   return el.mul(env, tone);
 };
 
+/** Mallet/bell: sine fundamental + inharmonic partials, fast decay. One per
+ *  lane, so each needs a stable key index. */
+const malletVoice = (freq: number, gate: number, i: number): NodeRepr_t => {
+  const g = el.const({ key: `mg${i}`, value: gate });
+  const env = el.adsr(0.002, 0.28, 0, 0.2, g);
+  const f = el.const({ key: `mf${i}`, value: freq });
+  const tone = el.add(
+    el.cycle(f),
+    el.mul(0.4, el.cycle(el.mul(2, f))),
+    el.mul(0.18, el.cycle(el.mul(3.01, f))),
+  );
+  return el.mul(env, el.tanh(tone));
+};
+
+/** Keys: an electric-piano-ish chord stab (square + octave triangle, lowpass). */
+const keysVoice = (chord: number[], gate: number): NodeRepr_t => {
+  const g = el.const({ key: "keyg", value: gate });
+  const env = el.adsr(0.004, 0.16, 0.12, 0.16, g);
+  const voices = chord.map((f, i) =>
+    el.add(
+      el.blepsquare(el.const({ key: `kq${i}`, value: f })),
+      el.mul(0.5, el.bleptriangle(el.const({ key: `kt${i}`, value: f * 2 }))),
+    ),
+  );
+  const mix = el.mul(1 / (chord.length + 1), el.add(0, ...voices));
+  return el.mul(
+    env,
+    el.lowpass(el.const({ key: "keylp", value: 2600 }), 0.7, mix),
+  );
+};
+
+/** Rim/ghost percussion: a bandpassed noise click with a short tonal blip. */
+const rimVoice = (gate: number): NodeRepr_t => {
+  const g = el.const({ key: "rg", value: gate });
+  const env = el.adsr(0.001, 0.04, 0, 0.03, g);
+  const click = el.bandpass(1700, 3, el.pinknoise());
+  const tone = el.mul(0.5, el.cycle(360));
+  return el.mul(0.7, env, el.add(click, tone));
+};
+
 /** Lightweight send reverb: parallel feedback delays into a lowpass. */
 const reverb = (x: NodeRepr_t, times: number[], tag: string): NodeRepr_t => {
   const taps = times.map((t, i) =>
@@ -189,6 +229,7 @@ export const createAutomataAudio = (): AutomataAudio => {
           kickVoice(music.kick),
           snareVoice(music.snare),
           hatVoice(music.hat),
+          rimVoice(music.rim ?? 0),
         ),
       );
 
@@ -229,18 +270,37 @@ export const createAutomataAudio = (): AutomataAudio => {
         el.const({ key: "leadLvl", value: params.melody * 0.42 }),
         leadVoice(music.lead.freq, music.lead.gate),
       );
+
+      // Mallet ensemble: one bell per firing lane (poly), under the melody knob.
+      const malletVoices = (music.mallets ?? []).map((v, i) =>
+        malletVoice(v.freq, v.gate, i),
+      );
+      const mallets = el.mul(
+        el.const({ key: "malLvl", value: params.melody * 0.3 }),
+        el.add(0, ...malletVoices),
+      );
+
+      // Keys: electric-piano chord stab, under the harmony knob (dry, punchy).
+      const keys = el.mul(
+        el.const({ key: "keysLvl", value: params.harmony * 0.24 }),
+        keysVoice(music.chord, music.keysGate ?? 0),
+      );
       // Dotted-eighth ping-pong delay on the pluck (the "delay" pedal).
       const echoLvl = 0.5 * params.delay;
       const echoL = el.mul(echoLvl, echo(lead, 380, "l"));
       const echoR = el.mul(echoLvl, echo(lead, 500, "r"));
 
-      // Send reverb on the pad + lead for width (the "reverb" pedal).
+      // Send reverb on the pad + lead + mallets for width (the "reverb" pedal).
       const revLvl = 0.7 * params.reverb;
-      const send = el.add(el.mul(0.5, padSig), el.mul(0.45, lead));
+      const send = el.add(
+        el.mul(0.5, padSig),
+        el.mul(0.45, lead),
+        el.mul(0.4, mallets),
+      );
       const revL = el.mul(revLvl, reverb(send, [79, 113, 167], "L"));
       const revR = el.mul(revLvl, reverb(send, [97, 131, 181], "R"));
 
-      const dry = el.add(beat, bed, lead);
+      const dry = el.add(beat, bed, lead, mallets, keys);
       const gain = el.const({
         key: "master",
         value: muted ? 0 : params.master,
