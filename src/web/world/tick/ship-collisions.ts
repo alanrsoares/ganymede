@@ -1,44 +1,15 @@
 import { elastic, normalize, wrapDelta } from "../../engine/physics";
-import {
-  HIT_COOLDOWN,
-  maxHpFor,
-  minesFor,
-  SCORE_KILL,
-  SCORE_MERGE,
-  shieldForLevel,
-  toroidalDist,
-  wrap,
-} from "../factory";
+import { HIT_COOLDOWN, SCORE_KILL, toroidalDist, wrap } from "../factory";
 import {
   BURST_EXPLOSION,
   GRID_H,
   GRID_W,
   type LightCycle,
-  MAX_LEVEL,
   type Mutable,
 } from "../types";
 import { hit, killShip, replace, type TickCtx } from "./context";
 
 type Ship = Mutable<LightCycle>;
-
-/** Two allies touch → `a` absorbs `b`, ranks up, and fires a celebratory beam. */
-const mergeAllies = (ctx: TickCtx, a: Ship, b: Ship): void => {
-  ctx.removed.add(b.id);
-  ctx.score[a.colorName] += SCORE_MERGE;
-  if (a.level < MAX_LEVEL) a.level += 1;
-  a.maxHp = maxHpFor(a.archetype, a.level);
-  a.hp = a.maxHp;
-  a.maxShield = shieldForLevel(a.level);
-  a.shield = a.maxShield;
-  a.maxMines = minesFor(a.archetype, a.level);
-  a.mines = a.maxMines;
-  const range = a.level === 2 ? 80 : 130;
-  a.beamActive = true;
-  a.beamTime = 30;
-  a.beamX = wrap(a.x + a.dx * range, GRID_W);
-  a.beamY = wrap(a.y + a.dy * range, GRID_H);
-  replace(ctx);
-};
 
 /** Elastic bounce + heading update + positional separation for a ship pair. */
 const bounceShips = (a: Ship, b: Ship): void => {
@@ -70,6 +41,44 @@ const bounceShips = (a: Ship, b: Ship): void => {
   a.y = wrap(a.y - uy * push, GRID_H);
   b.x = wrap(b.x + ux * push, GRID_W);
   b.y = wrap(b.y + uy * push, GRID_H);
+};
+
+// Move one resource toward an equal fill fraction between two ships, conserving
+// total units (a transfer, not free regen): the fuller ship gives, the emptier
+// receives, capped by the giver's supply and the receiver's headroom.
+const balance = (
+  aCur: number,
+  aMax: number,
+  bCur: number,
+  bMax: number,
+  rate: number,
+): [number, number] => {
+  if (aMax <= 0 || bMax <= 0) return [aCur, bCur];
+  const gap = aCur / aMax - bCur / bMax;
+  if (Math.abs(gap) < 0.01) return [aCur, bCur];
+  const amt = Math.abs(gap) * Math.min(aMax, bMax) * rate;
+  if (gap > 0) {
+    const give = Math.min(amt, aCur, bMax - bCur);
+    return [aCur - give, bCur + give];
+  }
+  const give = Math.min(amt, bCur, aMax - aCur);
+  return [aCur + give, bCur - give];
+};
+
+// Semitouch: two allies drifting close top-and-tail each other, trickling hp,
+// shield and fuel from whoever has more toward whoever has less — a squad that
+// flies together stays evenly supplied instead of merging into one.
+const exchangeResources = (a: Ship, b: Ship, steps: number): void => {
+  const rate = Math.min(0.5, 0.05 * steps);
+  [a.hp, b.hp] = balance(a.hp, a.maxHp, b.hp, b.maxHp, rate);
+  [a.shield, b.shield] = balance(
+    a.shield,
+    a.maxShield,
+    b.shield,
+    b.maxShield,
+    rate,
+  );
+  [a.fuel, b.fuel] = balance(a.fuel, a.maxFuel, b.fuel, b.maxFuel, rate);
 };
 
 /** Resolve who dies after a trade of blows; award kills and queue reinforcements. */
@@ -105,7 +114,23 @@ const dogfight = (ctx: TickCtx, a: Ship, b: Ship): void => {
   resolveDeaths(ctx, a, b);
 };
 
-/** Resolve `a` against every later ship: merge allies, dogfight enemies. */
+// Hard-contact radius² (ships overlapping) vs the wider semitouch band² where
+// allies swap resources without touching.
+const CONTACT_D2 = 121; // 11px
+const SEMITOUCH_D2 = 484; // 22px
+
+// One ally/enemy pair already known to be within the semitouch band (`d2`).
+// Allies swap resources and bounce apart on overlap; enemies dogfight on contact.
+const resolvePair = (ctx: TickCtx, a: Ship, b: Ship, d2: number): void => {
+  if (a.colorName === b.colorName) {
+    exchangeResources(a, b, ctx.steps);
+    if (d2 < CONTACT_D2) bounceShips(a, b); // still separate on overlap
+  } else if (d2 < CONTACT_D2) {
+    dogfight(ctx, a, b);
+  }
+};
+
+/** Resolve `a` against every later ship within the semitouch band. */
 const collideShipFrom = (ctx: TickCtx, a: Ship, startJ: number): void => {
   const { moved, removed } = ctx;
   for (let j = startJ; j < moved.length; j++) {
@@ -113,13 +138,12 @@ const collideShipFrom = (ctx: TickCtx, a: Ship, startJ: number): void => {
     if (removed.has(a.id) || removed.has(b.id)) continue;
     const dx = toroidalDist(a.x, b.x, GRID_W);
     const dy = toroidalDist(a.y, b.y, GRID_H);
-    if (dx * dx + dy * dy >= 121) continue;
-    if (a.colorName === b.colorName) mergeAllies(ctx, a, b);
-    else dogfight(ctx, a, b);
+    const d2 = dx * dx + dy * dy;
+    if (d2 < SEMITOUCH_D2) resolvePair(ctx, a, b, d2);
   }
 };
 
-/** Ship ↔ ship dogfights and ally merges. */
+/** Ship ↔ ship dogfights (enemies) and resource exchange (allies). */
 export const resolveShipCollisions = (ctx: TickCtx) => {
   for (let i = 0; i < ctx.moved.length; i++) {
     const a = ctx.moved[i];

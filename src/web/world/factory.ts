@@ -18,6 +18,8 @@ import {
   BULLET_LIFE,
   BULLET_SPEED,
   cruiseFor,
+  EMP_DAMAGE,
+  EMP_RADIUS,
   fireCooldownForLevel,
   MISSILE_DAMAGE,
   MISSILE_LIFE,
@@ -140,6 +142,7 @@ const buildShip = (
     fuel: maxFuelFor(archetype, level),
     maxFuel: maxFuelFor(archetype, level),
     baseHits: {},
+    xp: 0,
   };
 };
 
@@ -230,6 +233,21 @@ export const spawnMissile = (
     owner: s.id,
   };
 };
+
+/**
+ * An EMP missile fired from `s`, locked onto `target`: homes like a normal
+ * missile but detonates as an area blast (EMP_RADIUS) on contact rather than
+ * hitting one ship. Reuses the standard missile flight/steering.
+ */
+export const spawnEmpMissile = (
+  id: number,
+  s: LightCycle,
+  target: LightCycle,
+): Missile => ({
+  ...spawnMissile(id, s, target),
+  damage: EMP_DAMAGE,
+  blast: EMP_RADIUS,
+});
 
 /**
  * Advance one missile `steps` gens: if its target still lives, ease the heading

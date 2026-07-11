@@ -7,6 +7,7 @@ import {
   rollShip,
   SCORE_MERGE,
   shieldForLevel,
+  xpForLevel,
 } from "../factory";
 import {
   BURST_EXPLOSION,
@@ -122,4 +123,18 @@ export const promote = (ctx: TickCtx, s: Mutable<LightCycle>) => {
     y: Math.floor(s.y),
     kind: BURST_EXPLOSION,
   });
+};
+
+/**
+ * Award combat XP to the ship `ownerId` (the shooter that broke a rock), cashing
+ * in a promotion each time the threshold is crossed and carrying the remainder.
+ */
+export const awardXp = (ctx: TickCtx, ownerId: number, amount: number) => {
+  const s = ctx.moved.find((m) => m.id === ownerId && !ctx.removed.has(m.id));
+  if (!s || s.level >= MAX_LEVEL) return;
+  s.xp += amount;
+  while (s.level < MAX_LEVEL && s.xp >= xpForLevel(s.level)) {
+    s.xp -= xpForLevel(s.level);
+    promote(ctx, s);
+  }
 };

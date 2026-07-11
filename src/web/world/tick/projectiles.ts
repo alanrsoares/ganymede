@@ -6,11 +6,13 @@ import {
   shipRadius,
   spawnShrapnel,
   toroidalDist,
+  XP_PER_ROCK,
 } from "../factory";
 import {
   type Asteroid,
   type Base,
   BURST_DETONATION,
+  BURST_EMP,
   BURST_EXPLOSION,
   BURST_IMPACT,
   GRID_H,
@@ -20,7 +22,7 @@ import {
   type Rgb,
   TEAM_BASES,
 } from "../types";
-import { creditBaseHit, hit, killShip, type TickCtx } from "./context";
+import { awardXp, creditBaseHit, hit, killShip, type TickCtx } from "./context";
 import type { HazardState } from "./hazard-collisions";
 import type { MotionState } from "./motion";
 
@@ -112,6 +114,7 @@ const bulletVsRock = (
   if (r.hp <= 0) {
     hazards.removedRocks.add(r.id);
     shatterRock(ctx, motion, r);
+    awardXp(ctx, bt.owner, XP_PER_ROCK); // shooter banks XP for the kill
   }
   return "break";
 };
@@ -137,6 +140,30 @@ const munitionVsBase = (
   return "break";
 };
 
+// Area blast at (bx, by): damage (and maybe kill) every enemy within `radius`,
+// crediting kills to `team`, and fire the EMP shockwave ring at the impact point.
+const detonateBlast = (
+  ctx: TickCtx,
+  bx: number,
+  by: number,
+  team: string,
+  damage: number,
+  radius: number,
+): void => {
+  ctx.burstAt.push({ x: Math.floor(bx), y: Math.floor(by), kind: BURST_EMP });
+  for (const e of ctx.moved) {
+    if (ctx.removed.has(e.id) || e.colorName === team) continue;
+    const ex = toroidalDist(e.x, bx, GRID_W);
+    const ey = toroidalDist(e.y, by, GRID_H);
+    if (ex * ex + ey * ey >= radius * radius) continue;
+    hit(ctx, e, damage);
+    if (e.hp <= 0) {
+      ctx.score[team] += SCORE_KILL;
+      killShip(ctx, e);
+    }
+  }
+};
+
 const missileVsShip = (
   ctx: TickCtx,
   s: Ship,
@@ -149,6 +176,11 @@ const missileVsShip = (
   const dy = toroidalDist(s.y, mi.y, GRID_H);
   if (dx * dx + dy * dy >= rad * rad) return "next";
   projectiles.removedMissiles.add(mi.id);
+  // AoE missile: contact is just the fuse — damage everything in the blast.
+  if (mi.blast) {
+    detonateBlast(ctx, mi.x, mi.y, mi.team, mi.damage, mi.blast);
+    return "break";
+  }
   ctx.burstAt.push({
     x: Math.floor(mi.x),
     y: Math.floor(mi.y),

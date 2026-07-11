@@ -294,6 +294,73 @@ test("a recon scout shares completed-raid credit with a nearby ally", () => {
   }
 });
 
+test("fuel cell: a carrier harvests it, refuels itself and pumps a thirsty ally", () => {
+  const w0 = initWorld(3);
+  const carrier = {
+    ...w0.ships.items[0],
+    id: 1,
+    colorName: "cyan",
+    archetype: "heavy" as Archetype, // heavy = carrier (fuelShare)
+    level: 1,
+    x: 100,
+    y: 100,
+    fuel: 50,
+    baseHits: {},
+  };
+  const ally = {
+    ...w0.ships.items[0],
+    id: 2,
+    colorName: "cyan",
+    archetype: "fighter" as Archetype,
+    level: 1,
+    x: 130, // within FUEL_CELL_PUMP_RADIUS (45), clear of hull collision
+    y: 100,
+    fuel: 50,
+    baseHits: {},
+  };
+  const w1: World = {
+    ...w0,
+    asteroids: { items: [], nextId: 1 },
+    bullets: { items: [], nextId: 1 },
+    pickups: {
+      items: [{ id: 9, x: 100, y: 100, vx: 0, vy: 0, kind: 8, bob: 0 }],
+      nextId: 10,
+    },
+    ships: { items: [carrier, ally], nextId: 3 },
+  };
+  const [w] = update({ kind: "tick", steps: 1, now: 0 }, w1);
+  expect(w.pickups.items.some((p) => p.id === 9)).toBe(false); // cell consumed
+  expect(w.ships.items.find((s) => s.id === 1)?.fuel).toBeGreaterThan(50); // carrier
+  expect(w.ships.items.find((s) => s.id === 2)?.fuel).toBeGreaterThan(50); // ally pumped
+});
+
+test("fuel cell: a non-carrier coasts through and leaves it for a carrier", () => {
+  const w0 = initWorld(3);
+  const fighter = {
+    ...w0.ships.items[0],
+    id: 1,
+    colorName: "cyan",
+    archetype: "fighter" as Archetype,
+    level: 1,
+    x: 100,
+    y: 100,
+    fuel: 50,
+    baseHits: {},
+  };
+  const w1: World = {
+    ...w0,
+    asteroids: { items: [], nextId: 1 },
+    bullets: { items: [], nextId: 1 },
+    pickups: {
+      items: [{ id: 9, x: 100, y: 100, vx: 0, vy: 0, kind: 8, bob: 0 }],
+      nextId: 10,
+    },
+    ships: { items: [fighter], nextId: 2 },
+  };
+  const [w] = update({ kind: "tick", steps: 1, now: 0 }, w1);
+  expect(w.pickups.items.some((p) => p.id === 9)).toBe(true); // only carriers harvest
+});
+
 test("rank-gated pathing: L3+ steer across the world wrap, rookies go direct", () => {
   // Ship near the bottom edge (y=265, GRID_H=270), goal near the top (y=32).
   const atSeam = (level: number) =>

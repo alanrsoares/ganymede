@@ -82,6 +82,7 @@ export interface LightCycle extends Entity {
   // Hits landed on each enemy base since the last level, keyed by base name.
   // Hit every alive enemy base `level` times → level up, then this resets.
   readonly baseHits: Readonly<Record<string, number>>;
+  readonly xp: number; // combat XP toward the next level (earned breaking rocks)
 }
 
 // A weapon bolt fired by a ship at the nearest enemy. Straight-flying, team-
@@ -100,11 +101,13 @@ export interface Bullet extends Entity {
 }
 
 // FX blast kinds. Explosion = ship/rock death; detonation = mine proton flash;
-// muzzle = gun fire flash at the nose; impact = bolt hitting a target.
+// muzzle = gun fire flash at the nose; impact = bolt hitting a target;
+// emp = the AoE shockwave ring expanding from an EMP pickup's caster.
 export const BURST_EXPLOSION = 0;
 export const BURST_DETONATION = 1;
 export const BURST_MUZZLE = 2;
 export const BURST_IMPACT = 3;
+export const BURST_EMP = 4;
 
 export interface Burst extends Entity {
   readonly x: number;
@@ -145,6 +148,7 @@ export interface Missile extends Entity {
   readonly damage: number;
   readonly life: number;
   readonly owner: number; // shooter ship id (credits base-raid hits back to it)
+  readonly blast?: number; // if set, contact detonates as AoE within this cell radius
 }
 
 // A rock drifting through space. Heavy hazard: ships bounce off and take chip
@@ -180,9 +184,11 @@ export interface Projectile extends Entity {
 
 // Power-up bubble kinds: 0 heal, 1 shield, 2 speed, 3 overcharge (rapid fire),
 // 4 EMP burst (AoE), 5 rank-up (instant level), 6 cloak (invulnerability),
-// 7 force field (push + melee aura that builds on the shield orb).
-export type PickupKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
-export const PICKUP_KINDS = 8;
+// 7 force field (push + melee aura that builds on the shield orb),
+// 8 fuel cell — carrier-only harvest that refills the carrier and pumps nearby
+// allies; the anti-stall valve that keeps a starving field from grinding out.
+export type PickupKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export const PICKUP_KINDS = 9;
 export interface Pickup extends Entity {
   readonly x: number;
   readonly y: number;

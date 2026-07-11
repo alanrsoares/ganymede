@@ -5,6 +5,9 @@ import {
   AVOID_GAIN,
   AVOID_RADIUS,
   baseHitsRequired,
+  CENTERPAD_SEEK_GAIN,
+  CENTERPAD_SEEK_RADIUS,
+  CENTERPAD_SEEK_THRESH,
   COHERE_GAIN,
   ENGAGE_GAIN,
   ENGAGE_RADIUS,
@@ -194,6 +197,7 @@ const steerPickupSeek = (
   if (!(pickGain > 0 && pickR > 0)) return [0, 0];
   let bx = 0;
   let by = 0;
+  let bestWant = 0;
   let best = Infinity;
   let found = false;
   const pickR2 = pickR * pickR;
@@ -202,17 +206,23 @@ const steerPickupSeek = (
     const dy = wrapDelta(self.y, p.y, GRID_H);
     const d2 = dx * dx + dy * dy;
     if (d2 > pickR2) continue;
-    const score = d2 / pickupWant(self, p.kind); // wanted kinds feel nearer
+    const want = pickupWant(self, p.kind);
+    const score = d2 / want; // wanted kinds feel nearer
     if (score < best) {
       best = score;
+      bestWant = want;
       bx = dx;
       by = dy;
       found = true;
     }
   }
   if (!found) return [0, 0];
+  // Scale the pull by how much this ship wants the bubble, so a matching-need
+  // grab (heal when hurt, fuel when low) commits hard instead of losing out to
+  // the pursuit/objective forces; a casual pickup stays a gentle nudge.
+  const urgency = Math.min(2.4, bestWant);
   const [ux, uy] = normalize([bx, by], [self.dx, self.dy]);
-  return [ux * pickGain, uy * pickGain];
+  return [ux * pickGain * urgency, uy * pickGain * urgency];
 };
 
 /**
@@ -243,6 +253,40 @@ const steerHealSeek = (self: LightCycle, level: number): [number, number] => {
   const urgency = 1 - self.hp / (self.maxHp * healThresh); // 0 → 1 as HP↓
   const [ux, uy] = normalize([bx, by], [self.dx, self.dy]);
   return [ux * healGain * (0.5 + urgency), uy * healGain * (0.5 + urgency)];
+};
+
+// Worst survivability deficit (0 = topped up … 1 = empty) across hp + shield.
+// Fuel is deliberately excluded: ships burn it constantly, so counting it here
+// would pull them off combat toward the pad nonstop (home base + carriers handle
+// refuelling). The pad still tops fuel for whoever holds it for hp/shield.
+const survivalDeficit = (self: LightCycle): number => {
+  const hp = 1 - self.hp / self.maxHp;
+  const shield = self.maxShield > 0 ? 1 - self.shield / self.maxShield : 0;
+  return Math.max(hp, shield);
+};
+
+/**
+ * Recover-at-center term: a badly-hurt ship breaks for the center pad, which
+ * cycles hp/fuel/shield. The pull scales with how drained the ship is, so a
+ * near-dead ship commits hard while a healthy one ignores the pad.
+ */
+const steerCenterPadSeek = (
+  self: LightCycle,
+  level: number,
+): [number, number] => {
+  const gain = CENTERPAD_SEEK_GAIN[level - 1] ?? 0;
+  const r = CENTERPAD_SEEK_RADIUS[level - 1] ?? 0;
+  if (!(gain > 0 && r > 0)) return [0, 0];
+  const need = survivalDeficit(self);
+  if (need < CENTERPAD_SEEK_THRESH) return [0, 0];
+  const dx = wrapDelta(self.x, CENTER_PAD.x, GRID_W);
+  const dy = wrapDelta(self.y, CENTER_PAD.y, GRID_H);
+  if (dx * dx + dy * dy > r * r) return [0, 0];
+  const [ux, uy] = normalize(goalDelta(self, CENTER_PAD.x, CENTER_PAD.y), [
+    self.dx,
+    self.dy,
+  ]);
+  return [ux * gain * need, uy * gain * need];
 };
 
 /** A place a low-fuel ship can top up: its home base, or a same-team carrier with fuel to spare. */
@@ -510,6 +554,10 @@ export const flockSteer = (
   const [healDx, healDy] = steerHealSeek(self, level);
   fx += healDx;
   fy += healDy;
+
+  const [padDx, padDy] = steerCenterPadSeek(self, level);
+  fx += padDx;
+  fy += padDy;
 
   const [objDx, objDy] = steerCommandOrObjective(
     self,

@@ -7,15 +7,21 @@ import {
   BASE_MAX_HP,
   BOOST_DURATION,
   baseHitsRequired,
+  CARRIER_LEECH_LEVEL,
+  CARRIER_LEECH_RADIUS,
+  CARRIER_LEECH_RATE,
   CLOAK_DURATION,
   carriesMissiles,
-  EMP_DAMAGE,
-  EMP_RADIUS,
+  centerPadPhase,
+  EMP_MISSILE_LOCK,
   FIRE_RANGE,
   FORCEFIELD_DAMAGE,
   FORCEFIELD_DURATION,
   FORCEFIELD_PUSH,
   FORCEFIELD_RADIUS,
+  FUEL_CELL_KIND,
+  FUEL_CELL_PUMP_RADIUS,
+  FUEL_CELL_YIELD,
   FUEL_REFILL,
   FUEL_SHARE_RADIUS,
   FUEL_SHARE_RATE,
@@ -47,6 +53,7 @@ import {
   SHIELD_BASE_REGEN,
   shipRadius,
   spawnBullet,
+  spawnEmpMissile,
   spawnMissile,
   toroidalDist,
   wrap,
@@ -171,24 +178,39 @@ const fireMissile = (
   return [missileId + 1, nextSeed];
 };
 
-/** EMP pickup: damage (and possibly kill) every enemy ship within blast radius. */
-const triggerEmpBlast = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
-  const { moved, removed } = ctx;
-  for (const e of moved) {
-    if (removed.has(e.id) || e.colorName === s.colorName) continue;
-    const ex = toroidalDist(s.x, e.x, GRID_W);
-    const ey = toroidalDist(s.y, e.y, GRID_H);
-    if (ex * ex + ey * ey >= EMP_RADIUS * EMP_RADIUS) continue;
-    ctx.burstAt.push({
-      x: Math.floor(e.x),
-      y: Math.floor(e.y),
-      kind: BURST_DETONATION,
-    });
-    hit(ctx, e, EMP_DAMAGE);
-    if (e.hp <= 0) {
-      ctx.score[s.colorName] += SCORE_KILL;
-      killShip(ctx, e);
+/**
+ * EMP pickup: launch a homing missile that seeks the nearest enemy and, on
+ * contact, detonates as an area blast (see missileVsShip). Returns the advanced
+ * missile-id counter. No enemy in lock range → no launch.
+ */
+const fireEmpMissile = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  missiles: Mutable<Missile>[],
+  missileId: number,
+): number => {
+  const tgt = acquireTarget(s, ctx.moved, EMP_MISSILE_LOCK, ctx.removed);
+  if (!tgt) return missileId;
+  missiles.push(spawnEmpMissile(missileId, s, tgt.ship));
+  return missileId + 1;
+};
+
+/**
+ * Fuel cell: refill the harvesting carrier's tank, then pump every same-team
+ * ally within reach by the same flat amount — a mobile depot injecting fuel
+ * back into a starving squad so the match never stalls out juiceless.
+ */
+const harvestFuelCell = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
+  s.fuel = Math.min(s.maxFuel, s.fuel + FUEL_CELL_YIELD);
+  for (const a of ctx.moved) {
+    if (a.id === s.id || ctx.removed.has(a.id)) continue;
+    if (a.colorName !== s.colorName || a.fuel >= a.maxFuel) continue;
+    const dx = toroidalDist(s.x, a.x, GRID_W);
+    const dy = toroidalDist(s.y, a.y, GRID_H);
+    if (dx * dx + dy * dy >= FUEL_CELL_PUMP_RADIUS * FUEL_CELL_PUMP_RADIUS) {
+      continue;
     }
+    a.fuel = Math.min(a.maxFuel, a.fuel + FUEL_CELL_YIELD);
   }
 };
 
@@ -197,7 +219,9 @@ const applyPickup = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
   kind: number,
-): void => {
+  missiles: Mutable<Missile>[],
+  missileId: number,
+): number => {
   switch (kind) {
     case 0:
       s.hp = s.maxHp;
@@ -220,27 +244,41 @@ const applyPickup = (
     case 7:
       s.forceFieldTime = FORCEFIELD_DURATION;
       break;
+    case FUEL_CELL_KIND:
+      harvestFuelCell(ctx, s);
+      break;
     default:
-      triggerEmpBlast(ctx, s);
+      return fireEmpMissile(ctx, s, missiles, missileId);
   }
+  return missileId;
 };
 
-/** Collect every unclaimed pickup within radius and apply its effect. */
+/**
+ * Collect every unclaimed pickup within radius and apply its effect. Returns the
+ * advanced missile-id counter (an EMP pickup launches a homing missile).
+ */
 const collectPickups = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
   bubbles: Mutable<Pickup>[],
   takenPickups: Set<number>,
-): void => {
+  missiles: Mutable<Missile>[],
+  missileId: number,
+): number => {
+  let nextMissileId = missileId;
   for (const p of bubbles) {
     if (takenPickups.has(p.id)) continue;
+    // Fuel cells are a carrier-only resource — non-carriers coast through and
+    // leave them floating for a carrier to harvest.
+    if (p.kind === FUEL_CELL_KIND && !isCarrier(s.archetype)) continue;
     const dx = toroidalDist(s.x, p.x, GRID_W);
     const dy = toroidalDist(s.y, p.y, GRID_H);
     if (dx * dx + dy * dy >= PICKUP_RADIUS * PICKUP_RADIUS) continue;
     takenPickups.add(p.id);
     ctx.score[s.colorName] += SCORE_PICKUP;
-    applyPickup(ctx, s, p.kind);
+    nextMissileId = applyPickup(ctx, s, p.kind, missiles, nextMissileId);
   }
+  return nextMissileId;
 };
 
 /** Heal from the first overlapping heal pad, if any. */
@@ -360,11 +398,20 @@ const finishAtCenterPad = (
   const dx = toroidalDist(s.x, CENTER_PAD.x, GRID_W);
   const dy = toroidalDist(s.y, CENTER_PAD.y, GRID_H);
   if (dx * dx + dy * dy >= CENTER_PAD.r * CENTER_PAD.r) return;
-  s.hp = Math.min(s.maxHp, s.hp + PAD_HEAL * steps);
-  s.shield = Math.min(
-    s.maxShield,
-    s.shield + s.maxShield * SHIELD_BASE_REGEN * steps,
-  );
+  // Neutral central depot, but it only dispenses one resource at a time — the
+  // active phase cycles hp → fuel → shield so holding it is worth different
+  // things at different moments (see centerPadPhase).
+  const phase = centerPadPhase(ctx.world.age);
+  if (phase === "hp") {
+    s.hp = Math.min(s.maxHp, s.hp + PAD_HEAL * steps);
+  } else if (phase === "fuel") {
+    s.fuel = Math.min(s.maxFuel, s.fuel + FUEL_REFILL * steps);
+  } else {
+    s.shield = Math.min(
+      s.maxShield,
+      s.shield + s.maxShield * SHIELD_BASE_REGEN * steps,
+    );
+  }
   if (s.level >= MAX_LEVEL || !hasRaidedAllEnemyBases(s, ctx.baseHp)) return;
   promote(ctx, s);
   s.baseHits = {};
@@ -442,6 +489,47 @@ const shareCarrierFuel = (ctx: TickCtx): void => {
   }
 };
 
+/** Siphon fuel from one nearby enemy `e` into the carrier `s`. */
+const leechFuelFrom = (
+  s: Mutable<LightCycle>,
+  e: Mutable<LightCycle>,
+  removed: Set<number>,
+  steps: number,
+): void => {
+  if (removed.has(e.id) || e.colorName === s.colorName) return;
+  if (e.fuel <= 0) return;
+  const dx = toroidalDist(s.x, e.x, GRID_W);
+  const dy = toroidalDist(s.y, e.y, GRID_H);
+  if (dx * dx + dy * dy >= CARRIER_LEECH_RADIUS * CARRIER_LEECH_RADIUS) return;
+  const drain = Math.min(
+    CARRIER_LEECH_RATE * steps,
+    e.fuel,
+    s.maxFuel - s.fuel,
+  );
+  if (drain <= 0) return;
+  e.fuel -= drain;
+  s.fuel += drain;
+};
+
+/** A live carrier that has unlocked the leech and still has room in its tank. */
+const canLeech = (s: Mutable<LightCycle>, removed: Set<number>): boolean =>
+  !removed.has(s.id) &&
+  isCarrier(s.archetype) &&
+  s.level >= CARRIER_LEECH_LEVEL &&
+  s.fuel < s.maxFuel;
+
+/** Veteran carriers siphon fuel from nearby enemies into their own tank. */
+const leechCarrierFuel = (ctx: TickCtx): void => {
+  const { moved, removed, steps } = ctx;
+  for (const s of moved) {
+    if (!canLeech(s, removed)) continue;
+    for (const e of moved) {
+      if (s.fuel >= s.maxFuel) break;
+      leechFuelFrom(s, e, removed, steps);
+    }
+  }
+};
+
 /**
  * Merge a scout's *completed*-base raid credit into an ally's tally: for each
  * enemy base the scout has finished, credit the ally up to its own requirement.
@@ -504,7 +592,14 @@ export const resolveInteractions = (
     if (removed.has(s.id)) continue;
     bulletId = fireWeapon(ctx, s, bullets, bulletId);
     [missileId, seed] = fireMissile(ctx, s, missiles, missileId, seed);
-    collectPickups(ctx, s, bubbles, takenPickups);
+    missileId = collectPickups(
+      ctx,
+      s,
+      bubbles,
+      takenPickups,
+      missiles,
+      missileId,
+    );
     healAtPad(s, steps);
     finishAtCenterPad(ctx, s, steps);
     pullTowardPortalHorizon(s, steps);
@@ -515,6 +610,7 @@ export const resolveInteractions = (
 
   applyForceFieldAuras(ctx);
   shareCarrierFuel(ctx);
+  leechCarrierFuel(ctx);
   shareReconIntel(ctx);
 
   ctx.seed = seed;
