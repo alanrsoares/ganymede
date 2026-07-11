@@ -24,7 +24,7 @@ import {
   drawShrapnel,
 } from "./overlay/hazards";
 import { drawBolts, drawBursts, drawMissiles } from "./overlay/projectiles";
-import { createPusher } from "./overlay/push";
+import { createPusher, type PushFn } from "./overlay/push";
 import { drawShips } from "./overlay/ships";
 import { CLIP, clipLayer } from "./sprites";
 import type { World } from "./world";
@@ -52,6 +52,68 @@ export interface Overlay {
   };
 }
 
+const drawFieldFurniture = (
+  push: PushFn,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+  world: World,
+) => {
+  drawBases(push, cellPx, cellPy, now, world);
+  drawPortals(push, cellPx, cellPy, now);
+  drawHealPads(push, cellPx, cellPy, now);
+  drawCenterPad(push, cellPx, cellPy, now);
+  drawRallyBeacon(push, cellPx, cellPy, now, world);
+};
+
+const drawDynamicEntities = (
+  push: PushFn,
+  rockInstances: Float32Array<ArrayBuffer>,
+  shieldInstances: Float32Array<ArrayBuffer>,
+  orbInstances: Float32Array<ArrayBuffer>,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+  world: World,
+  showHp: boolean,
+) => {
+  let rockCount = drawRocks(rockInstances, cellPx, cellPy, now, world);
+  drawMines(push, cellPx, cellPy, now, world);
+  rockCount = drawShrapnel(
+    rockInstances,
+    rockCount,
+    cellPx,
+    cellPy,
+    now,
+    world,
+  );
+  const orbCount = drawPickupOrbs(
+    push,
+    orbInstances,
+    cellPx,
+    cellPy,
+    now,
+    world,
+  );
+  drawBolts(push, cellPx, cellPy, world);
+
+  const exhaustL = clipLayer(CLIP.exhaust, 0, now);
+  drawMissiles(push, cellPx, cellPy, now, world, exhaustL);
+  const shieldCount = drawShips(
+    push,
+    shieldInstances,
+    cellPx,
+    cellPy,
+    now,
+    world,
+    showHp,
+    exhaustL,
+  );
+  drawBursts(push, cellPx, cellPy, now, world);
+
+  return { rockCount, orbCount, shieldCount };
+};
+
 export const createOverlay = (): Overlay => {
   const instances = new Float32Array(MAX_INSTANCES * FLOATS_PER_INSTANCE);
   const rockInstances = new Float32Array(MAX_ROCKS * ROCK_LAYOUT.floats);
@@ -65,38 +127,18 @@ export const createOverlay = (): Overlay => {
       const cellPx = w / gridW;
       const cellPy = h / gridH;
 
-      drawBases(push, cellPx, cellPy, now, world);
-      drawPortals(push, cellPx, cellPy, now);
-      drawHealPads(push, cellPx, cellPy, now);
-      drawCenterPad(push, cellPx, cellPy, now);
-      drawRallyBeacon(push, cellPx, cellPy, now, world);
-      const rockCount = drawRocks(rockInstances, cellPx, cellPy, now, world);
-      drawMines(push, cellPx, cellPy, now, world);
-      drawShrapnel(push, cellPx, cellPy, world);
-      const orbCount = drawPickupOrbs(
+      drawFieldFurniture(push, cellPx, cellPy, now, world);
+      const { rockCount, orbCount, shieldCount } = drawDynamicEntities(
         push,
+        rockInstances,
+        shieldInstances,
         orbInstances,
         cellPx,
         cellPy,
         now,
         world,
-      );
-      drawBolts(push, cellPx, cellPy, world);
-
-      // Free-running exhaust clip frame shared by every ship + missile.
-      const exhaustL = clipLayer(CLIP.exhaust, 0, now);
-      drawMissiles(push, cellPx, cellPy, now, world, exhaustL);
-      const shieldCount = drawShips(
-        push,
-        shieldInstances,
-        cellPx,
-        cellPy,
-        now,
-        world,
         showHp,
-        exhaustL,
       );
-      drawBursts(push, cellPx, cellPy, now, world);
 
       return {
         instances,

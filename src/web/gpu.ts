@@ -24,7 +24,7 @@ export const MAX_INSTANCES = 768;
 // --- 3D mesh passes (rocks, shields). Each layout is the single source of truth
 // for its float count, vertex attributes, and named packing offsets (see
 // overlay.ts). WGSL @location structs must list fields in this same order. ---
-export const MAX_ROCKS = 32;
+export const MAX_ROCKS = 128;
 export const MAX_SHIELDS = 16; // ship shields
 export const MAX_ORBS = 12; // power-up energy orbs (own solid-lit pass)
 // prettier-ignore

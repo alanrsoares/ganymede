@@ -2,8 +2,9 @@
 // orbs. Pure — reads world, animation is derived from `now`.
 
 import { MAX_ORBS, MAX_ROCKS, ROCK_LAYOUT, SHIELD_LAYOUT } from "../gpu";
-import { asteroidLayer, CLIP, clipLayer, SHAPE } from "../sprites";
+import { CLIP, clipLayer, SHAPE } from "../sprites";
 import type { World } from "../world";
+import { SHRAPNEL_LIFE } from "../world/tuning";
 import type { PushFn } from "./push";
 
 export const PICKUP_RGB: readonly (readonly [number, number, number])[] = [
@@ -14,6 +15,8 @@ export const PICKUP_RGB: readonly (readonly [number, number, number])[] = [
   [0.4, 0.95, 1.0],
   [1.0, 0.85, 0.3],
   [0.72, 0.45, 1.0],
+  [0.85, 0.6, 1.0], // 7 force field — bright violet
+  [1.0, 0.65, 0.1], // 8 fuel cell — amber
 ];
 
 // Drifting asteroids are drawn by the 3D mesh pass (rockInstances), not the
@@ -72,25 +75,41 @@ export function drawMines(
   }
 }
 
-// Shrapnel fragments — tiny spinning rock chips.
+// Shrapnel fragments — now drawn in 3D rock pass as tiny spinning, cooling rock chips.
 export function drawShrapnel(
-  push: PushFn,
+  rockInstances: Float32Array<ArrayBuffer>,
+  rockCount: number,
   cellPx: number,
   cellPy: number,
+  now: number,
   world: World,
-) {
+): number {
   for (const f of world.projectiles.items) {
-    push(
-      (f.x + 0.5) * cellPx,
-      (f.y + 0.5) * cellPy,
-      2.4 * cellPx,
-      2.4 * cellPy,
-      f.spin,
-      SHAPE.sprite,
-      [0.85, 0.82, 0.8, 0.95],
-      asteroidLayer(f.variant),
-    );
+    if (rockCount >= MAX_ROCKS) break;
+    const o = rockCount * ROCK_LAYOUT.floats;
+    const R = ROCK_LAYOUT.idx;
+    rockInstances[o + R.cx] = (f.x + 0.5) * cellPx;
+    rockInstances[o + R.cy] = (f.y + 0.5) * cellPy;
+    // Radius of shrapnel: make them small rock fragments
+    rockInstances[o + R.radius] = 1.0 * cellPx;
+    // rx and ry tumble over time, rz matches the sim spin
+    rockInstances[o + R.rx] = now * 0.0012 + f.id * 1.7;
+    rockInstances[o + R.ry] = now * 0.0016 + f.id * 2.5;
+    rockInstances[o + R.rz] = f.spin;
+
+    // Shrapnel is hot when born (glowing orange) and cools down to grey rock color
+    const ageFrac = Math.max(0, Math.min(1, f.life / SHRAPNEL_LIFE)); // 1 fresh, 0 dying
+    const rVal = 0.52 + ageFrac * 0.28; // starts at 0.8 (hot), cools to 0.52 (grey)
+    const gVal = 0.53 - ageFrac * 0.08; // starts at 0.45, cools to 0.53
+    const bVal = 0.6 - ageFrac * 0.18; // starts at 0.42, cools to 0.60
+
+    rockInstances[o + R.r] = rVal;
+    rockInstances[o + R.g] = gVal;
+    rockInstances[o + R.b] = bVal;
+
+    rockCount++;
   }
+  return rockCount;
 }
 
 // Power-ups: a solid glossy 3D orb (its own lit pass) bobbing over a
