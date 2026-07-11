@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "gameplay-mechanics": {
+      "source": "pluginagentmarketplace/custom-plugin-game-developer",
+      "sourceType": "github",
+      "skillPath": "skills/gameplay-mechanics/SKILL.md",
+      "computedHash": "b8a20a15154e8c6c432fba69d6b7d33f34efff4489244a710935cd229ccef6a7"
+    },
+    "webgpu": {
+      "source": "cazala/webgpu-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "32517064d8f7dd867dd339aece6cb1876c6e3c56b0d15524a4b050ceb5bd9d3a"
+    }
+  }
+}

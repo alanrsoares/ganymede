@@ -4,7 +4,13 @@ import { createClock } from "~/components/clock";
 import { createNotGate } from "~/components/not-gate";
 import { createWire } from "~/components/wire";
 import { type CircuitConfig, type CircuitState, step } from "~/domain/circuit";
-import { aliveCells, createGrid, population, stepGrid } from "~/domain/gol";
+import {
+  aliveCells,
+  createGrid,
+  type GolGrid,
+  population,
+  stepGrid,
+} from "~/domain/gol";
 import { and, inhibit } from "~/domain/logic";
 import type { Polarity, Pulse } from "~/domain/pulses";
 import {
@@ -31,6 +37,18 @@ const WIRE_DELAY = LANE_CELLS * GLIDER_GENS_PER_CELL; // 96 generations
 const intervals = (xs: number[]): number[] =>
   xs.slice(1).map((x, i) => x - xs[i]);
 
+/** Sums the alive cells inside a detector window on the given grid. */
+const sampleDetector = (grid: GolGrid, detector: Detector): number => {
+  let count = 0;
+  for (let dy = 0; dy < detector.size; dy++) {
+    const row = (detector.y + dy) * grid.width;
+    for (let dx = 0; dx < detector.size; dx++) {
+      count += grid.cells[row + detector.x + dx];
+    }
+  }
+  return count;
+};
+
 /** Runs the CPU substrate and counts glider crossings through a detector. */
 const countDetections = (
   seed: readonly (readonly [number, number])[],
@@ -43,16 +61,40 @@ const countDetections = (
   let hits = 0;
   for (let gen = 1; gen <= generations; gen++) {
     grid = stepGrid(grid);
-    let count = 0;
-    for (let dy = 0; dy < detector.size; dy++) {
-      const row = (detector.y + dy) * grid.width;
-      for (let dx = 0; dx < detector.size; dx++) {
-        count += grid.cells[row + detector.x + dx];
-      }
-    }
-    if (edge.sample(count)) hits++;
+    if (edge.sample(sampleDetector(grid, detector))) hits++;
   }
   return hits;
+};
+
+/**
+ * Runs a gun clock into a lane eater and reports: whether any glider escaped
+ * past the eater, the tail of population samples (to check the system
+ * settles into a steady cycle), and how many gliders were still detected
+ * upstream of the eater.
+ */
+const runLaneEaterScenario = (
+  gun: ReturnType<typeof createGunClock>,
+  generations = 480,
+): { escaped: boolean; tail: number[]; hits: number } => {
+  const eaten = [...gun.seed, ...gun.laneEater(36)];
+  const detectorBeforeEater = gun.laneDetector(NEAR_DISTANCE);
+  const edge = createEdgeDetector();
+
+  let grid = createGrid(128, 128, eaten);
+  const pops: number[] = [];
+  let escaped = false;
+  let hits = 0;
+
+  for (let gen = 1; gen <= generations; gen++) {
+    grid = stepGrid(grid);
+    if (edge.sample(sampleDetector(grid, detectorBeforeEater))) hits++;
+    if (gen % 30 === 0) {
+      pops.push(population(grid));
+      escaped ||= aliveCells(grid).some(([x, y]) => x > 58 || y > 44);
+    }
+  }
+
+  return { escaped, tail: pops.slice(-3), hits };
 };
 
 /** Runs the abstract circuit clk(period 30) -> wire(length 96) and returns
@@ -111,39 +153,11 @@ describe("GoL substrate vs circuit oracle", () => {
   });
 
   test("lane eater absorbs the glider stream", () => {
-    const eaten = [...gun.seed, ...gun.laneEater(36)];
-    const detectorBeforeEater = gun.laneDetector(NEAR_DISTANCE);
-
-    let grid = createGrid(128, 128, eaten);
-    const pops: number[] = [];
-    let escaped = false;
-    const edge = createEdgeDetector();
-    let hits = 0;
-
-    for (let gen = 1; gen <= 480; gen++) {
-      grid = stepGrid(grid);
-      let count = 0;
-      for (let dy = 0; dy < detectorBeforeEater.size; dy++) {
-        for (let dx = 0; dx < detectorBeforeEater.size; dx++) {
-          count +=
-            grid.cells[
-              (detectorBeforeEater.y + dy) * grid.width +
-                detectorBeforeEater.x +
-                dx
-            ];
-        }
-      }
-      if (edge.sample(count)) hits++;
-      if (gen % 30 === 0) {
-        pops.push(population(grid));
-        escaped ||= aliveCells(grid).some(([x, y]) => x > 58 || y > 44);
-      }
-    }
+    const { escaped, tail, hits } = runLaneEaterScenario(gun);
 
     // Nothing gets past the eater...
     expect(escaped).toBe(false);
     // ...the whole system settles into a period-30 cycle...
-    const tail = pops.slice(-3);
     expect(new Set(tail).size).toBe(1);
     // ...and the stream still flows upstream of the eater.
     expect(hits).toBeGreaterThanOrEqual(10);

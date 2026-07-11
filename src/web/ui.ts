@@ -1,58 +1,31 @@
-// Declarative chrome (HUD, control panel, splash, labels) built with VanJS,
-// styled with Tailwind utilities. The canvas + GoL/audio render loop stay
-// imperative in main.ts; this module only owns the reactive DOM around them.
-// HUD lines are van states the loop writes each frame — van updates just the
-// bound text node, so 60fps writes stay cheap.
+// Declarative chrome (HUD, control panel, scoreboard) built with VanJS, styled
+// with Tailwind utilities. The canvas + render loop stay imperative in main.ts;
+// this module only owns the reactive DOM around them. HUD lines are van states
+// the loop writes each frame — van updates just the bound text node.
 
 import van, { type State } from "vanjs-core";
 
-const { div, h1, p, label, input, select, option, span, button } = van.tags;
-
-/** A positioned text label; coords are grid cells for the substrate, or
- *  normalized 0..1 for the abstract spec row. */
-export interface UiLabel {
-  x: number;
-  y: number;
-  text: string;
-}
+const { div, h1, label, input, p, span, button } = van.tags;
 
 export interface UiConfig {
-  gridW: number;
-  gridH: number;
-  /** Abstract spec-circuit labels, normalized 0..1. */
-  nodeLabels: readonly UiLabel[];
-  /** Real GoL substrate labels, in grid cells. */
-  substrateLabels: readonly UiLabel[];
-  scales: readonly string[];
-  defaultScale: string;
-  /** First click/tap/key: unlock audio, then the splash fades out. */
-  onStart: () => void;
-  onScale: (scale: string) => void;
-  onTempo: (v: number) => void;
-  onRoot: (v: number) => void;
-  onVolume: (v: number) => void;
-  onBeat: (v: number) => void;
-  onHarmony: (v: number) => void;
-  onMelody: (v: number) => void;
-  onDrive: (v: number) => void;
-  onDelay: (v: number) => void;
-  onReverb: (v: number) => void;
+  /** Teams for the scoreboard: display name + CSS color. */
+  teams: readonly { name: string; css: string }[];
+  onTempo: (v: number) => void; // sim generations per second
+  onReinforce: (v: number) => void; // reinforcement spawn rate
 }
 
 /** Reactive handles the render loop writes into. */
 export interface Ui {
   status: State<string>;
-  substrate: State<string>;
-  gate: State<string>;
-  and: State<string>;
+  score: State<Readonly<Record<string, number>>>;
+  counts: State<Readonly<Record<string, number>>>; // living ships per team
+  hpOn: State<boolean>;
+  banner: State<string>; // center win/draw banner ("" = hidden)
   showError: (message: string) => void;
 }
 
-const SHADOW = "[text-shadow:0_0_6px_#04070a]";
-// HUD text tiers: live state reads bright, the legend reads faint.
 const HUD_LIVE = "mt-1 text-[12px] text-[#a9e8d6]";
-const HUD_LIVE_ERR = "mt-1 text-[12px] font-semibold text-[#ff8f8f]";
-const HUD_LEGEND = "mt-1 text-[11px] leading-snug text-[#7aa89a]";
+const CYAN = "#3fd8ff";
 
 interface KnobRange {
   min: number;
@@ -61,8 +34,7 @@ interface KnobRange {
   value: number;
 }
 
-// A labelled range with a live value readout. `format` renders the current
-// value with its unit; `accent` tints the thumb + focus ring per control group.
+// A labelled range with a live value readout.
 const knob = (
   id: string,
   text: string,
@@ -101,59 +73,82 @@ const knob = (
   ];
 };
 
-const CYAN = "#3fd8ff";
-const AMBER = "#f0b84a";
-const GREEN = "#4fd88a";
-const VIOLET = "#b07cff";
-const pct = (v: number) => `${v}%`;
+// A labelled on/off switch sharing the knob grid (label | switch | status).
+const toggle = (
+  id: string,
+  text: string,
+  state: State<boolean>,
+  accent: string,
+) => [
+  label(
+    { for: id, class: "justify-self-end tracking-[0.04em] opacity-[0.85]" },
+    text,
+  ),
+  button(
+    {
+      id,
+      type: "button",
+      role: "switch",
+      "aria-checked": () => String(state.val),
+      class: () =>
+        `w-[128px] cursor-pointer rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] [touch-action:manipulation] transition-colors ${state.val ? "text-[#040a0e]" : "text-[#8fe6ff] opacity-70"}`,
+      style: () =>
+        state.val
+          ? `background:${accent};border-color:${accent}`
+          : `border-color:${accent}66`,
+      onclick: () => {
+        state.val = !state.val;
+      },
+    },
+    () => (state.val ? "shown" : "hidden"),
+  ),
+  span({ class: "min-w-[54px] text-right tabular-nums opacity-70" }, () =>
+    state.val ? "on" : "off",
+  ),
+];
 
-export const mountUi = (cfg: UiConfig): Ui => {
-  const status = van.state("tick 0");
-  const substrate = van.state("substrate: verifying gpu≡cpu…");
-  const gate = van.state("inhibit gate: …");
-  const and = van.state("AND gate: …");
-  const error = van.state("");
-  const splashHidden = van.state(false);
-  const legendOpen = van.state(false);
+// Score-gain feedback: a "+N" that pops on a team's row when it scores. The
+// sim hands us a fresh score object each tick, so this derive fires per tick
+// (not per frame); each bump self-clears after the pop animation.
+const useScoreBump = (
+  score: State<Readonly<Record<string, number>>>,
+  teams: readonly { name: string }[],
+): State<Readonly<Record<string, number>>> => {
+  const bump = van.state<Readonly<Record<string, number>>>({});
+  let prevScore: Record<string, number> = {};
+  van.derive(() => {
+    const s = score.val;
+    const next = { ...bump.val };
+    let changed = false;
+    for (const t of teams) {
+      const delta = (s[t.name] ?? 0) - (prevScore[t.name] ?? 0);
+      if (delta > 0) {
+        next[t.name] = delta;
+        changed = true;
+        setTimeout(() => {
+          const b = { ...bump.val };
+          delete b[t.name];
+          bump.val = b;
+        }, 1000);
+      }
+    }
+    prevScore = { ...s };
+    if (changed) bump.val = next;
+  });
+  return bump;
+};
 
-  const labels = div(
-    { class: "pointer-events-none absolute inset-0" },
-    cfg.nodeLabels.map((l) =>
-      div(
-        {
-          class: `absolute -translate-x-1/2 whitespace-nowrap text-[11px] text-[#7fc4b1] opacity-50 ${SHADOW}`,
-          style: `left:${l.x * 100}%;top:calc(${l.y * 100}% + 26px)`,
-        },
-        l.text,
-      ),
-    ),
-    cfg.substrateLabels.map((l) =>
-      div(
-        {
-          class: `absolute -translate-x-1/2 whitespace-nowrap text-[11px] font-semibold text-[#8fe6ff] ${SHADOW}`,
-          style: `left:${(l.x / cfg.gridW) * 100}%;top:${(l.y / cfg.gridH) * 100}%`,
-        },
-        `◆ ${l.text}`,
-      ),
-    ),
-  );
+// The scorePop keyframe animation is shared by the scoreboard bump and the
+// win/draw banner; inject it once as a global stylesheet rule.
+const injectScorePopStyle = () => {
+  const popStyle = document.createElement("style");
+  popStyle.textContent =
+    "@keyframes scorePop{0%{opacity:0;transform:translateY(4px) scale(.8)}15%{opacity:1;transform:translateY(0) scale(1.15)}100%{opacity:0;transform:translateY(-12px) scale(1)}}";
+  document.head.appendChild(popStyle);
+};
 
-  // State tinted by content: green when a gate output flows, neutral when dark.
-  const flowClass = (s: string) =>
-    /→ out 1/.test(s)
-      ? `${HUD_LIVE} text-[#6fe0a0]`
-      : `${HUD_LIVE} text-[#8fb0a6]`;
-
-  const legendLines = [
-    "datapath: CLK gun → glider lane (arp taps) → two wired GoL logic gates",
-    "amber windows: lane taps — a glider arrival plays an arp note (click drops one)",
-    "◆ cyan labels: real GoL substrate — dim row: abstract spec circuit (not GoL)",
-    "input register (bottom key row): z/x = inhibit A/B · c/v = AND A/B",
-    "green/red windows: gate outputs — inhibit → bass, AND → pad, word transposes",
-    '♪ audio (Elementary): the computer arranges the track, "m" mutes',
-  ];
-
-  const hud = div(
+const buildHud = (status: State<string>) =>
+  div(
     {
       class:
         "pointer-events-none absolute right-4 top-4 max-w-[430px] text-left font-mono [text-shadow:0_0_8px_#04070a]",
@@ -163,68 +158,20 @@ export const mountUi = (cfg: UiConfig): Ui => {
         class:
           "text-[14px] font-semibold uppercase tracking-[0.08em] text-[#d3f5e9]",
       },
-      "GoL Computer",
+      "Autobattle",
     ),
-    // Live state — announced to screen readers only when the text truly changes.
     p({ class: HUD_LIVE }, () => status.val),
-    p(
-      {
-        class: () => (substrate.val.includes("✗") ? HUD_LIVE_ERR : HUD_LIVE),
-        "aria-live": "polite",
-      },
-      () => substrate.val,
-    ),
-    p(
-      { class: () => flowClass(gate.val), "aria-live": "polite" },
-      () => gate.val,
-    ),
-    p(
-      { class: () => flowClass(and.val), "aria-live": "polite" },
-      () => and.val,
-    ),
-    button(
-      {
-        class:
-          "pointer-events-auto mt-2 rounded border border-[#3fd8ff]/30 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-[#8fe6ff] outline-none [touch-action:manipulation] hover:bg-[#3fd8ff]/10 focus-visible:ring-2 focus-visible:ring-[#3fd8ff]",
-        type: "button",
-        "aria-expanded": () => String(legendOpen.val),
-        "aria-controls": "hud-legend",
-        onclick: () => {
-          legendOpen.val = !legendOpen.val;
-        },
-      },
-      () => (legendOpen.val ? "legend ▾" : "legend ▸"),
-    ),
-    div(
-      { id: "hud-legend", class: () => (legendOpen.val ? "block" : "hidden") },
-      legendLines.map((line) => p({ class: HUD_LEGEND }, line)),
-    ),
   );
 
-  const groupHeader = (text: string, accent: string) =>
-    div(
-      {
-        class:
-          "[grid-column:1/-1] mt-2 border-b border-white/5 pb-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] first:mt-0",
-        style: `color:${accent}`,
-      },
-      text,
-    );
+const buildControls = (cfg: UiConfig, hpOn: State<boolean>) => {
+  const controlsOpen = van.state(true);
 
-  const controls = div(
+  const controlsBody = div(
     {
-      class:
-        "absolute bottom-4 left-4 grid grid-cols-[auto_1fr_auto] items-center gap-x-2.5 gap-y-1.5 rounded-lg border border-[#3fd8ff]/25 bg-[#040a0e]/75 px-3.5 py-3 font-mono text-[11px] text-[#8fe6ff] [touch-action:manipulation] backdrop-blur-[4px]",
+      id: "controls-body",
+      class: () =>
+        `${controlsOpen.val ? "grid" : "hidden"} grid-cols-[auto_1fr_auto] items-center gap-x-2.5 gap-y-1.5`,
     },
-    div(
-      {
-        class:
-          "[grid-column:1/-1] mb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d3f5e9]",
-      },
-      "sound",
-    ),
-
-    groupHeader("transport", CYAN),
     knob(
       "k-tempo",
       "tempo",
@@ -233,132 +180,54 @@ export const mountUi = (cfg: UiConfig): Ui => {
       (v) => `${v} gen/s`,
       CYAN,
     ),
-
-    groupHeader("tonality", AMBER),
-    label(
-      {
-        for: "k-scale",
-        class: "justify-self-end tracking-[0.04em] opacity-[0.85]",
-      },
-      "scale",
-    ),
-    select(
-      {
-        id: "k-scale",
-        class:
-          "[grid-column:2/-1] rounded border border-[#f0b84a]/40 bg-[#04141c] px-1 py-0.5 font-[inherit] text-[11px] text-[#8fe6ff] outline-none [touch-action:manipulation] focus-visible:ring-2 focus-visible:ring-[#f0b84a]",
-        onchange: (e: Event) =>
-          cfg.onScale((e.target as HTMLSelectElement).value),
-      },
-      cfg.scales.map((s) =>
-        option({ value: s, selected: s === cfg.defaultScale }, s),
-      ),
-    ),
     knob(
-      "k-root",
-      "root",
-      { min: 98, max: 392, step: 1, value: 220 },
-      cfg.onRoot,
-      (v) => `${v} Hz`,
-      AMBER,
+      "k-reinforce",
+      "reinforce",
+      { min: 0, max: 10, step: 1, value: 3 },
+      cfg.onReinforce,
+      (v) => (v === 0 ? "off" : `${v}/rate`),
+      CYAN,
     ),
-
-    groupHeader("mix", GREEN),
-    knob(
-      "k-vol",
-      "volume",
-      { min: 0, max: 100, step: 1, value: 50 },
-      (v) => cfg.onVolume(v / 100),
-      pct,
-      GREEN,
-    ),
-    knob(
-      "k-beat",
-      "beat",
-      { min: 0, max: 100, step: 1, value: 90 },
-      (v) => cfg.onBeat(v / 100),
-      pct,
-      GREEN,
-    ),
-    knob(
-      "k-harm",
-      "harmony",
-      { min: 0, max: 100, step: 1, value: 70 },
-      (v) => cfg.onHarmony(v / 100),
-      pct,
-      GREEN,
-    ),
-    knob(
-      "k-mel",
-      "melody",
-      { min: 0, max: 100, step: 1, value: 80 },
-      (v) => cfg.onMelody(v / 100),
-      pct,
-      GREEN,
-    ),
-
-    groupHeader("fx", VIOLET),
-    knob(
-      "k-drive",
-      "drive",
-      { min: 0, max: 100, step: 1, value: 20 },
-      (v) => cfg.onDrive(v / 100),
-      pct,
-      VIOLET,
-    ),
-    knob(
-      "k-delay",
-      "delay",
-      { min: 0, max: 100, step: 1, value: 64 },
-      (v) => cfg.onDelay(v / 100),
-      pct,
-      VIOLET,
-    ),
-    knob(
-      "k-reverb",
-      "reverb",
-      { min: 0, max: 100, step: 1, value: 70 },
-      (v) => cfg.onReverb(v / 100),
-      pct,
-      VIOLET,
-    ),
+    ...toggle("k-hp", "hp bars", hpOn, CYAN),
   );
 
-  const start = () => {
-    cfg.onStart();
-    splashHidden.val = true;
-  };
-  window.addEventListener("keydown", start, { once: true });
-
-  const splash = div(
+  return div(
     {
-      class: () =>
-        `absolute inset-0 z-10 grid cursor-pointer place-content-center justify-items-center gap-2.5 bg-[radial-gradient(circle_at_50%_42%,rgba(6,20,26,0.72),rgba(2,5,8,0.94))] text-center backdrop-blur-[3px] transition-opacity duration-[600ms] ${
-          splashHidden.val ? "pointer-events-none opacity-0" : ""
-        }`,
-      onpointerdown: start,
+      class:
+        "absolute bottom-4 left-4 rounded-lg border border-[#3fd8ff]/25 bg-[#040a0e]/75 px-3.5 py-3 font-mono text-[11px] text-[#8fe6ff] [touch-action:manipulation] backdrop-blur-[4px]",
     },
-    h1(
-      {
-        class:
-          "text-[22px] font-semibold uppercase tracking-[0.14em] text-[#d3f5e9]",
-      },
-      "GoL Computer",
-    ),
-    p(
-      { class: "max-w-[30ch] text-[13px] leading-[1.5] text-[#6fa899]" },
-      "Generative music from Conway's Game of Life — glider streams play the notes, a logic gate switches the drone.",
-    ),
     div(
       {
-        class:
-          "mt-3 rounded-full border border-[#3fd8ff]/50 px-[22px] py-2.5 text-[13px] tracking-[0.08em] text-[#8fe6ff] animate-[glow_1.8s_ease-in-out_infinite]",
+        class: () =>
+          `flex items-center justify-between gap-3 ${controlsOpen.val ? "mb-2" : ""}`,
       },
-      "▶ click or tap to start",
+      span(
+        {
+          class:
+            "text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d3f5e9]",
+        },
+        "controls",
+      ),
+      button(
+        {
+          type: "button",
+          class:
+            "cursor-pointer rounded border border-[#3fd8ff]/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#8fe6ff] transition-colors hover:bg-[#3fd8ff]/10",
+          "aria-expanded": () => String(controlsOpen.val),
+          "aria-controls": "controls-body",
+          onclick: () => {
+            controlsOpen.val = !controlsOpen.val;
+          },
+        },
+        () => (controlsOpen.val ? "▾" : "▸"),
+      ),
     ),
+    controlsBody,
   );
+};
 
-  const errorBox = div(
+const buildErrorBox = (error: State<string>) =>
+  div(
     {
       class: () =>
         `absolute inset-0 place-items-center p-6 text-center text-[14px] text-[#f0a0a0] ${
@@ -368,13 +237,161 @@ export const mountUi = (cfg: UiConfig): Ui => {
     () => error.val,
   );
 
-  van.add(document.body, labels, hud, controls, splash, errorBox);
+// A single scoreboard row: team dot + name + living-ship count, plus score
+// (and a floating "+N" bump when it just scored).
+const buildTeamRow = (
+  t: { name: string; css: string },
+  s: Readonly<Record<string, number>>,
+  b: Readonly<Record<string, number>>,
+  c: Readonly<Record<string, number>>,
+) => {
+  const n = c[t.name] ?? 0;
+  return div(
+    { class: "flex items-center justify-between gap-4" },
+    span(
+      { class: "flex items-center gap-1.5" },
+      span({
+        class: "inline-block h-2 w-2 rounded-full",
+        style: `background:${t.css};box-shadow:0 0 6px ${t.css}`,
+      }),
+      span(
+        { class: "uppercase tracking-[0.12em]", style: `color:${t.css}` },
+        t.name,
+      ),
+      span(
+        {
+          class: `tabular-nums text-[9px] ${n === 0 ? "text-[#f0a0a0] opacity-70" : "opacity-55"}`,
+        },
+        `×${n}`,
+      ),
+    ),
+    span(
+      { class: "flex items-center gap-1.5" },
+      b[t.name]
+        ? span(
+            {
+              class: "tabular-nums font-bold text-[#7fe6a2]",
+              style:
+                "animation:scorePop 1s ease-out forwards;text-shadow:0 0 6px #2c7d5f",
+            },
+            `+${b[t.name]}`,
+          )
+        : null,
+      span(
+        { class: "tabular-nums font-bold text-[#ffe08a]" },
+        String(s[t.name] ?? 0),
+      ),
+    ),
+  );
+};
+
+// Per-team scoreboard rows, sorted by score (leader on top).
+const buildTeamRows = (
+  teams: readonly { name: string; css: string }[],
+  score: State<Readonly<Record<string, number>>>,
+  bump: State<Readonly<Record<string, number>>>,
+  counts: State<Readonly<Record<string, number>>>,
+) => {
+  const s = score.val;
+  const b = bump.val;
+  const c = counts.val;
+  return [...teams]
+    .sort((a, b2) => (s[b2.name] ?? 0) - (s[a.name] ?? 0))
+    .map((t) => buildTeamRow(t, s, b, c));
+};
+
+const buildScoreBox = (
+  cfg: UiConfig,
+  score: State<Readonly<Record<string, number>>>,
+  bump: State<Readonly<Record<string, number>>>,
+  counts: State<Readonly<Record<string, number>>>,
+) => {
+  const scoreOpen = van.state(true);
+
+  return div(
+    {
+      class:
+        "absolute left-1/2 top-3 min-w-[190px] -translate-x-1/2 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/70 px-3 py-2 font-mono text-[11px] [text-shadow:0_0_8px_#04070a] backdrop-blur-[3px]",
+    },
+    div(
+      {
+        class: () =>
+          `flex items-center justify-between gap-3 ${scoreOpen.val ? "mb-1" : ""}`,
+      },
+      span(
+        {
+          class:
+            "text-[9px] font-semibold uppercase tracking-[0.32em] text-[#7fc4b1]",
+        },
+        "scoreboard",
+      ),
+      button(
+        {
+          type: "button",
+          class:
+            "cursor-pointer rounded border border-[#3fd8ff]/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#8fe6ff] transition-colors hover:bg-[#3fd8ff]/10",
+          "aria-expanded": () => String(scoreOpen.val),
+          onclick: () => {
+            scoreOpen.val = !scoreOpen.val;
+          },
+        },
+        () => (scoreOpen.val ? "▾" : "▸"),
+      ),
+    ),
+    () =>
+      scoreOpen.val
+        ? div(
+            { class: "flex flex-col gap-0.5" },
+            ...buildTeamRows(cfg.teams, score, bump, counts),
+          )
+        : div(),
+  );
+};
+
+// Center win/draw banner, shown when `banner` is non-empty.
+const buildBanner = (banner: State<string>) =>
+  div(
+    {
+      class: () =>
+        `pointer-events-none absolute inset-x-0 top-1/3 text-center font-mono ${
+          banner.val ? "block" : "hidden"
+        }`,
+    },
+    span(
+      {
+        class:
+          "inline-block rounded-xl border border-[#3fd8ff]/40 bg-[#040a0e]/80 px-8 py-4 text-[28px] font-bold uppercase tracking-[0.2em] text-[#d3f5e9] [text-shadow:0_0_16px_#3fd8ff] backdrop-blur-[4px]",
+        style: "animation:scorePop 0.5s ease-out",
+      },
+      () => banner.val,
+    ),
+  );
+
+export const mountUi = (cfg: UiConfig): Ui => {
+  const status = van.state("");
+  const score = van.state<Readonly<Record<string, number>>>({});
+  const error = van.state("");
+  const hpOn = van.state(true);
+  const banner = van.state("");
+  const counts = van.state<Readonly<Record<string, number>>>({});
+
+  const bump = useScoreBump(score, cfg.teams);
+  injectScorePopStyle();
+
+  const hud = buildHud(status);
+  const controls = buildControls(cfg, hpOn);
+  const errorBox = buildErrorBox(error);
+  const scoreBox = buildScoreBox(cfg, score, bump, counts);
+  const bannerBox = buildBanner(banner);
+
+  van.add(document.body, hud, controls, scoreBox, bannerBox, errorBox);
 
   return {
     status,
-    substrate,
-    gate,
-    and,
+    score,
+    counts,
+    hpOn,
+    banner,
     showError: (message) => {
       error.val = message;
     },

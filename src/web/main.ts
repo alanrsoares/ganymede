@@ -1,186 +1,263 @@
-import {
-  type CaObservations,
-  compose,
-  SCALE_NAMES,
-  type ScaleName,
-  STEP_GENS,
-} from "~/domain/music";
-import { createAutomataAudio } from "./audio";
-import { createGolEngine } from "./gol-gpu";
-import { createRenderer } from "./gpu";
-import { acquireGpu } from "./gpu-context";
-import { createOverlay } from "./overlay";
-import { checkParity } from "./parity";
-import { createScene, EXPECTED_LANE_DELAY, PARITY_GENERATIONS } from "./scene";
-import { createSimulation, nodes } from "./sim";
-import { mountUi } from "./ui";
+// Runtime shell: owns the canvas, the fixed-timestep loop, input, and the port
+// from the pure World into the GPU renderer. The simulation is pure (world.ts);
+// everything here is the imperative edge (WebGPU, rAF, DOM events).
 
-const TICKS_PER_SECOND = 3;
-const GOL_GENERATIONS_PER_SECOND = 45;
-const GRID_W = 480;
-const GRID_H = 270;
-const DEFAULT_SCALE = "minor pentatonic";
+import { createAccumulator, createLoop } from "./engine/loop";
+import { createRenderer, loadCycleTextures, type Renderer } from "./gpu";
+import { acquireGpu } from "./gpu-context";
+import { createOverlay, type Overlay } from "./overlay";
+import { mountUi, type Ui } from "./ui";
+import {
+  BURST_EXPLOSION,
+  GRID_H,
+  GRID_W,
+  initWorld,
+  type Msg,
+  TEAMS,
+  update,
+  type World,
+} from "./world";
+import { MATCH_REINFORCE_GENS } from "./world/factory";
+
+// Team colors (0..1 rgb) → CSS strings for the scoreboard.
+const TEAM_SWATCHES = TEAMS.map((t) => ({
+  name: t.name,
+  css: `rgb(${t.rgb.map((c) => Math.round(c * 255)).join(",")})`,
+}));
+
+const SIM_GENERATIONS_PER_SECOND = 45; // fixed sim step rate
 
 const canvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
 
-const main = async () => {
-  const audio = createAutomataAudio();
-  const scene = createScene();
-  const overlay = createOverlay();
-  let golRate = GOL_GENERATIONS_PER_SECOND;
-  let muted = false;
-  let root = 220;
-  let scale: ScaleName = DEFAULT_SCALE;
+// Mutable state carried between successive `loop` frames. Bundled into one
+// object purely so it can be threaded through the per-frame helpers below;
+// the fields are the same ones the loop body closed over before extraction.
+interface LoopState {
+  gen: number;
+  resetScheduled: boolean;
+  shake: number;
+  lastBoomId: number;
+  prevAge: number;
+}
 
-  // All declarative chrome (HUD, panel, splash, labels) lives in the UI module.
-  const ui = mountUi({
+// Acquire the GPU device/context, wire up the "device lost" surface, and build
+// the renderer. Split out of `main` purely to keep that function short.
+const initGpu = async (
+  canvas: HTMLCanvasElement,
+  ui: Ui,
+): Promise<Renderer> => {
+  const gpu = await acquireGpu(canvas);
+  // Surface a GPU reset (driver crash, tab backgrounded too long) instead of
+  // silently freezing the canvas.
+  gpu.device.lost.then((info) => {
+    if (info.reason !== "destroyed") {
+      ui.showError(`GPU device lost: ${info.message || info.reason}`);
+    }
+  });
+  const { textureView, sampler } = await loadCycleTextures(gpu.device);
+  return createRenderer(gpu, canvas, textureView, sampler);
+};
+
+// Pointer/keyboard/resize wiring. The dispatch closure is the single port
+// from DOM events into the pure World.
+const setupInputHandlers = (
+  canvas: HTMLCanvasElement,
+  renderer: Renderer,
+  dispatch: (msg: Msg) => void,
+  ui: Ui,
+) => {
+  window.addEventListener("resize", () => renderer.resize());
+
+  canvas.addEventListener("pointerdown", (e) => {
+    const cx = Math.floor((e.clientX / canvas.clientWidth) * GRID_W);
+    const cy = Math.floor((e.clientY / canvas.clientHeight) * GRID_H);
+    dispatch({ kind: "drop", x: cx, y: cy });
+  });
+
+  window.addEventListener("keydown", (e) => {
+    const key = e.key.toLowerCase();
+    if (key === "z") dispatch({ kind: "launch", dir: "a" });
+    else if (key === "x") dispatch({ kind: "launch", dir: "b" });
+    else if (key === "c") dispatch({ kind: "launch", dir: "c" });
+    else if (key === "v") dispatch({ kind: "launch", dir: "d" });
+    else if (key === "h") ui.hpOn.val = !ui.hpOn.val;
+  });
+};
+
+// Advance the fixed-timestep sim by however many ticks have accumulated, and
+// fire the periodic reinforcement spawn.
+const stepSimulation = (
+  advanceSim: (dt: number) => number,
+  dispatch: (msg: Msg) => void,
+  dt: number,
+  now: number,
+  reinforceRate: number,
+  state: LoopState,
+) => {
+  const steps = advanceSim(dt);
+  if (steps > 0) {
+    dispatch({ kind: "tick", steps, now });
+    state.gen += steps;
+
+    if (reinforceRate > 0) {
+      const spawnInterval = Math.floor(600 / reinforceRate);
+      if (state.gen % spawnInterval < steps) dispatch({ kind: "replenish" });
+    }
+  }
+};
+
+// Match end: show the winner banner once, then auto-reset to a new round.
+const handleMatchEnd = (
+  world: World,
+  dispatch: (msg: Msg) => void,
+  ui: Ui,
+  state: LoopState,
+) => {
+  if (world.winner && !state.resetScheduled) {
+    state.resetScheduled = true;
+    ui.banner.val =
+      world.winner === "draw" ? "DRAW" : `${world.winner.toUpperCase()} WINS`;
+    setTimeout(() => {
+      dispatch({ kind: "reset" });
+      ui.banner.val = "";
+      state.resetScheduled = false;
+    }, 4200);
+  }
+};
+
+// Build this frame's instance buffers from the World and hand them to the GPU
+// renderer.
+const buildAndRender = (
+  overlay: Overlay,
+  renderer: Renderer,
+  canvas: HTMLCanvasElement,
+  world: World,
+  now: number,
+  showHp: boolean,
+) => {
+  const {
+    instances,
+    count,
+    rockInstances,
+    rockCount,
+    shieldInstances,
+    shieldCount,
+    orbInstances,
+    orbCount,
+  } = overlay.build({
+    w: canvas.width,
+    h: canvas.height,
     gridW: GRID_W,
     gridH: GRID_H,
-    nodeLabels: nodes.map((n) => ({ x: n.x, y: n.y, text: n.label })),
-    substrateLabels: scene.labels,
-    scales: SCALE_NAMES,
-    defaultScale: DEFAULT_SCALE,
-    onStart: () => audio.resume(),
-    onScale: (s) => {
-      scale = s as ScaleName;
-    },
+    now,
+    world,
+    showHp,
+  });
+  renderer.render(
+    instances,
+    count,
+    rockInstances,
+    rockCount,
+    shieldInstances,
+    shieldCount,
+    orbInstances,
+    orbCount,
+    now / 1000,
+  );
+};
+
+// Screen shake: each fresh explosion punches the canvas; it decays fast.
+// Burst ids are monotonic per match; a reset (age rewinds) clears the mark.
+const updateScreenShake = (
+  canvas: HTMLCanvasElement,
+  world: World,
+  now: number,
+  state: LoopState,
+) => {
+  if (world.age < state.prevAge) state.lastBoomId = 0;
+  state.prevAge = world.age;
+  for (const b of world.bursts.items) {
+    if (b.kind === BURST_EXPLOSION && b.id > state.lastBoomId) {
+      state.lastBoomId = b.id;
+      state.shake = Math.min(7, state.shake + 2.2);
+    }
+  }
+  state.shake *= 0.86;
+  canvas.style.transform =
+    state.shake > 0.15
+      ? `translate(${Math.sin(now * 0.11) * state.shake}px, ${Math.cos(now * 0.17) * state.shake}px)`
+      : "";
+};
+
+// Scoreboard + status line text.
+const updateHud = (ui: Ui, world: World) => {
+  ui.score.val = world.score;
+  const counts: Record<string, number> = {};
+  for (const s of world.ships.items) {
+    counts[s.colorName] = (counts[s.colorName] ?? 0) + 1;
+  }
+  ui.counts.val = counts;
+  const remain = MATCH_REINFORCE_GENS - world.age;
+  const phase = world.winner
+    ? "match over"
+    : remain > 0
+      ? `reinforce ${Math.ceil(remain / SIM_GENERATIONS_PER_SECOND)}s`
+      : "sudden death";
+  ui.status.val =
+    `ships ${world.ships.items.length} — ${phase}` +
+    ` — HP bars: ${ui.hpOn.val ? "on (h)" : "off (h)"}`;
+};
+
+const main = async () => {
+  const overlay = createOverlay();
+
+  // The pure model. Every mutation flows through `dispatch` below.
+  let world: World = initWorld(Date.now());
+
+  let simRate = SIM_GENERATIONS_PER_SECOND;
+  let reinforceRate = 3; // reinforcement spawns per (arbitrary) window
+
+  const ui = mountUi({
+    teams: TEAM_SWATCHES,
     onTempo: (v) => {
-      golRate = v;
+      simRate = v;
     },
-    onRoot: (v) => {
-      root = v;
+    onReinforce: (v) => {
+      reinforceRate = v;
     },
-    onVolume: (v) => audio.configure({ master: v }),
-    onBeat: (v) => audio.configure({ beat: v }),
-    onHarmony: (v) => audio.configure({ harmony: v }),
-    onMelody: (v) => audio.configure({ melody: v }),
-    onDrive: (v) => audio.configure({ drive: v }),
-    onDelay: (v) => audio.configure({ delay: v }),
-    onReverb: (v) => audio.configure({ reverb: v }),
   });
 
   try {
-    const gpu = await acquireGpu(canvas);
-    const seed = scene.seed();
-    const engine = createGolEngine(gpu.device, GRID_W, GRID_H, seed);
+    const renderer = await initGpu(canvas, ui);
 
-    // GPU ≡ CPU parity against the tested CPU oracle (advances the engine).
-    const parityOk = await checkParity(
-      engine,
-      seed,
-      PARITY_GENERATIONS,
-      GRID_W,
-      GRID_H,
-    );
-
-    const renderer = createRenderer(gpu, canvas, engine);
-    const sim = createSimulation();
-
-    window.addEventListener("resize", () => renderer.resize());
-
-    // Click drops a glider at the cursor (and enables audio on first gesture).
-    canvas.addEventListener("pointerdown", (e) => {
-      audio.resume();
-      const cx = Math.floor((e.clientX / canvas.clientWidth) * GRID_W);
-      const cy = Math.floor((e.clientY / canvas.clientHeight) * GRID_H);
-      scene.drop(engine, cx, cy);
-    });
-
-    // Input register on the bottom key row: z/x = inhibit A/B, c/v = AND A/B
-    // (b/n reserved for the next gate); m mutes.
-    window.addEventListener("keydown", (e) => {
-      audio.resume();
-      const key = e.key.toLowerCase();
-      if (key === "z") scene.toggleInput(engine, "a");
-      else if (key === "x") scene.toggleInput(engine, "b");
-      else if (key === "c") scene.toggleInput(engine, "c");
-      else if (key === "v") scene.toggleInput(engine, "d");
-      else if (key === "m") muted = audio.toggleMute();
-    });
-
-    // Population readback once a second — exercises the same readRegion path
-    // the substrate uses as its output detector; feeds the music's register.
-    let populationText = "";
-    let popNorm = 0;
-    const samplePopulation = async () => {
-      const cells = await engine.readRegion(0, 0, GRID_W, GRID_H);
-      let count = 0;
-      for (const c of cells) count += c;
-      popNorm = Math.min(1, count / 500);
-      populationText = ` — gol gen ${engine.generation()}, pop ${count}`;
-    };
-    setInterval(() => void samplePopulation(), 1000);
-
-    let simTime = 0;
-    let golAccumulator = 0;
-    let lastFrame = performance.now();
-
-    const frame = (now: number) => {
-      const dt = Math.min((now - lastFrame) / 1000, 0.1);
-      lastFrame = now;
-
-      simTime += dt * TICKS_PER_SECOND;
-      sim.advance(simTime);
-
-      golAccumulator += dt * golRate;
-      const golSteps = Math.floor(golAccumulator);
-      golAccumulator -= golSteps;
-      if (golSteps > 0) {
-        scene.stepAndFeed(engine, golSteps);
-        scene.sample(engine);
-      }
-
-      const obs = scene.observe(now);
-
-      // Audio: compose one step of the generative track from CA observations.
-      const observations: CaObservations = {
-        population: popNorm,
-        activity: obs.activity,
-        gateHigh: obs.gateFlowing,
-        andHigh: obs.andFlowing,
-        laneTriggers: obs.laneTriggers,
-        step: Math.floor(engine.generation() / STEP_GENS),
-      };
-      audio.render(compose(observations, { root, scale }));
-
-      // Overlay: build the sprite instances and draw over the GoL background.
-      const { instances, count } = overlay.build({
-        w: canvas.width,
-        h: canvas.height,
-        dpr: Math.min(window.devicePixelRatio || 1, 2),
-        gridW: GRID_W,
-        gridH: GRID_H,
-        simTime,
-        now,
-        sim,
-        scene,
-        gateFlowing: obs.gateFlowing,
-        andFlowing: obs.andFlowing,
-      });
-      renderer.render(instances, count, now / 1000);
-
-      ui.substrate.val =
-        `substrate: gpu≡cpu ${parityOk ? "✓" : "✗ DIVERGED"} (${PARITY_GENERATIONS} gens)` +
-        ` — lane gliders: near ${obs.laneNear}, far ${obs.laneFar}` +
-        (obs.laneDelay !== null
-          ? `, delay ${obs.laneDelay} gens (wire model: ${EXPECTED_LANE_DELAY})`
-          : "");
-      const sound = !audio.enabled()
-        ? "click/key to start"
-        : muted
-          ? "muted (m)"
-          : "on";
-      ui.gate.val =
-        `inhibit A∧¬B (keys z/x): A=${scene.inputA ? 1 : 0} B=${scene.inputB ? 1 : 0}` +
-        ` → out ${obs.gateFlowing ? 1 : 0} enables the bass — sound: ${sound}`;
-      ui.and.val =
-        `wired AND A∧B (keys c/v): A=${scene.andA ? 1 : 0} B=${scene.andB ? 1 : 0}` +
-        ` → out ${obs.andFlowing ? 1 : 0} enables the pad — 2-bit word transposes harmony`;
-      ui.status.val = `tick ${sim.tick()} — sram bit: ${sim.sramValue()}${populationText}`;
-      requestAnimationFrame(frame);
+    // The single port from the pure world into the runtime. Cmds (CA cell
+    // injections) are no longer consumed by anything, so we just apply the
+    // transition.
+    const dispatch = (msg: Msg) => {
+      const [next] = update(msg, world);
+      world = next;
     };
 
-    requestAnimationFrame(frame);
+    setupInputHandlers(canvas, renderer, dispatch, ui);
+
+    const advanceSim = createAccumulator(() => simRate);
+    const loopState: LoopState = {
+      gen: 0,
+      resetScheduled: false,
+      shake: 0,
+      lastBoomId: 0,
+      prevAge: 0,
+    };
+
+    const loop = createLoop((dt, now) => {
+      stepSimulation(advanceSim, dispatch, dt, now, reinforceRate, loopState);
+      handleMatchEnd(world, dispatch, ui, loopState);
+      buildAndRender(overlay, renderer, canvas, world, now, ui.hpOn.val);
+      updateScreenShake(canvas, world, now, loopState);
+      updateHud(ui, world);
+    });
+
+    loop.start();
   } catch (e: unknown) {
     ui.showError(
       e instanceof Error

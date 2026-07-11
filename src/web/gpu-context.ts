@@ -1,7 +1,13 @@
+import tgpu, { type TgpuRoot } from "typegpu";
+
 export interface GpuContext {
   readonly device: GPUDevice;
   readonly context: GPUCanvasContext;
   readonly format: GPUTextureFormat;
+  // TypeGPU root wrapping this exact device — the shared owner of every typed
+  // buffer/bind group in the app. Reused (initFromDevice) rather than letting
+  // TypeGPU request its own device, so raw and typed resources share one device.
+  readonly root: TgpuRoot;
 }
 
 export const acquireGpu = async (
@@ -17,5 +23,7 @@ export const acquireGpu = async (
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque" });
 
-  return { device, context, format };
+  const root = tgpu.initFromDevice({ device });
+
+  return { device, context, format, root };
 };

@@ -43,49 +43,62 @@ const componentFailure =
   });
 
 /**
- * Advances the simulation by one tick.
+ * Splits in-flight pulses into those delivered this tick (grouped by
+ * destination component, with channelId rewritten to the receiving port) and
+ * those still in flight for a future tick.
  */
-export const step = (
+const routeIncomingPulses = (
   config: CircuitConfig,
-  state: CircuitState,
-): Result<{ nextState: CircuitState; emittedPulses: Pulse[] }, CircuitError> =>
-  tryGen(() => {
-    const nextComponentStates = new Map(state.componentStates);
-    const currentTick = state.currentTick;
+  inFlightPulses: Pulse[],
+  currentTick: number,
+): { inputsForComponent: Map<string, Pulse[]>; remainingPulses: Pulse[] } => {
+  const inputsForComponent = new Map<string, Pulse[]>();
+  for (const comp of config.components) {
+    inputsForComponent.set(comp.id, []);
+  }
 
-    // 1. Collect pulses arriving at this exact tick for each component
-    const inputsForComponent = new Map<string, Pulse[]>();
-    for (const comp of config.components) {
-      inputsForComponent.set(comp.id, []);
-    }
+  const remainingPulses: Pulse[] = [];
+  for (const pulse of inFlightPulses) {
+    // A pulse emitted at tick T enters flight after routing has already run
+    // for T, so it is delivered on the first step where timestamp <= tick.
+    if (pulse.timestamp <= currentTick) {
+      // Component ids may contain "-", so match the full channelId against
+      // each connection's expected "<channel>-<componentId>" instead of
+      // parsing the string.
+      const connection = config.connections.find(
+        (c) => pulse.channelId === `${c.fromChannel}-${c.fromId}`,
+      );
 
-    const remainingPulses: Pulse[] = [];
-    for (const pulse of state.inFlightPulses) {
-      // A pulse emitted at tick T enters flight after routing has already run
-      // for T, so it is delivered on the first step where timestamp <= tick.
-      if (pulse.timestamp <= currentTick) {
-        // Component ids may contain "-", so match the full channelId against
-        // each connection's expected "<channel>-<componentId>" instead of
-        // parsing the string.
-        const connection = config.connections.find(
-          (c) => pulse.channelId === `${c.fromChannel}-${c.fromId}`,
-        );
-
-        if (connection) {
-          inputsForComponent
-            .get(connection.toId)
-            ?.push({ ...pulse, channelId: connection.toPort });
-        }
-        // No route defined for this output: pulse vanishes.
-      } else {
-        remainingPulses.push(pulse);
+      if (connection) {
+        inputsForComponent
+          .get(connection.toId)
+          ?.push({ ...pulse, channelId: connection.toPort });
       }
+      // No route defined for this output: pulse vanishes.
+    } else {
+      remainingPulses.push(pulse);
     }
+  }
 
-    // 2. Transition each component
+  return { inputsForComponent, remainingPulses };
+};
+
+/** Runs each component's transition function for this tick. */
+const transitionComponents = (
+  config: CircuitConfig,
+  componentStates: Map<string, unknown>,
+  inputsForComponent: Map<string, Pulse[]>,
+  currentTick: number,
+): Result<
+  { nextComponentStates: Map<string, unknown>; allNewPulses: Pulse[] },
+  CircuitError
+> =>
+  tryGen(() => {
+    const nextComponentStates = new Map(componentStates);
     const allNewPulses: Pulse[] = [];
+
     for (const comp of config.components) {
-      const compState = state.componentStates.get(comp.id);
+      const compState = componentStates.get(comp.id);
       const inputs = inputsForComponent.get(comp.id) ?? [];
 
       const [nextS, outputs] = $(
@@ -98,6 +111,36 @@ export const step = (
       nextComponentStates.set(comp.id, nextS);
       allNewPulses.push(...outputs);
     }
+
+    return ok({ nextComponentStates, allNewPulses });
+  });
+
+/**
+ * Advances the simulation by one tick.
+ */
+export const step = (
+  config: CircuitConfig,
+  state: CircuitState,
+): Result<{ nextState: CircuitState; emittedPulses: Pulse[] }, CircuitError> =>
+  tryGen(() => {
+    const currentTick = state.currentTick;
+
+    // 1. Collect pulses arriving at this exact tick for each component
+    const { inputsForComponent, remainingPulses } = routeIncomingPulses(
+      config,
+      state.inFlightPulses,
+      currentTick,
+    );
+
+    // 2. Transition each component
+    const { nextComponentStates, allNewPulses } = $(
+      transitionComponents(
+        config,
+        state.componentStates,
+        inputsForComponent,
+        currentTick,
+      ),
+    );
 
     // 3. Update in-flight pulses (future ones + newly emitted)
     const nextInFlight = [...remainingPulses, ...allNewPulses];

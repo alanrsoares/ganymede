@@ -12,6 +12,63 @@ export type RleError = {
   readonly message: string;
 };
 
+/** Cursor tracks position/width while scanning an RLE body; mutated in place. */
+type RleCursor = { x: number; y: number; width: number };
+
+/** Outcome of applying a single non-digit RLE token to the cursor/cells. */
+type RleTokenOutcome =
+  | { readonly _tag: "continue" }
+  | { readonly _tag: "done"; readonly pattern: Pattern }
+  | { readonly _tag: "error"; readonly error: RleError };
+
+/** Appends `count` consecutive live cells starting at (x, y). */
+const pushLiveRun = (
+  cells: Cell[],
+  x: number,
+  y: number,
+  count: number,
+): void => {
+  for (let i = 0; i < count; i++) cells.push([x + i, y]);
+};
+
+/** Applies one RLE token (`b`, `o`, `$`, `!`, or whitespace/unknown) to the cursor. */
+const applyRleToken = (
+  ch: string,
+  count: number,
+  cursor: RleCursor,
+  cells: Cell[],
+): RleTokenOutcome => {
+  switch (ch) {
+    case "b":
+      cursor.x += count;
+      return { _tag: "continue" };
+    case "o":
+      pushLiveRun(cells, cursor.x, cursor.y, count);
+      cursor.x += count;
+      return { _tag: "continue" };
+    case "$":
+      cursor.width = Math.max(cursor.width, cursor.x);
+      cursor.x = 0;
+      cursor.y += count;
+      return { _tag: "continue" };
+    case "!":
+      cursor.width = Math.max(cursor.width, cursor.x);
+      return {
+        _tag: "done",
+        pattern: { width: cursor.width, height: cursor.y + 1, cells },
+      };
+    default:
+      if (ch.trim() === "") return { _tag: "continue" };
+      return {
+        _tag: "error",
+        error: {
+          _tag: "InvalidRle",
+          message: `Unexpected character '${ch}' in RLE`,
+        },
+      };
+  }
+};
+
 /**
  * Parses the standard Game of Life RLE format: `b` dead, `o` alive,
  * `$` end of row, `!` end of pattern, digits as run counts. Header and
@@ -25,10 +82,8 @@ export const parseRle = (rle: string): Result<Pattern, RleError> => {
     .trim();
 
   const cells: Cell[] = [];
-  let x = 0;
-  let y = 0;
+  const cursor: RleCursor = { x: 0, y: 0, width: 0 };
   let run = 0;
-  let width = 0;
 
   for (const ch of body) {
     if (ch >= "0" && ch <= "9") {
@@ -39,29 +94,9 @@ export const parseRle = (rle: string): Result<Pattern, RleError> => {
     const count = run === 0 ? 1 : run;
     run = 0;
 
-    switch (ch) {
-      case "b":
-        x += count;
-        break;
-      case "o":
-        for (let i = 0; i < count; i++) cells.push([x + i, y]);
-        x += count;
-        break;
-      case "$":
-        width = Math.max(width, x);
-        x = 0;
-        y += count;
-        break;
-      case "!":
-        width = Math.max(width, x);
-        return ok({ width, height: y + 1, cells });
-      default:
-        if (ch.trim() === "") continue;
-        return err({
-          _tag: "InvalidRle",
-          message: `Unexpected character '${ch}' in RLE`,
-        });
-    }
+    const outcome = applyRleToken(ch, count, cursor, cells);
+    if (outcome._tag === "done") return ok(outcome.pattern);
+    if (outcome._tag === "error") return err(outcome.error);
   }
 
   return err({ _tag: "InvalidRle", message: "RLE missing terminating '!'" });

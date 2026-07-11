@@ -7,8 +7,8 @@ import { createSRAM, type SRAMState } from "../src/components/sram";
 import { createWire } from "../src/components/wire";
 import type { Polarity, Pulse } from "../src/domain/pulses";
 
-describe("GoL Computer Components", () => {
-  test("Wire should delay pulses", () => {
+describe("GoL Computer Components: Wire", () => {
+  test("should delay pulses", () => {
     const wire = createWire("w1");
     const state = { length: 10 };
     const inputs: Pulse[] = [
@@ -18,8 +18,10 @@ describe("GoL Computer Components", () => {
     const [, outputs] = unwrapOk(wire.transition(0, state, inputs));
     expect(outputs[0].timestamp).toBe(15);
   });
+});
 
-  test("AND gate should trigger on simultaneous pulses", () => {
+describe("GoL Computer Components: AND gate", () => {
+  test("should trigger on simultaneous pulses", () => {
     const gate = createAndGate("g1");
     const state = { arrivalWindow: 2 };
     const inputs: Pulse[] = [
@@ -32,7 +34,7 @@ describe("GoL Computer Components", () => {
     expect(outputs[0].polarity).toBe(1);
   });
 
-  test("AND gate should fail on timing mismatch", () => {
+  test("should fail on timing mismatch", () => {
     const gate = createAndGate("g1");
     const state = { arrivalWindow: 2 };
     const inputs: Pulse[] = [
@@ -43,8 +45,10 @@ describe("GoL Computer Components", () => {
     const error = unwrapErr(gate.transition(0, state, inputs));
     expect(error._tag).toBe("Collision");
   });
+});
 
-  test("NOT gate should invert pulses on its sampling period", () => {
+describe("GoL Computer Components: NOT gate", () => {
+  test("should invert pulses on its sampling period", () => {
     const gate = createNotGate("not1");
     const state = { period: 10 };
 
@@ -70,8 +74,10 @@ describe("GoL Computer Components", () => {
     );
     expect(outOffPeriod.length).toBe(0);
   });
+});
 
-  test("Clock should pulse regularly", () => {
+describe("GoL Computer Components: Clock", () => {
+  test("should pulse regularly", () => {
     const clock = createClock("clk1");
     let state = { lastPulse: 0, period: 10 };
 
@@ -84,8 +90,10 @@ describe("GoL Computer Components", () => {
     const [, outT10] = unwrapOk(clock.transition(10, state, []));
     expect(outT10[0].timestamp).toBe(10);
   });
+});
 
-  test("SRAM should store and flip values", () => {
+describe("GoL Computer Components: SRAM", () => {
+  test("should store and flip values", () => {
     const sram = createSRAM("mem1");
     let state: SRAMState = { value: 0 };
 

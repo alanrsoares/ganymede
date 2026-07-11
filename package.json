@@ -5,7 +5,9 @@
   "dependencies": {
     "@elemaudio/core": "^4.0.1",
     "@elemaudio/web-renderer": "^4.0.3",
-    "@onrails/result": "^0.3.0",
+    "@onrails/pattern": "^0.3.2",
+    "@onrails/result": "^0.4.0",
+    "typegpu": "^0.11.9",
     "vanjs-core": "^1.6.0"
   },
   "devDependencies": {
@@ -13,7 +15,7 @@
     "bun-plugin-tailwind": "^0.1.2",
     "bun-types": "latest",
     "tailwindcss": "^4.3.2",
-    "typescript": "latest"
+    "typescript": "^7.0.2"
   },
   "scripts": {
     "dev": "bun run src/index.ts",
@@ -22,6 +24,7 @@
     "check": "bun run lint && bun run typecheck",
     "lint": "bun x @biomejs/biome check .",
     "lint:fix": "bun x @biomejs/biome check --write . && bun x @biomejs/biome format --write .",
-    "typecheck": "bun x tsc --noEmit"
+    "typecheck": "bun x tsc --noEmit",
+    "large-files": "bun run scripts/large-files.ts"
   }
 }
