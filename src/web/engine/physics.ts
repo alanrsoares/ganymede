@@ -11,6 +11,14 @@ export const wrapDelta = (a: number, b: number, limit: number): number => {
   else if (dv < -limit / 2) dv += limit;
   return dv;
 };
+export const wrap = (v: number, limit: number): number =>
+  ((v % limit) + limit) % limit;
+
+/** Minimum toroidal distance across a wrapped axis. */
+export const toroidalDist = (a: number, b: number, limit: number): number => {
+  const diff = Math.abs(a - b);
+  return diff > limit / 2 ? limit - diff : diff;
+};
 
 const dot = (a: Vec2, b: Vec2): number => a[0] * b[0] + a[1] * b[1];
 const len = (v: Vec2): number => Math.hypot(v[0], v[1]);

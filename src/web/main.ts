@@ -6,26 +6,28 @@ import { createAccumulator, createLoop } from "./engine/loop";
 import { createRenderer, loadCycleTextures, type Renderer } from "./gpu";
 import { acquireGpu } from "./gpu-context";
 import { createOverlay, type Overlay } from "./overlay";
+import { mountSetup, type Setup } from "./setup";
+import { mountShipCard, type ShipCard } from "./shipCard";
 import { mountUi, type Ui } from "./ui";
 import {
   BURST_EXPLOSION,
   GRID_H,
   GRID_W,
   initWorld,
+  type LightCycle,
+  type MatchConfig,
   type Msg,
   TEAMS,
   update,
   type World,
 } from "./world";
-import { MATCH_REINFORCE_GENS } from "./world/factory";
+import { DEFAULT_CONFIG, shipRadius } from "./world/factory";
 
 // Team colors (0..1 rgb) → CSS strings for the scoreboard.
 const TEAM_SWATCHES = TEAMS.map((t) => ({
   name: t.name,
   css: `rgb(${t.rgb.map((c) => Math.round(c * 255)).join(",")})`,
 }));
-
-const SIM_GENERATIONS_PER_SECOND = 45; // fixed sim step rate
 
 const canvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
 
@@ -58,6 +60,24 @@ const initGpu = async (
   return createRenderer(gpu, canvas, textureView, sampler);
 };
 
+// Nearest ship under a grid point, or null — the hull whose radius (plus a
+// small margin) contains the cursor. O(ships) ≤ 12, cheap enough per move.
+const pickShip = (world: World, gx: number, gy: number): LightCycle | null => {
+  let best: LightCycle | null = null;
+  let bestD2 = Infinity;
+  for (const s of world.ships.items) {
+    const dx = s.x - gx;
+    const dy = s.y - gy;
+    const d2 = dx * dx + dy * dy;
+    const reach = shipRadius(s.level) + 3;
+    if (d2 <= reach * reach && d2 < bestD2) {
+      bestD2 = d2;
+      best = s;
+    }
+  }
+  return best;
+};
+
 // Pointer/keyboard/resize wiring. The dispatch closure is the single port
 // from DOM events into the pure World.
 const setupInputHandlers = (
@@ -65,14 +85,26 @@ const setupInputHandlers = (
   renderer: Renderer,
   dispatch: (msg: Msg) => void,
   ui: Ui,
+  getWorld: () => World,
+  card: ShipCard,
 ) => {
   window.addEventListener("resize", () => renderer.resize());
 
   canvas.addEventListener("pointerdown", (e) => {
     const cx = Math.floor((e.clientX / canvas.clientWidth) * GRID_W);
     const cy = Math.floor((e.clientY / canvas.clientHeight) * GRID_H);
-    dispatch({ kind: "drop", x: cx, y: cy });
+    if (e.button === 2 || e.shiftKey) dispatch({ kind: "rally", x: cx, y: cy });
+    else dispatch({ kind: "drop", x: cx, y: cy });
   });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+  // Hover inspector: pick the ship under the cursor and feed the info card.
+  canvas.addEventListener("pointermove", (e) => {
+    const gx = (e.clientX / canvas.clientWidth) * GRID_W;
+    const gy = (e.clientY / canvas.clientHeight) * GRID_H;
+    card.render(pickShip(getWorld(), gx, gy), e.clientX, e.clientY);
+  });
+  canvas.addEventListener("pointerleave", () => card.render(null, 0, 0));
 
   window.addEventListener("keydown", (e) => {
     const key = e.key.toLowerCase();
@@ -106,22 +138,23 @@ const stepSimulation = (
   }
 };
 
-// Match end: show the winner banner once, then auto-reset to a new round.
+// Match end: show the winner banner once, then reopen the setup screen so the
+// player can tweak and launch a fresh match. `resetScheduled` latches until the
+// next startMatch clears it, so this fires exactly once per match.
 const handleMatchEnd = (
   world: World,
-  dispatch: (msg: Msg) => void,
   ui: Ui,
   state: LoopState,
+  setup: Setup,
 ) => {
   if (world.winner && !state.resetScheduled) {
     state.resetScheduled = true;
     ui.banner.val =
       world.winner === "draw" ? "DRAW" : `${world.winner.toUpperCase()} WINS`;
     setTimeout(() => {
-      dispatch({ kind: "reset" });
       ui.banner.val = "";
-      state.resetScheduled = false;
-    }, 4200);
+      setup.show();
+    }, 3600);
   }
 };
 
@@ -197,25 +230,31 @@ const updateHud = (ui: Ui, world: World) => {
     counts[s.colorName] = (counts[s.colorName] ?? 0) + 1;
   }
   ui.counts.val = counts;
-  const remain = MATCH_REINFORCE_GENS - world.age;
+  const remain = world.config.reinforceGens - world.age;
+  const endless = world.config.format === "endless";
   const phase = world.winner
     ? "match over"
-    : remain > 0
-      ? `reinforce ${Math.ceil(remain / SIM_GENERATIONS_PER_SECOND)}s`
-      : "sudden death";
+    : endless
+      ? "endless"
+      : remain > 0
+        ? `reinforce ${Math.ceil(remain / world.config.tempo)}s`
+        : "sudden death";
   ui.status.val =
     `ships ${world.ships.items.length} — ${phase}` +
-    ` — HP bars: ${ui.hpOn.val ? "on (h)" : "off (h)"}`;
+    ` — HP bars: ${ui.hpOn.val ? "on (h)" : "off (h)"}` +
+    (world.rally ? ` — ${world.rally.team} rally` : "");
 };
 
 const main = async () => {
   const overlay = createOverlay();
 
-  // The pure model. Every mutation flows through `dispatch` below.
-  let world: World = initWorld(Date.now());
+  // The pure model. Starts on the default config as a live preview behind the
+  // setup screen; `startMatch` rebuilds it once the player launches.
+  let config: MatchConfig = DEFAULT_CONFIG;
+  let world: World = initWorld(Date.now(), config);
 
-  let simRate = SIM_GENERATIONS_PER_SECOND;
-  let reinforceRate = 3; // reinforcement spawns per (arbitrary) window
+  let simRate = config.tempo;
+  let reinforceRate = config.reinforceRate;
 
   const ui = mountUi({
     teams: TEAM_SWATCHES,
@@ -238,7 +277,8 @@ const main = async () => {
       world = next;
     };
 
-    setupInputHandlers(canvas, renderer, dispatch, ui);
+    const shipCard = mountShipCard();
+    setupInputHandlers(canvas, renderer, dispatch, ui, () => world, shipCard);
 
     const advanceSim = createAccumulator(() => simRate);
     const loopState: LoopState = {
@@ -249,9 +289,21 @@ const main = async () => {
       prevAge: 0,
     };
 
+    // Launch a fresh match from the setup screen's chosen config.
+    const startMatch = (cfg: MatchConfig) => {
+      config = cfg;
+      world = initWorld(Date.now(), cfg);
+      simRate = cfg.tempo;
+      reinforceRate = cfg.reinforceRate;
+      ui.activeTeamCount.val = cfg.teams;
+      ui.banner.val = "";
+      loopState.resetScheduled = false;
+    };
+    const setup = mountSetup(startMatch);
+
     const loop = createLoop((dt, now) => {
       stepSimulation(advanceSim, dispatch, dt, now, reinforceRate, loopState);
-      handleMatchEnd(world, dispatch, ui, loopState);
+      handleMatchEnd(world, ui, loopState, setup);
       buildAndRender(overlay, renderer, canvas, world, now, ui.hpOn.val);
       updateScreenShake(canvas, world, now, loopState);
       updateHud(ui, world);

@@ -2,7 +2,10 @@
 // 666-line monolith; these lock its observable behavior (determinism +
 // invariants) so it can be refactored into per-system functions safely later.
 import { expect, test } from "bun:test";
+import type { LightCycle } from "~/web/world";
 import {
+  type Archetype,
+  CENTER_PAD,
   GRID_H,
   GRID_W,
   initWorld,
@@ -10,13 +13,17 @@ import {
   TEAM_BASES,
   TEAMS,
   update,
+  type World,
 } from "~/web/world";
 import {
   baseHitsRequired,
   cruiseFor,
+  fullBaseHp,
+  goalDelta,
   MATCH_REINFORCE_GENS,
   MAX_SHIPS,
   maxFuelFor,
+  rollShip,
 } from "~/web/world/factory";
 import { createTickCtx, creditBaseHit } from "~/web/world/tick/context";
 
@@ -102,6 +109,40 @@ test("launch adds a ship of the requested team", () => {
   expect(w1.ships.items.at(-1)?.colorName).toBe("cyan");
 });
 
+test("rally creates a short-lived command for the nearest living team", () => {
+  const w0 = initWorld(5);
+  const target = w0.ships.items[0];
+  const [w1] = update({ kind: "rally", x: target.x, y: target.y }, w0);
+  expect(w1.rally?.team).toBe(target.colorName);
+  expect(w1.rally?.x).toBe(target.x);
+  expect(w1.rally?.y).toBe(target.y);
+
+  const [w2] = update({ kind: "tick", steps: 30, now: 0 }, w1);
+  expect(w2.rally?.ttl).toBeLessThan(w1.rally?.ttl ?? 0);
+});
+
+test("rally pulls the targeted team toward the command beacon", () => {
+  const [ship] = rollShip(7, 1, 100, 100, 3, "cyan", "fighter");
+  const baseWorld = {
+    ...initWorld(1),
+    asteroids: { items: [], nextId: 1 },
+    pickups: { items: [], nextId: 1 },
+    ships: {
+      items: [{ ...ship, dx: 1, dy: 0, vx: 0, vy: 0, fuel: ship.maxFuel }],
+      nextId: 2,
+    },
+    baseHp: { ...fullBaseHp(), orange: 0, emerald: 0, pink: 0 },
+  };
+  const [neutral] = update({ kind: "tick", steps: 6, now: 0 }, baseWorld);
+  const [commanded] = update(
+    { kind: "tick", steps: 6, now: 0 },
+    { ...baseWorld, rally: { team: "cyan", x: 180, y: 100, ttl: 120 } },
+  );
+  const neutralShip = neutral.ships.items[0];
+  const commandedShip = commanded.ships.items[0];
+  expect(commandedShip.x).toBeGreaterThan(neutralShip.x);
+});
+
 test("fuel: tank scales with archetype + level, requirement grows", () => {
   expect(maxFuelFor("scout", 1)).toBeLessThan(maxFuelFor("heavy", 1)); // carrier bigger
   expect(maxFuelFor("scout", 3)).toBeGreaterThan(maxFuelFor("scout", 1)); // level scales
@@ -153,7 +194,10 @@ test("docked ship refuels at its home base", () => {
   expect(after?.fuel).toBeGreaterThan(10);
 });
 
-test("base-raid leveling: hit every enemy base → level up, tally resets, ramps", () => {
+const enemyBaseNames = (team: string) =>
+  TEAM_BASES.filter((b) => b.name !== team).map((b) => b.name);
+
+test("creditBaseHit only tallies raids — it never promotes on its own", () => {
   const w0 = initWorld(1);
   const ship = {
     ...w0.ships.items[0],
@@ -163,14 +207,137 @@ test("base-raid leveling: hit every enemy base → level up, tally resets, ramps
   };
   const ctx = createTickCtx(w0, 3, 0);
   ctx.moved = [ship];
-  const enemies = TEAMS.filter((t) => t.name !== "cyan").map((t) => t.name);
-  // L1 → need 1 hit on each enemy base.
+  const enemies = enemyBaseNames("cyan");
   for (const e of enemies) creditBaseHit(ctx, ship.id, e);
-  expect(ctx.moved[0].level).toBe(2);
-  expect(Object.keys(ctx.moved[0].baseHits).length).toBe(0); // reset on promote
-  // L2 → need 2 each: one round isn't enough, two is.
-  for (const e of enemies) creditBaseHit(ctx, ship.id, e);
-  expect(ctx.moved[0].level).toBe(2);
-  for (const e of enemies) creditBaseHit(ctx, ship.id, e);
-  expect(ctx.moved[0].level).toBe(3);
+  // Every enemy base raided, yet no promotion — that's the center pad's job.
+  expect(ctx.moved[0].level).toBe(1);
+  for (const e of enemies) {
+    expect(ctx.moved[0].baseHits[e]).toBe(baseHitsRequired(1));
+  }
+});
+
+// A cyan L1 ship that has already raided every enemy base, placed either over
+// the center pad or well away from it.
+const primedWorld = (over: boolean) => {
+  const w0 = initWorld(1);
+  const enemies = enemyBaseNames("cyan");
+  const baseHits = Object.fromEntries(
+    enemies.map((n) => [n, baseHitsRequired(1)]),
+  );
+  const s = {
+    ...w0.ships.items[0],
+    id: 1,
+    level: 1,
+    colorName: "cyan",
+    x: over ? CENTER_PAD.x : 20,
+    y: over ? CENTER_PAD.y : 20,
+    baseHits,
+  };
+  return {
+    ...w0,
+    asteroids: { items: [], nextId: 1 },
+    pickups: { items: [], nextId: 1 },
+    bullets: { items: [], nextId: 1 },
+    ships: { items: [s], nextId: 2 },
+  };
+};
+
+test("center pad cashes the level-up once every enemy base is raided", () => {
+  const [w] = update({ kind: "tick", steps: 1, now: 0 }, primedWorld(true));
+  const s = w.ships.items.find((x) => x.id === 1);
+  expect(s?.level).toBe(2);
+  expect(Object.keys(s?.baseHits ?? {}).length).toBe(0); // tally reset on cash-in
+});
+
+test("a primed ship away from the center pad does not promote", () => {
+  const [w] = update({ kind: "tick", steps: 1, now: 0 }, primedWorld(false));
+  expect(w.ships.items.find((x) => x.id === 1)?.level).toBe(1);
+});
+
+test("a recon scout shares completed-raid credit with a nearby ally", () => {
+  const w0 = initWorld(1);
+  const enemies = enemyBaseNames("cyan");
+  const baseHits = Object.fromEntries(
+    enemies.map((n) => [n, baseHitsRequired(1)]),
+  );
+  const scout = {
+    ...w0.ships.items[0],
+    id: 1,
+    colorName: "cyan",
+    archetype: "scout" as Archetype,
+    level: 1,
+    x: 100,
+    y: 100,
+    baseHits,
+  };
+  const ally = {
+    ...w0.ships.items[0],
+    id: 2,
+    colorName: "cyan",
+    archetype: "fighter" as Archetype,
+    level: 1,
+    x: 140, // within RECON_SHARE_RADIUS (60) but clear of hull collision
+    y: 100,
+    baseHits: {},
+  };
+  const w1 = {
+    ...w0,
+    asteroids: { items: [], nextId: 1 },
+    pickups: { items: [], nextId: 1 },
+    bullets: { items: [], nextId: 1 },
+    ships: { items: [scout, ally], nextId: 3 },
+  };
+  const [w] = update({ kind: "tick", steps: 1, now: 0 }, w1);
+  const a = w.ships.items.find((x) => x.id === 2);
+  for (const e of enemies) {
+    expect(a?.baseHits[e]).toBe(baseHitsRequired(1));
+  }
+});
+
+test("rank-gated pathing: L3+ steer across the world wrap, rookies go direct", () => {
+  // Ship near the bottom edge (y=265, GRID_H=270), goal near the top (y=32).
+  const atSeam = (level: number) =>
+    ({ level, x: 240, y: 265 }) as unknown as LightCycle;
+  // L2 rookie: direct course is straight up (negative dy toward y=32).
+  expect(goalDelta(atSeam(2), 240, 32)[1]).toBeLessThan(0);
+  // L3 veteran: shortest course crosses the bottom seam (positive dy, wraps).
+  expect(goalDelta(atSeam(3), 240, 32)[1]).toBeGreaterThan(0);
+});
+
+test("range-aware refuel: a far ship low on fuel turns home before running dry", () => {
+  const w0 = initWorld(7);
+  const homeX = TEAM_BASES.find((b) => b.name === "cyan")?.x ?? 45;
+  // Fuel (450/875 ≈ 51%) sits above the 30% hard floor, but below the range
+  // reserve for the ~355-cell trip home — so the ship must peel off now.
+  const ship = {
+    ...w0.ships.items[0],
+    id: 1,
+    colorName: "cyan",
+    archetype: "fighter" as Archetype,
+    level: 2,
+    x: 400,
+    y: 135,
+    dx: 1,
+    dy: 0,
+    vx: 1,
+    vy: 0,
+    hp: 3,
+    maxHp: 3,
+    fuel: 450,
+    maxFuel: 875,
+    baseHits: {},
+  };
+  let w: World = {
+    ...w0,
+    asteroids: { items: [], nextId: 1 },
+    pickups: { items: [], nextId: 1 },
+    bullets: { items: [], nextId: 1 },
+    ships: { items: [ship], nextId: 2 },
+  };
+  for (let i = 0; i < 25; i++) {
+    [w] = update({ kind: "tick", steps: 3, now: i * 100 }, w);
+  }
+  const s = w.ships.items.find((x) => x.id === 1);
+  // It reversed its rightward heading and closed distance toward home.
+  expect(Math.abs((s?.x ?? 400) - homeX)).toBeLessThan(400 - homeX);
 });

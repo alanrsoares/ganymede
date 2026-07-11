@@ -35,3 +35,23 @@ export const pick = <T>(seed: Seed, arr: readonly T[]): [T, Seed] => {
   const [i, next] = nextInt(seed, arr.length);
   return [arr[i], next];
 };
+
+/**
+ * Fold `count` seed-threaded builds into a list, returning [items, nextSeed].
+ * Encapsulates the "draw N deterministic entities" pattern so call sites stay
+ * declarative. O(count) — same as the hand-rolled loop it replaces.
+ */
+export const rollMany = <T>(
+  count: number,
+  seed: Seed,
+  roll: (seed: Seed, index: number) => [T, Seed],
+): [T[], Seed] => {
+  const items: T[] = [];
+  let s = seed;
+  for (let i = 0; i < count; i++) {
+    const [item, next] = roll(s, i);
+    items.push(item);
+    s = next;
+  }
+  return [items, s];
+};

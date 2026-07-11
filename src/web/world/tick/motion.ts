@@ -69,6 +69,7 @@ const shipAccel = (
         world.asteroids.items,
         world.pickups.items,
         baseHp,
+        world.rally,
         s.level,
         world.age,
       );

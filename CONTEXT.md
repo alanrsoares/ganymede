@@ -19,13 +19,16 @@ lineage survives only in `src/components` + `test/`, not in the game under
 - **Rank / level**: a ship's tier (1–5). Drives stats *and* AI depth — higher
   ranks steer, hunt, kite, and seek objectives more capably (L1 is a brawler).
 - **Steering** (`flockSteer`): the per-ship acceleration = separation + alignment
-  + cohesion + wander + pursuit/kite + objective-seeking, each weight gated by
-  rank.
+  + cohesion + wander + pursuit/kite + player rally + objective-seeking, each
+  weight gated by rank.
 - **Bolt** (`Bullet`): an auto-aimed weapon projectile. **Mine**: an L3+ dropped
   proximity charge. **Shrapnel** (`Projectile`): fragments from a shattered rock.
 - **Asteroid**: a drifting 3D hazard with hp; shatters into shrapnel.
 - **Pickup**: a power-up bubble (heal / shield / speed). **Heal pad**, **Portal**,
   **Team base**: fixed field furniture.
+- **Rally beacon**: a short-lived player command. Right-click / shift-click
+  places a team-tinted beacon for the nearest living team; ships with enough
+  fuel prioritize it before ordinary base-raid objectives.
 - **Burst**: a transient FX event (explosion / detonation / muzzle / impact).
 - **Instance**: one packed record in a GPU instance buffer (a sprite, a 3D rock,
   a shield). Each **instance layout** is the field schema for one pass.
@@ -35,6 +38,8 @@ lineage survives only in `src/components` + `test/`, not in the game under
 
 - Randomness is threaded as a `Seed` through the model — never `Math.random` in
   the sim. Determinism is load-bearing (roguelike replay).
+- Sudden death stops reinforcements and base self-repair; docks still refuel,
+  rearm, and restore shields so ships can sortie, but damaged bases stay damaged.
 - `@onrails` (`result` / `maybe` / `pattern`) models error modes, nullables, and
   exhaustive dispatch as values — used at trust boundaries (GPU/asset init) and
   for genuine nullables (e.g. nearest-enemy lookup), not pervasively.

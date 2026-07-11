@@ -1,6 +1,8 @@
 import { empty } from "../engine/entities";
 import type { Seed } from "../engine/rng";
 import {
+  activeTeams,
+  DEFAULT_CONFIG,
   fullBaseHp,
   NUM_ASTEROIDS,
   NUM_PICKUPS,
@@ -11,15 +13,18 @@ import {
   rollShip,
   zeroScores,
 } from "./factory";
-import type { LightCycle, World } from "./types";
+import type { LightCycle, MatchConfig, World } from "./types";
 
-const INITIAL_SHIPS = 6;
-
-/** Initial world: six ships scattered across the field, seeded from `seed0`. */
-export const initWorld = (seed0: Seed): World => {
-  const [items, s1] = rollMany(INITIAL_SHIPS, seed0, (s, i) => {
+/** Initial world: `config.initialShips` scattered across the field from `seed0`. */
+export const initWorld = (
+  seed0: Seed,
+  config: MatchConfig = DEFAULT_CONFIG,
+): World => {
+  const teams = activeTeams(config);
+  const initialShips = config.initialShips;
+  const [items, s1] = rollMany(initialShips, seed0, (s, i) => {
     const [x, y, sp] = rollPosition(s);
-    return rollShip(sp, i + 1, x, y, 1);
+    return rollShip(sp, i + 1, x, y, 1, undefined, undefined, teams);
   });
   const [rocks, s2] = rollMany(NUM_ASTEROIDS, s1, (s, i) =>
     rollAsteroid(s, i + 1),
@@ -28,7 +33,7 @@ export const initWorld = (seed0: Seed): World => {
     rollPickup(s, i + 1),
   );
   return {
-    ships: { items, nextId: INITIAL_SHIPS + 1 },
+    ships: { items, nextId: initialShips + 1 },
     bursts: empty(),
     asteroids: { items: rocks, nextId: NUM_ASTEROIDS + 1 },
     pickups: { items: bubbles, nextId: NUM_PICKUPS + 1 },
@@ -38,9 +43,11 @@ export const initWorld = (seed0: Seed): World => {
     missiles: empty(),
     seed,
     score: zeroScores(),
-    baseHp: fullBaseHp(),
+    baseHp: fullBaseHp(config),
+    rally: null,
     age: 0,
     winner: null,
+    config,
   };
 };
 
@@ -58,6 +65,8 @@ export const spawnShip = (
     y,
     1,
     forceColor,
+    undefined,
+    activeTeams(world.config),
   );
   const placed = override ? { ...ship, ...override } : ship;
   return {

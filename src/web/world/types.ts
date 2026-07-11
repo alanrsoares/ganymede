@@ -12,14 +12,28 @@ export const MAX_LEVEL = 5;
 export type Rgb = readonly [number, number, number];
 export type Team = { readonly name: string; readonly rgb: Rgb };
 
+// Up to four teams — one per edge base. A match may activate fewer (2–4) via
+// MatchConfig; the first `config.teams` entries here are the ones in play.
 export const TEAMS: readonly Team[] = [
   { name: "cyan", rgb: [0.0, 0.78, 1.0] },
   { name: "orange", rgb: [1.0, 0.58, 0.15] },
   { name: "emerald", rgb: [0.05, 0.92, 0.45] },
   { name: "pink", rgb: [0.92, 0.16, 0.62] },
-  { name: "yellow", rgb: [0.95, 0.86, 0.12] },
 ];
+export const MAX_TEAMS = TEAMS.length;
 export const teamByName = new Map(TEAMS.map((t) => [t.name, t]));
+
+// Match setup produced by the pre-game screen (or DEFAULT_CONFIG in factory).
+// Carried on the World so the pure sim reads match length/format without a
+// module const. `teams` activates the first N of TEAMS.
+export interface MatchConfig {
+  readonly teams: number; // active teams (2..MAX_TEAMS)
+  readonly initialShips: number; // ships on the field at kickoff
+  readonly reinforceRate: number; // reinforcement spawns per window
+  readonly tempo: number; // sim generations per second
+  readonly reinforceGens: number; // length of the reinforcement window
+  readonly format: "standard" | "endless"; // endless never decides a winner
+}
 
 // A cell written into the CA grid: [x, y, state]. State 1 = spark, 3 = debris.
 export type Cell = readonly [number, number, number];
@@ -188,6 +202,9 @@ export const HEAL_PADS: readonly Pad[] = [
   { x: 120, y: 200, r: 18 },
   { x: 360, y: 70, r: 18 },
 ];
+// Neutral center pad: heals/buffs any ship over it, and is the level-up finish
+// line — a ship that has raided every enemy base promotes when it crosses here.
+export const CENTER_PAD: Pad = { x: 240, y: 135, r: 20 };
 // Two linked gates; a ship entering one exits the other keeping its momentum.
 export const PORTALS: readonly [Pad, Pad] = [
   { x: 70, y: 60, r: 13 },
@@ -206,7 +223,6 @@ const BASE_POS: readonly (readonly [number, number])[] = [
   [435, 135],
   [240, 32],
   [240, 238],
-  [240, 135],
 ];
 export const TEAM_BASES: readonly Base[] = TEAMS.map((t, i) => ({
   name: t.name,
@@ -215,6 +231,13 @@ export const TEAM_BASES: readonly Base[] = TEAMS.map((t, i) => ({
   y: BASE_POS[i][1],
 }));
 export const baseByName = new Map(TEAM_BASES.map((b) => [b.name, b]));
+
+export interface RallyBeacon {
+  readonly team: string;
+  readonly x: number;
+  readonly y: number;
+  readonly ttl: number; // gens remaining
+}
 
 export interface World {
   readonly ships: EntityList<LightCycle>;
@@ -228,14 +251,17 @@ export interface World {
   readonly seed: Seed;
   readonly score: Readonly<Record<string, number>>; // points per team name
   readonly baseHp: Readonly<Record<string, number>>; // per-team base integrity
+  readonly rally: RallyBeacon | null; // short-lived player command beacon
   readonly age: number; // generations elapsed; drives deterministic wander
   readonly winner: string | null; // team name once the match is decided (else null)
+  readonly config: MatchConfig; // match setup (team count, length, format)
 }
 
 export type Msg =
   | { readonly kind: "tick"; readonly steps: number; readonly now: number }
   | { readonly kind: "launch"; readonly dir: "a" | "b" | "c" | "d" }
   | { readonly kind: "drop"; readonly x: number; readonly y: number }
+  | { readonly kind: "rally"; readonly x: number; readonly y: number }
   | { readonly kind: "replenish" }
   | { readonly kind: "reset" };
 

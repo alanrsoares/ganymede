@@ -3,7 +3,6 @@ import { nextInt, type Seed } from "../../engine/rng";
 import { EXPLOSION_VARIANTS } from "../../sprites";
 import {
   EXPLOSION_DURATION,
-  MATCH_REINFORCE_GENS,
   MAX_SHIPS,
   NUM_ASTEROIDS,
   NUM_PICKUPS,
@@ -11,7 +10,7 @@ import {
   rollMany,
   rollPickup,
 } from "../factory";
-import type { Burst, Cmd, LightCycle, World } from "../types";
+import type { Burst, Cmd, LightCycle, MatchConfig, World } from "../types";
 import type { BurstSpec, TickCtx } from "./context";
 import type { HazardState } from "./hazard-collisions";
 import type { InteractionState } from "./interactions";
@@ -60,15 +59,26 @@ const refillPool = <T>(
   return [{ items: [...kept, ...fresh], nextId: base + fresh.length }, s];
 };
 
-/** Once reinforcements stop, a lone surviving team wins (empty field = draw). */
+/**
+ * Once reinforcements stop, a lone surviving team wins (empty field = draw).
+ * An "endless" match never decides — it runs until reset.
+ */
 const decideWinner = (
   current: string | null,
   nextAge: number,
   ships: readonly LightCycle[],
+  config: MatchConfig,
 ): string | null => {
-  if (current !== null || nextAge < MATCH_REINFORCE_GENS) return current;
+  if (config.format === "endless") return null;
+  if (current !== null || nextAge < config.reinforceGens) return current;
   const teams = new Set(ships.map((s) => s.colorName));
   return teams.size <= 1 ? ([...teams][0] ?? "draw") : null;
+};
+
+const decayRally = (world: World, steps: number): World["rally"] => {
+  if (!world.rally) return null;
+  const ttl = world.rally.ttl - steps;
+  return ttl > 0 ? { ...world.rally, ttl } : null;
 };
 
 /** The transient entity pools (shards, mines, bullets, missiles), survivors kept. */
@@ -144,8 +154,10 @@ export const finalizeTick = (
       seed,
       score: ctx.score,
       baseHp: ctx.baseHp,
+      rally: decayRally(world, steps),
       age: nextAge,
-      winner: decideWinner(world.winner, nextAge, ships.items),
+      winner: decideWinner(world.winner, nextAge, ships.items, world.config),
+      config: world.config,
     },
     [],
   ];

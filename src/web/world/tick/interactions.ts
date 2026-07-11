@@ -4,9 +4,9 @@ import { nextFloat } from "../../engine/rng";
 import {
   acquireTarget,
   BASE_HEAL_RATE,
-  BASE_LEVELUP_CHANCE,
   BASE_MAX_HP,
   BOOST_DURATION,
+  baseHitsRequired,
   CLOAK_DURATION,
   carriesMissiles,
   EMP_DAMAGE,
@@ -23,7 +23,9 @@ import {
   fireCooldownFor,
   HIT_COOLDOWN,
   HOME_RADIUS,
+  hasRaidedAllEnemyBases,
   isCarrier,
+  isRecon,
   MINE_ARM,
   MINE_DAMAGE,
   MINE_DROP_CHANCE,
@@ -32,8 +34,6 @@ import {
   MISSILE_FIRE_CHANCE,
   MISSILE_MIN_LEVEL,
   MISSILE_RANGE,
-  maxHpFor,
-  minesFor,
   OVERCHARGE_DURATION,
   OVERCHARGE_MULT,
   PAD_HEAL,
@@ -41,11 +41,10 @@ import {
   PORTAL_COOLDOWN,
   PORTAL_HORIZON,
   PORTAL_PULL,
+  RECON_SHARE_RADIUS,
   SCORE_KILL,
-  SCORE_MERGE,
   SCORE_PICKUP,
   SHIELD_BASE_REGEN,
-  shieldForLevel,
   shipRadius,
   spawnBullet,
   spawnMissile,
@@ -55,10 +54,10 @@ import {
 import {
   type Asteroid,
   BURST_DETONATION,
-  BURST_EXPLOSION,
   BURST_MUZZLE,
   type Bullet,
   baseByName,
+  CENTER_PAD,
   GRID_H,
   GRID_W,
   HEAL_PADS,
@@ -321,18 +320,17 @@ const dropMine = (
   return [mineId + 1, nextSeed];
 };
 
-/** Refill shield/mines/fuel and top up the home base while docked; roll for a free level-up. */
+/** Refill shield/mines/fuel and top up the home base while docked. */
 const dockAtHomeBase = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
   steps: number,
-  seed: Seed,
-): Seed => {
+): void => {
   const home = baseByName.get(s.colorName);
-  if (!home) return seed;
+  if (!home) return;
   const dx = toroidalDist(s.x, home.x, GRID_W);
   const dy = toroidalDist(s.y, home.y, GRID_H);
-  if (dx * dx + dy * dy >= HOME_RADIUS * HOME_RADIUS) return seed;
+  if (dx * dx + dy * dy >= HOME_RADIUS * HOME_RADIUS) return;
 
   s.shield = Math.min(
     s.maxShield,
@@ -340,29 +338,36 @@ const dockAtHomeBase = (
   );
   s.mines = s.maxMines;
   s.fuel = Math.min(s.maxFuel, s.fuel + FUEL_REFILL * steps);
-  ctx.baseHp[s.colorName] = Math.min(
-    BASE_MAX_HP,
-    ctx.baseHp[s.colorName] + BASE_HEAL_RATE * steps,
+  if (!ctx.suddenDeath) {
+    ctx.baseHp[s.colorName] = Math.min(
+      BASE_MAX_HP,
+      ctx.baseHp[s.colorName] + BASE_HEAL_RATE * steps,
+    );
+  }
+};
+
+/**
+ * The center pad: heals + regenerates shield for any ship over it, and — if the
+ * ship has already raided every alive enemy base — cashes in the level-up. The
+ * raid tally then resets. This is the "fly over center to finish" half of the
+ * level goal (the raid half is tallied in creditBaseHit).
+ */
+const finishAtCenterPad = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  steps: number,
+): void => {
+  const dx = toroidalDist(s.x, CENTER_PAD.x, GRID_W);
+  const dy = toroidalDist(s.y, CENTER_PAD.y, GRID_H);
+  if (dx * dx + dy * dy >= CENTER_PAD.r * CENTER_PAD.r) return;
+  s.hp = Math.min(s.maxHp, s.hp + PAD_HEAL * steps);
+  s.shield = Math.min(
+    s.maxShield,
+    s.shield + s.maxShield * SHIELD_BASE_REGEN * steps,
   );
-  if (s.level >= MAX_LEVEL) return seed;
-
-  const [roll, nextSeed] = nextFloat(seed);
-  if (roll >= BASE_LEVELUP_CHANCE * steps) return nextSeed;
-
-  s.level += 1;
-  s.maxHp = maxHpFor(s.archetype, s.level);
-  s.hp = s.maxHp;
-  s.maxShield = shieldForLevel(s.level);
-  s.shield = s.maxShield;
-  s.maxMines = minesFor(s.archetype, s.level);
-  s.mines = s.maxMines;
-  ctx.score[s.colorName] += SCORE_MERGE;
-  ctx.burstAt.push({
-    x: Math.floor(s.x),
-    y: Math.floor(s.y),
-    kind: BURST_EXPLOSION,
-  });
-  return nextSeed;
+  if (s.level >= MAX_LEVEL || !hasRaidedAllEnemyBases(s, ctx.baseHp)) return;
+  promote(ctx, s);
+  s.baseHits = {};
 };
 
 /** Push + zap one enemy caught in `s`'s force-field aura, if it's in range. */
@@ -437,6 +442,52 @@ const shareCarrierFuel = (ctx: TickCtx): void => {
   }
 };
 
+/**
+ * Merge a scout's *completed*-base raid credit into an ally's tally: for each
+ * enemy base the scout has finished, credit the ally up to its own requirement.
+ * Returns a fresh baseHits map, or null when nothing changes.
+ */
+const mergedRaidCredit = (
+  scout: Mutable<LightCycle>,
+  ally: Mutable<LightCycle>,
+): Record<string, number> | null => {
+  const allyNeed = baseHitsRequired(ally.level);
+  const scoutNeed = baseHitsRequired(scout.level);
+  let next: Record<string, number> | null = null;
+  for (const base of TEAM_BASES) {
+    if (base.name === scout.colorName) continue;
+    if ((scout.baseHits[base.name] ?? 0) < scoutNeed) continue; // not finished
+    if ((ally.baseHits[base.name] ?? 0) >= allyNeed) continue; // already there
+    next = next ?? { ...ally.baseHits };
+    next[base.name] = allyNeed;
+  }
+  return next;
+};
+
+/** Copy a scout's completed-raid intel onto one same-team ally in range. */
+const shareReconWith = (
+  scout: Mutable<LightCycle>,
+  ally: Mutable<LightCycle>,
+  removed: Set<number>,
+): void => {
+  if (ally.id === scout.id || removed.has(ally.id)) return;
+  if (ally.colorName !== scout.colorName || ally.level >= MAX_LEVEL) return;
+  const dx = toroidalDist(scout.x, ally.x, GRID_W);
+  const dy = toroidalDist(scout.y, ally.y, GRID_H);
+  if (dx * dx + dy * dy >= RECON_SHARE_RADIUS * RECON_SHARE_RADIUS) return;
+  const merged = mergedRaidCredit(scout, ally);
+  if (merged) ally.baseHits = merged;
+};
+
+/** Scouts broadcast their completed-raid progress to nearby same-team allies. */
+const shareReconIntel = (ctx: TickCtx): void => {
+  const { moved, removed } = ctx;
+  for (const s of moved) {
+    if (removed.has(s.id) || !isRecon(s.archetype)) continue;
+    for (const a of moved) shareReconWith(s, a, removed);
+  }
+};
+
 /** Weapons, pickups, portals, mines, home base, and force-field auras. */
 export const resolveInteractions = (
   ctx: TickCtx,
@@ -455,14 +506,16 @@ export const resolveInteractions = (
     [missileId, seed] = fireMissile(ctx, s, missiles, missileId, seed);
     collectPickups(ctx, s, bubbles, takenPickups);
     healAtPad(s, steps);
+    finishAtCenterPad(ctx, s, steps);
     pullTowardPortalHorizon(s, steps);
     teleportThroughPortal(s);
     [mineId, seed] = dropMine(ctx, s, mines, mineId, seed, steps);
-    seed = dockAtHomeBase(ctx, s, steps, seed);
+    dockAtHomeBase(ctx, s, steps);
   }
 
   applyForceFieldAuras(ctx);
   shareCarrierFuel(ctx);
+  shareReconIntel(ctx);
 
   ctx.seed = seed;
   motion.bulletId = bulletId;

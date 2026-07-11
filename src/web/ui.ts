@@ -21,6 +21,7 @@ export interface Ui {
   counts: State<Readonly<Record<string, number>>>; // living ships per team
   hpOn: State<boolean>;
   banner: State<string>; // center win/draw banner ("" = hidden)
+  activeTeamCount: State<number>; // scoreboard shows only the first N teams
   showError: (message: string) => void;
 }
 
@@ -285,17 +286,20 @@ const buildTeamRow = (
   );
 };
 
-// Per-team scoreboard rows, sorted by score (leader on top).
+// Per-team scoreboard rows, sorted by score (leader on top), scoped to the
+// active teams (first N — the match may run fewer than the full roster).
 const buildTeamRows = (
   teams: readonly { name: string; css: string }[],
   score: State<Readonly<Record<string, number>>>,
   bump: State<Readonly<Record<string, number>>>,
   counts: State<Readonly<Record<string, number>>>,
+  activeTeamCount: State<number>,
 ) => {
   const s = score.val;
   const b = bump.val;
   const c = counts.val;
-  return [...teams]
+  return teams
+    .slice(0, activeTeamCount.val)
     .sort((a, b2) => (s[b2.name] ?? 0) - (s[a.name] ?? 0))
     .map((t) => buildTeamRow(t, s, b, c));
 };
@@ -305,6 +309,7 @@ const buildScoreBox = (
   score: State<Readonly<Record<string, number>>>,
   bump: State<Readonly<Record<string, number>>>,
   counts: State<Readonly<Record<string, number>>>,
+  activeTeamCount: State<number>,
 ) => {
   const scoreOpen = van.state(true);
 
@@ -342,7 +347,7 @@ const buildScoreBox = (
       scoreOpen.val
         ? div(
             { class: "flex flex-col gap-0.5" },
-            ...buildTeamRows(cfg.teams, score, bump, counts),
+            ...buildTeamRows(cfg.teams, score, bump, counts, activeTeamCount),
           )
         : div(),
   );
@@ -374,6 +379,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
   const hpOn = van.state(true);
   const banner = van.state("");
   const counts = van.state<Readonly<Record<string, number>>>({});
+  const activeTeamCount = van.state(cfg.teams.length);
 
   const bump = useScoreBump(score, cfg.teams);
   injectScorePopStyle();
@@ -381,7 +387,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
   const hud = buildHud(status);
   const controls = buildControls(cfg, hpOn);
   const errorBox = buildErrorBox(error);
-  const scoreBox = buildScoreBox(cfg, score, bump, counts);
+  const scoreBox = buildScoreBox(cfg, score, bump, counts, activeTeamCount);
   const bannerBox = buildBanner(banner);
 
   van.add(document.body, hud, controls, scoreBox, bannerBox, errorBox);
@@ -392,6 +398,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
     counts,
     hpOn,
     banner,
+    activeTeamCount,
     showError: (message) => {
       error.val = message;
     },

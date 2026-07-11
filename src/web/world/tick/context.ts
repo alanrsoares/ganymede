@@ -1,9 +1,7 @@
 import type { Seed } from "../../engine/rng";
 import { nextInt } from "../../engine/rng";
 import {
-  baseHitsRequired,
   hurtShip,
-  MATCH_REINFORCE_GENS,
   maxHpFor,
   minesFor,
   rollShip,
@@ -17,7 +15,6 @@ import {
   MAX_LEVEL,
   type Mutable,
   type Rgb,
-  TEAM_BASES,
   TEAMS,
   type World,
 } from "../types";
@@ -55,7 +52,7 @@ export const createTickCtx = (
   steps,
   now,
   world,
-  suddenDeath: world.age >= MATCH_REINFORCE_GENS,
+  suddenDeath: world.age >= world.config.reinforceGens,
   moved: [],
   seed: world.seed,
   nextId: world.ships.nextId,
@@ -94,25 +91,11 @@ export const hit = (_ctx: TickCtx, s: Mutable<LightCycle>, amt: number) => {
   hurtShip(s, amt);
 };
 
-/** True once `s` has hit every alive enemy base at least `need` times. */
-const enemyBasesFullyRaided = (
-  ctx: TickCtx,
-  s: Mutable<LightCycle>,
-  need: number,
-): boolean => {
-  let aliveEnemyBases = 0;
-  for (const base of TEAM_BASES) {
-    if (base.name === s.colorName || ctx.baseHp[base.name] <= 0) continue;
-    aliveEnemyBases += 1;
-    if ((s.baseHits[base.name] ?? 0) < need) return false; // still owe hits
-  }
-  return aliveEnemyBases > 0; // false if there's nothing left to raid
-};
-
 /**
- * Credit a base-raid hit to the shooter (looked up by id). When it has hit every
- * alive enemy base the required number of times, it levels up and the tally
- * resets — the higher the rank, the more hits the next level demands.
+ * Credit a base-raid hit to the shooter (looked up by id). This only tallies
+ * progress — the actual promotion is cashed in when the ship reaches the center
+ * pad (see `finishAtCenterPad` in interactions.ts), so raiding + a center
+ * flyover together earn the level.
  */
 export const creditBaseHit = (
   ctx: TickCtx,
@@ -122,9 +105,6 @@ export const creditBaseHit = (
   const s = ctx.moved.find((m) => m.id === ownerId && !ctx.removed.has(m.id));
   if (!s || s.level >= MAX_LEVEL) return;
   s.baseHits = { ...s.baseHits, [baseName]: (s.baseHits[baseName] ?? 0) + 1 };
-  if (!enemyBasesFullyRaided(ctx, s, baseHitsRequired(s.level))) return;
-  promote(ctx, s);
-  s.baseHits = {};
 };
 
 export const promote = (ctx: TickCtx, s: Mutable<LightCycle>) => {
