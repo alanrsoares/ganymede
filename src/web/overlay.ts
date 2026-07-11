@@ -3,6 +3,8 @@
 
 import {
   FLOATS_PER_INSTANCE,
+  MAX_BASES,
+  MAX_CENTER_PADS,
   MAX_INSTANCES,
   MAX_ORBS,
   MAX_ROCKS,
@@ -49,21 +51,34 @@ export interface Overlay {
     shieldCount: number;
     orbInstances: Float32Array<ArrayBuffer>;
     orbCount: number;
+    baseInstances: Float32Array<ArrayBuffer>;
+    baseCount: number;
+    centerPadInstances: Float32Array<ArrayBuffer>;
+    centerPadCount: number;
   };
 }
 
 const drawFieldFurniture = (
   push: PushFn,
+  baseInstances: Float32Array<ArrayBuffer>,
+  centerPadInstances: Float32Array<ArrayBuffer>,
   cellPx: number,
   cellPy: number,
   now: number,
   world: World,
 ) => {
-  drawBases(push, cellPx, cellPy, now, world);
+  const baseCount = drawBases(baseInstances, cellPx, cellPy, now, world, push);
   drawPortals(push, cellPx, cellPy, now);
   drawHealPads(push, cellPx, cellPy, now);
-  drawCenterPad(push, cellPx, cellPy, now);
+  const centerPadCount = drawCenterPad(
+    centerPadInstances,
+    cellPx,
+    cellPy,
+    now,
+    push,
+  );
   drawRallyBeacon(push, cellPx, cellPy, now, world);
+  return { baseCount, centerPadCount };
 };
 
 const drawDynamicEntities = (
@@ -119,6 +134,10 @@ export const createOverlay = (): Overlay => {
   const rockInstances = new Float32Array(MAX_ROCKS * ROCK_LAYOUT.floats);
   const shieldInstances = new Float32Array(MAX_SHIELDS * SHIELD_LAYOUT.floats);
   const orbInstances = new Float32Array(MAX_ORBS * SHIELD_LAYOUT.floats);
+  const baseInstances = new Float32Array(MAX_BASES * ROCK_LAYOUT.floats);
+  const centerPadInstances = new Float32Array(
+    MAX_CENTER_PADS * ROCK_LAYOUT.floats,
+  );
   const { push, reset, getCount } = createPusher(instances);
 
   return {
@@ -127,7 +146,15 @@ export const createOverlay = (): Overlay => {
       const cellPx = w / gridW;
       const cellPy = h / gridH;
 
-      drawFieldFurniture(push, cellPx, cellPy, now, world);
+      const { baseCount, centerPadCount } = drawFieldFurniture(
+        push,
+        baseInstances,
+        centerPadInstances,
+        cellPx,
+        cellPy,
+        now,
+        world,
+      );
       const { rockCount, orbCount, shieldCount } = drawDynamicEntities(
         push,
         rockInstances,
@@ -149,6 +176,10 @@ export const createOverlay = (): Overlay => {
         shieldCount,
         orbInstances,
         orbCount,
+        baseInstances,
+        baseCount,
+        centerPadInstances,
+        centerPadCount,
       };
     },
   };

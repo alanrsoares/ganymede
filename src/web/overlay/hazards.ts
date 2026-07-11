@@ -45,6 +45,7 @@ export function drawRocks(
     rockInstances[o + R.r] = 0.52 + (1 - frac) * 0.28; // reddens when hurt
     rockInstances[o + R.g] = 0.53 - (1 - frac) * 0.08;
     rockInstances[o + R.b] = 0.6 - (1 - frac) * 0.18;
+    rockInstances[o + R.damage] = 1 - frac;
     rockCount++;
   }
   return rockCount;
@@ -106,6 +107,7 @@ export function drawShrapnel(
     rockInstances[o + R.r] = rVal;
     rockInstances[o + R.g] = gVal;
     rockInstances[o + R.b] = bVal;
+    rockInstances[o + R.damage] = ageFrac;
 
     rockCount++;
   }

@@ -183,6 +183,10 @@ const buildAndRender = (
     shieldCount,
     orbInstances,
     orbCount,
+    baseInstances,
+    baseCount,
+    centerPadInstances,
+    centerPadCount,
   } = overlay.build({
     w: canvas.width,
     h: canvas.height,
@@ -201,6 +205,10 @@ const buildAndRender = (
     shieldCount,
     orbInstances,
     orbCount,
+    baseInstances,
+    baseCount,
+    centerPadInstances,
+    centerPadCount,
     now / 1000,
   );
 };

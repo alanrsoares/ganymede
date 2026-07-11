@@ -3,8 +3,19 @@
 
 import * as d from "typegpu/data";
 import type { GpuContext } from "./gpu-context";
-import { makeAsteroidMesh, makeSphereMesh } from "./mesh";
-import { createMeshPass, instanceLayout, type MeshPass } from "./mesh-pass";
+import {
+  type Mesh,
+  makeAsteroidMesh,
+  makeCrystalMesh,
+  makeSphereMesh,
+  makeTorusMesh,
+} from "./mesh";
+import {
+  createMeshPass,
+  type InstanceLayout,
+  instanceLayout,
+  type MeshPass,
+} from "./mesh-pass";
 // WGSL lives in .wgsl files (real syntax highlighting) and is imported as text.
 import backgroundWGSL from "./shaders/background.wgsl" with { type: "text" };
 import bloomWGSL from "./shaders/bloom.wgsl" with { type: "text" };
@@ -27,6 +38,8 @@ export const MAX_INSTANCES = 768;
 export const MAX_ROCKS = 128;
 export const MAX_SHIELDS = 16; // ship shields
 export const MAX_ORBS = 12; // power-up energy orbs (own solid-lit pass)
+export const MAX_BASES = 8;
+export const MAX_CENTER_PADS = 2;
 // prettier-ignore
 export const ROCK_LAYOUT = instanceLayout([
   "cx",
@@ -40,7 +53,7 @@ export const ROCK_LAYOUT = instanceLayout([
   "r",
   "g",
   "b",
-  "_c",
+  "damage",
 ]);
 export const SHIELD_LAYOUT = instanceLayout([
   "cx",
@@ -82,6 +95,10 @@ export interface Renderer {
     shieldCount: number,
     orbInstances: Float32Array<ArrayBuffer>,
     orbCount: number,
+    baseInstances: Float32Array<ArrayBuffer>,
+    baseCount: number,
+    centerPadInstances: Float32Array<ArrayBuffer>,
+    centerPadCount: number,
     time: number,
   ): void;
   resize(): void;
@@ -194,7 +211,121 @@ interface MeshPasses {
   rockPass: MeshPass;
   shieldPass: MeshPass;
   orbPass: MeshPass;
+  basePass: MeshPass;
+  centerPadPass: MeshPass;
 }
+
+const createHelperMeshPass = (
+  device: GPUDevice,
+  format: GPUTextureFormat,
+  uniformBuffer: GPUBuffer,
+  mesh: Mesh,
+  shader: string,
+  layout: InstanceLayout<string>,
+  max: number,
+  depthWrite = true,
+  depthCompare: GPUCompareFunction = "less",
+  blend?: GPUBlendState,
+): MeshPass =>
+  createMeshPass(device, {
+    format,
+    uniformBuffer,
+    mesh,
+    shader,
+    layout,
+    maxInstances: max,
+    depthFormat: DEPTH_FORMAT,
+    depthWrite,
+    depthCompare,
+    blend,
+  });
+
+const createAdditivePass = (
+  device: GPUDevice,
+  format: GPUTextureFormat,
+  ub: GPUBuffer,
+  subdiv: number,
+  shader: string,
+  max: number,
+  srcCol: GPUBlendFactor,
+  dstCol: GPUBlendFactor,
+) =>
+  createHelperMeshPass(
+    device,
+    format,
+    ub,
+    makeSphereMesh(subdiv),
+    shader,
+    SHIELD_LAYOUT,
+    max,
+    false,
+    "always",
+    {
+      color: { srcFactor: srcCol, dstFactor: dstCol },
+      alpha: { srcFactor: "one", dstFactor: dstCol },
+    },
+  );
+
+const createOpaquePasses = (
+  device: GPUDevice,
+  format: GPUTextureFormat,
+  ub: GPUBuffer,
+) => ({
+  rockPass: createHelperMeshPass(
+    device,
+    format,
+    ub,
+    makeAsteroidMesh(2),
+    rockWGSL,
+    ROCK_LAYOUT,
+    MAX_ROCKS,
+  ),
+  basePass: createHelperMeshPass(
+    device,
+    format,
+    ub,
+    makeTorusMesh(16, 8, 1.0, 0.35),
+    rockWGSL,
+    ROCK_LAYOUT,
+    MAX_BASES,
+  ),
+  centerPadPass: createHelperMeshPass(
+    device,
+    format,
+    ub,
+    makeCrystalMesh(),
+    rockWGSL,
+    ROCK_LAYOUT,
+    MAX_CENTER_PADS,
+  ),
+});
+
+const createTransparentPasses = (
+  device: GPUDevice,
+  format: GPUTextureFormat,
+  ub: GPUBuffer,
+) => ({
+  shieldPass: createAdditivePass(
+    device,
+    format,
+    ub,
+    3,
+    shieldWGSL,
+    MAX_SHIELDS,
+    "src-alpha",
+    "one",
+  ),
+  orbPass: createAdditivePass(
+    device,
+    format,
+    ub,
+    2,
+    orbWGSL,
+    MAX_ORBS,
+    "src-alpha",
+    "one-minus-src-alpha",
+  ),
+});
 
 // --- 3D mesh passes: opaque tumbling rocks + additive translucent shields +
 // solid-lit power-up orbs. All are adapters of createMeshPass; they differ
@@ -202,54 +333,11 @@ interface MeshPasses {
 const createMeshPasses = (
   device: GPUDevice,
   format: GPUTextureFormat,
-  uniformBuffer: GPUBuffer,
-): MeshPasses => {
-  const rockPass = createMeshPass(device, {
-    format,
-    uniformBuffer,
-    mesh: makeAsteroidMesh(2),
-    shader: rockWGSL,
-    layout: ROCK_LAYOUT,
-    maxInstances: MAX_ROCKS,
-    depthFormat: DEPTH_FORMAT,
-    depthWrite: true,
-    depthCompare: "less",
-  });
-  const shieldPass = createMeshPass(device, {
-    format,
-    uniformBuffer,
-    mesh: makeSphereMesh(3), // subdiv 3 → round rim, no facets
-    shader: shieldWGSL,
-    layout: SHIELD_LAYOUT,
-    maxInstances: MAX_SHIELDS,
-    // Additive glow so the plasma reads as emitted energy, not a solid shell.
-    blend: {
-      color: { srcFactor: "src-alpha", dstFactor: "one" },
-      alpha: { srcFactor: "one", dstFactor: "one" },
-    },
-    depthFormat: DEPTH_FORMAT,
-    depthWrite: false, // overlays ships; drawn last, ignores depth
-    depthCompare: "always",
-  });
-  // Power-up orbs: solid glossy spheres (own lit shader), alpha-blended over the
-  // field. Reuses the shield instance layout (cx,cy,radius + rgb).
-  const orbPass = createMeshPass(device, {
-    format,
-    uniformBuffer,
-    mesh: makeSphereMesh(2),
-    shader: orbWGSL,
-    layout: SHIELD_LAYOUT,
-    maxInstances: MAX_ORBS,
-    blend: {
-      color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" },
-      alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
-    },
-    depthFormat: DEPTH_FORMAT,
-    depthWrite: false,
-    depthCompare: "always",
-  });
-  return { rockPass, shieldPass, orbPass };
-};
+  ub: GPUBuffer,
+): MeshPasses => ({
+  ...createOpaquePasses(device, format, ub),
+  ...createTransparentPasses(device, format, ub),
+});
 
 interface BloomPipelines {
   postSampler: GPUSampler;
@@ -417,10 +505,16 @@ interface ScenePassInput {
   shieldPass: MeshPass;
   shieldInstances: Float32Array<ArrayBuffer>;
   shieldCount: number;
+  basePass: MeshPass;
+  baseInstances: Float32Array<ArrayBuffer>;
+  baseCount: number;
+  centerPadPass: MeshPass;
+  centerPadInstances: Float32Array<ArrayBuffer>;
+  centerPadCount: number;
 }
 
 // Pass 1: the scene, into the offscreen sceneTex (+depth for the rocks).
-// Background (behind, no depth) → 3D rocks (depth-tested) → sprites (on top)
+// Background (behind, no depth) → 3D rocks/bases/pads (depth-tested) → sprites (on top)
 // → translucent shields (last, over the ships).
 const encodeScenePass = (
   encoder: GPUCommandEncoder,
@@ -447,6 +541,12 @@ const encodeScenePass = (
   pass.setBindGroup(0, input.bgBindGroup);
   pass.draw(3);
   input.rockPass.draw(pass, input.rockInstances, input.rockCount);
+  input.basePass.draw(pass, input.baseInstances, input.baseCount);
+  input.centerPadPass.draw(
+    pass,
+    input.centerPadInstances,
+    input.centerPadCount,
+  );
   if (input.instanceCount > 0) {
     pass.setPipeline(input.spritePipeline);
     pass.setBindGroup(0, input.spriteBindGroup);
@@ -509,6 +609,8 @@ interface RenderFnDeps {
   spriteBindGroup: GPUBindGroup;
   orbPass: MeshPass;
   shieldPass: MeshPass;
+  basePass: MeshPass;
+  centerPadPass: MeshPass;
   targets: RenderTargets;
   bloom: BloomPipelines;
 }
@@ -527,6 +629,10 @@ const createRenderFn = (deps: RenderFnDeps): Renderer["render"] => {
     shieldCount,
     orbInstances,
     orbCount,
+    baseInstances,
+    baseCount,
+    centerPadInstances,
+    centerPadCount,
     time,
   ) => {
     writeFrameUniforms(
@@ -557,6 +663,12 @@ const createRenderFn = (deps: RenderFnDeps): Renderer["render"] => {
       shieldPass: deps.shieldPass,
       shieldInstances,
       shieldCount,
+      basePass: deps.basePass,
+      baseInstances,
+      baseCount,
+      centerPadPass: deps.centerPadPass,
+      centerPadInstances,
+      centerPadCount,
     });
     encodeBloomPasses(encoder, context, deps.targets, deps.bloom);
 
@@ -590,11 +702,8 @@ export const createRenderer = (
       textureView,
       sampler,
     );
-  const { rockPass, shieldPass, orbPass } = createMeshPasses(
-    device,
-    format,
-    uniformBuffer,
-  );
+  const { rockPass, shieldPass, orbPass, basePass, centerPadPass } =
+    createMeshPasses(device, format, uniformBuffer);
   const bloom = createBloomPipelines(device, format);
   const targets = createRenderTargets(device, canvas, format, bloom);
 
@@ -613,6 +722,8 @@ export const createRenderer = (
       spriteBindGroup,
       orbPass,
       shieldPass,
+      basePass,
+      centerPadPass,
       targets,
       bloom,
     }),

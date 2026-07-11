@@ -105,9 +105,8 @@ fn fs(in: VSOut) -> @location(0) vec4f {
     let rockNoise = noise3(in.localPos * 8.0);
     let baseCol = in.color.rgb * (0.85 + 0.15 * rockNoise);
     
-    // Glowing veins based on damage.
-    // Base color red value goes from 0.52 (clean) to 0.80 (damaged).
-    let damage = clamp((in.color.r - 0.52) / 0.28, 0.0, 1.0);
+    // Glowing veins based on damage parameter.
+    let damage = clamp(in.color.a, 0.0, 1.0);
     
     // Thin crack lines on the surface
     let crackNoise = noise3(in.localPos * 4.2);

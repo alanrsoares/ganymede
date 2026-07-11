@@ -1,7 +1,8 @@
 // view: background furniture — bases, portals, heal pads, the center pad and
 // the rally beacon. Pure — reads world, animation is derived from `now`.
 
-import { BASE_LAYER, PORTAL_LAYER, SHAPE } from "../sprites";
+import { MAX_BASES, ROCK_LAYOUT } from "../gpu";
+import { PORTAL_LAYER, SHAPE } from "../sprites";
 import {
   CENTER_PAD,
   HEAL_PADS,
@@ -121,37 +122,73 @@ function drawBase(
     drawBaseDecorations(push, bx, by, cellPx, cellPy, now, base, hpFrac);
   }
 
-  // Main base platform
-  push(
-    bx,
-    by,
-    9 * cellPx,
-    9 * cellPy,
-    0,
-    SHAPE.tintsprite,
-    [base.rgb[0], base.rgb[1], base.rgb[2], dead ? 0.18 : 0.4 + 0.45 * hpFrac],
-    BASE_LAYER,
-  );
-
   if (!dead) drawBaseIntegrityBar(push, bx, by, cellPx, cellPy, hpFrac);
+}
+
+function writeBase3DInstance(
+  baseInstances: Float32Array<ArrayBuffer>,
+  baseCount: number,
+  base: (typeof TEAM_BASES)[number],
+  cellPx: number,
+  cellPy: number,
+  now: number,
+  hpFrac: number,
+) {
+  const o = baseCount * ROCK_LAYOUT.floats;
+  const R = ROCK_LAYOUT.idx;
+  const bx = (base.x + 0.5) * cellPx;
+  const by = (base.y + 0.5) * cellPy;
+
+  baseInstances[o + R.cx] = bx;
+  baseInstances[o + R.cy] = by;
+  baseInstances[o + R.radius] = 6.2 * cellPx;
+
+  // Portal base: slow flat spin on Z, slight 3D tilt on X/Y
+  baseInstances[o + R.rx] = 0.55;
+  baseInstances[o + R.ry] = 0.28;
+  baseInstances[o + R.rz] = now * 0.0003 + base.x;
+
+  // Color team tint
+  const dead = hpFrac <= 0;
+  baseInstances[o + R.r] = dead ? 0.25 : base.rgb[0] * (0.45 + 0.55 * hpFrac);
+  baseInstances[o + R.g] = dead ? 0.25 : base.rgb[1] * (0.45 + 0.55 * hpFrac);
+  baseInstances[o + R.b] = dead ? 0.25 : base.rgb[2] * (0.45 + 0.55 * hpFrac);
+  baseInstances[o + R.damage] = dead ? 1.0 : 1.0 - hpFrac; // glow cracks scale with damage!
 }
 
 // Team bases (furthest back).
 export function drawBases(
-  push: PushFn,
+  baseInstances: Float32Array<ArrayBuffer>,
   cellPx: number,
   cellPy: number,
   now: number,
   world: World,
-) {
+  push: PushFn,
+): number {
+  let baseCount = 0;
   for (const base of TEAM_BASES) {
     const hpFrac = Math.max(
       0,
       Math.min(1, (world.baseHp[base.name] ?? 0) / BASE_MAX_HP),
     );
-    if (hpFrac <= 0) continue; // razed or an inactive team (< 4 players)
+    if (hpFrac <= 0 && world.age > 0) continue; // razed or an inactive team (< 4 players)
+
+    if (baseCount < MAX_BASES) {
+      writeBase3DInstance(
+        baseInstances,
+        baseCount,
+        base,
+        cellPx,
+        cellPy,
+        now,
+        hpFrac,
+      );
+      baseCount++;
+    }
+
     drawBase(push, base, cellPx, cellPy, now, hpFrac);
   }
+  return baseCount;
 }
 
 // Portals (background). Two linked gates, slowly counter-rotating.
@@ -245,26 +282,33 @@ function drawCenterPadSparks(
 // double pulsing ring — visually distinct from the green heal pads. It heals
 // ships over it and is the level-up finish line, so it reads as "the prize."
 export function drawCenterPad(
-  push: PushFn,
+  centerPadInstances: Float32Array<ArrayBuffer>,
   cellPx: number,
   cellPy: number,
   now: number,
-) {
+  push: PushFn,
+): number {
   const cx = (CENTER_PAD.x + 0.5) * cellPx;
   const cy = (CENTER_PAD.y + 0.5) * cellPy;
   const pulse = 0.5 + 0.5 * Math.sin(now / 300);
   const gold: readonly [number, number, number] = [1.0, 0.82, 0.3];
 
-  // Base platform
-  push(
-    cx,
-    cy,
-    CENTER_PAD.r * 0.62 * cellPx,
-    CENTER_PAD.r * 0.62 * cellPy,
-    0,
-    SHAPE.sprite,
-    [gold[0], gold[1], gold[2], 0.25 + 0.15 * pulse],
-  );
+  // 3D Crystal Obelisk Instance
+  const o = 0;
+  const R = ROCK_LAYOUT.idx;
+  centerPadInstances[o + R.cx] = cx;
+  centerPadInstances[o + R.cy] = cy;
+  centerPadInstances[o + R.radius] = CENTER_PAD.r * 1.15 * cellPx;
+
+  // Floating crystal rotation: rotate on Y and Z axis
+  centerPadInstances[o + R.rx] = 0.35 + 0.1 * Math.sin(now / 1000);
+  centerPadInstances[o + R.ry] = now * 0.0006;
+  centerPadInstances[o + R.rz] = now * 0.0008;
+
+  centerPadInstances[o + R.r] = gold[0];
+  centerPadInstances[o + R.g] = gold[1];
+  centerPadInstances[o + R.b] = gold[2];
+  centerPadInstances[o + R.damage] = 0.2 + 0.5 * pulse; // pulsing cracks!
 
   // Concentric neon soundwave ripples using the custom SHAPE.pad
   push(
@@ -291,6 +335,7 @@ export function drawCenterPad(
   );
 
   drawCenterPadSparks(push, cx, cy, cellPx, cellPy, now, CENTER_PAD.r);
+  return 1;
 }
 
 export function drawRallyBeacon(
