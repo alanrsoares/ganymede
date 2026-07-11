@@ -10,11 +10,13 @@ import {
 } from "../sprites";
 import {
   BURST_DETONATION,
+  BURST_EMP,
   BURST_IMPACT,
   BURST_MUZZLE,
   type Burst,
   type World,
 } from "../world";
+import { EMP_RADIUS, EXPLOSION_DURATION } from "../world/tuning";
 import type { PushFn, Rgba } from "./push";
 
 // Weapon bolts — one shader-drawn plasma streak per bullet, thin + long and
@@ -144,6 +146,57 @@ export function burstStyle(burst: Burst): BurstStyle {
   };
 }
 
+// AoE detonation: a fiery blast filling the damage radius — an expanding orange
+// wave, a bright fireball, a white-hot core flash, and debris sparks flung
+// outward, all fading as the burst ages `t` (0..1). Built from soft solid discs
+// (SHAPE.ring is a bracketed HUD reticle, not a clean circle), fire palette.
+function drawAoeBlast(
+  push: PushFn,
+  cx: number,
+  cy: number,
+  cellPx: number,
+  cellPy: number,
+  t: number,
+) {
+  const disc = (radCells: number, a: number, rgb: [number, number, number]) =>
+    push(cx, cy, radCells * cellPx, radCells * cellPy, 0, SHAPE.solid, [
+      rgb[0],
+      rgb[1],
+      rgb[2],
+      Math.max(0, a),
+    ]);
+  const fade = 1 - t;
+  const ease = 1 - (1 - t) * (1 - t); // fast-out expansion
+
+  // Expanding blast wave: translucent orange disc reaching the damage radius.
+  disc(EMP_RADIUS * ease, 0.4 * fade, [1.0, 0.5, 0.15]);
+  // Fireball: brighter, grows faster, dies sooner.
+  const fb = Math.min(1, t * 1.5);
+  disc(
+    EMP_RADIUS * 0.5 * (1 - (1 - fb) * (1 - fb)),
+    0.8 * (1 - t * 1.6),
+    [1.0, 0.72, 0.25],
+  );
+  // White-hot core flash, gone by ~35% of the life.
+  disc(4 + 8 * t, 1 - t * 3, [1.0, 0.96, 0.85]);
+
+  // Debris sparks flung radially outward, shrinking as they fade.
+  const N = 7;
+  for (let i = 0; i < N; i++) {
+    const ang = (i * Math.PI * 2) / N + i;
+    const d = EMP_RADIUS * 0.8 * ease;
+    push(
+      cx + Math.cos(ang) * d * cellPx,
+      cy + Math.sin(ang) * d * cellPy,
+      2.4 * fade * cellPx,
+      2.4 * fade * cellPy,
+      0,
+      SHAPE.solid,
+      [1.0, 0.6, 0.2, fade],
+    );
+  }
+}
+
 // Animated blast FX at their sites.
 export function drawBursts(
   push: PushFn,
@@ -153,6 +206,20 @@ export function drawBursts(
   world: World,
 ) {
   for (const burst of world.bursts.items) {
+    if (burst.kind === BURST_EMP) {
+      const t = (now - burst.start) / EXPLOSION_DURATION;
+      if (t >= 0 && t <= 1) {
+        drawAoeBlast(
+          push,
+          (burst.x + 0.5) * cellPx,
+          (burst.y + 0.5) * cellPy,
+          cellPx,
+          cellPy,
+          t,
+        );
+      }
+      continue;
+    }
     const style = burstStyle(burst);
     const layer = clipLayer(style.clip, burst.start, now);
     if (layer < 0) continue;

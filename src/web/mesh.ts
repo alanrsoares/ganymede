@@ -164,117 +164,65 @@ export const makeSphereMesh = (subdiv = 2): Mesh => {
   return { data, vertexCount: faces.length * 3 };
 };
 
-/** A faceted 3D double-cone / crystal structure. */
-export const makeCrystalMesh = (): Mesh => {
-  const N = 8;
-  const verts: V3[] = [];
-  for (let i = 0; i < N; i++) {
-    const angle = (i * Math.PI * 2) / N;
-    verts.push([Math.cos(angle), Math.sin(angle), 0]);
-  }
-  verts.push([0, 0, 1.4]); // top
-  verts.push([0, 0, -1.4]); // bottom
-
-  const topIdx = N;
-  const botIdx = N + 1;
-  const faces: [number, number, number][] = [];
-  for (let i = 0; i < N; i++) {
-    const next = (i + 1) % N;
-    faces.push([topIdx, i, next]);
-    faces.push([i, botIdx, next]);
-  }
-
-  const data = new Float32Array(faces.length * 3 * 6);
+// Expand a flat triangle-point list to the interleaved [pos,normal] soup all our
+// meshes share. Each face gets one outward normal (flipped to point away from the
+// origin, so winding order never matters).
+const emitFlatTris = (tris: readonly [V3, V3, V3][]): Mesh => {
+  const data = new Float32Array(tris.length * 3 * 6);
   let o = 0;
-  for (const [a, b, c] of faces) {
-    const pa = verts[a];
-    const pb = verts[b];
-    const pc = verts[c];
-    const ux = pb[0] - pa[0];
-    const uy = pb[1] - pa[1];
-    const uz = pb[2] - pa[2];
-    const vx = pc[0] - pa[0];
-    const vy = pc[1] - pa[1];
-    const vz = pc[2] - pa[2];
-    const nx = uy * vz - uz * vy;
-    const ny = uz * vx - ux * vz;
-    const nz = ux * vy - uy * vx;
-    const [fnx, fny, fnz] = norm([nx, ny, nz]);
+  for (const [pa, pb, pc] of tris) {
+    let [nx, ny, nz] = norm([
+      (pb[1] - pa[1]) * (pc[2] - pa[2]) - (pb[2] - pa[2]) * (pc[1] - pa[1]),
+      (pb[2] - pa[2]) * (pc[0] - pa[0]) - (pb[0] - pa[0]) * (pc[2] - pa[2]),
+      (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pb[1] - pa[1]) * (pc[0] - pa[0]),
+    ]);
+    // Face centroid points away from the mesh center; flip the normal to match.
+    const cx = (pa[0] + pb[0] + pc[0]) / 3;
+    const cy = (pa[1] + pb[1] + pc[1]) / 3;
+    const cz = (pa[2] + pb[2] + pc[2]) / 3;
+    if (nx * cx + ny * cy + nz * cz < 0) {
+      nx = -nx;
+      ny = -ny;
+      nz = -nz;
+    }
     for (const p of [pa, pb, pc]) {
       data[o++] = p[0];
       data[o++] = p[1];
       data[o++] = p[2];
-      data[o++] = fnx;
-      data[o++] = fny;
-      data[o++] = fnz;
+      data[o++] = nx;
+      data[o++] = ny;
+      data[o++] = nz;
     }
   }
-  return { data, vertexCount: faces.length * 3 };
+  return { data, vertexCount: tris.length * 3 };
 };
 
-/** A faceted 3D torus ring. */
-export const makeTorusMesh = (
-  radialSegments = 12,
-  tubularSegments = 8,
-  radius = 1.0,
-  tube = 0.35,
-): Mesh => {
-  const verts: V3[] = [];
-  const faces: [number, number, number][] = [];
-
-  for (let j = 0; j <= radialSegments; j++) {
-    const theta = (j * Math.PI * 2) / radialSegments;
-    const cosTheta = Math.cos(theta);
-    const sinTheta = Math.sin(theta);
-
-    for (let i = 0; i <= tubularSegments; i++) {
-      const phi = (i * Math.PI * 2) / tubularSegments;
-      const cosPhi = Math.cos(phi);
-      const sinPhi = Math.sin(phi);
-
-      const x = (radius + tube * cosPhi) * cosTheta;
-      const y = (radius + tube * cosPhi) * sinTheta;
-      const z = tube * sinPhi;
-      verts.push([x, y, z]);
-    }
+/**
+ * A short faceted n-gon drum — a built platform / dais. The caps sit at z = ±h,
+ * so seen head-on (our orthographic camera) it reads as a pad viewed from above
+ * with a thin rim. Bases and the center pad are both scaled instances of this
+ * one shape, shaded as metal with emissive trim (see base.wgsl / pad.wgsl).
+ */
+export const makePrismMesh = (sides = 8, radius = 1, height = 0.28): Mesh => {
+  const top: V3[] = [];
+  const bot: V3[] = [];
+  for (let i = 0; i < sides; i++) {
+    const a = (i * Math.PI * 2) / sides;
+    const x = Math.cos(a) * radius;
+    const y = Math.sin(a) * radius;
+    top.push([x, y, height]);
+    bot.push([x, y, -height]);
   }
-
-  for (let j = 0; j < radialSegments; j++) {
-    for (let i = 0; i < tubularSegments; i++) {
-      const a = j * (tubularSegments + 1) + i;
-      const b = j * (tubularSegments + 1) + i + 1;
-      const c = (j + 1) * (tubularSegments + 1) + i;
-      const d = (j + 1) * (tubularSegments + 1) + i + 1;
-
-      faces.push([a, b, c]);
-      faces.push([b, d, c]);
-    }
+  const topC: V3 = [0, 0, height];
+  const botC: V3 = [0, 0, -height];
+  const tris: [V3, V3, V3][] = [];
+  for (let i = 0; i < sides; i++) {
+    const j = (i + 1) % sides;
+    // Side wall quad.
+    tris.push([top[i], top[j], bot[i]], [top[j], bot[j], bot[i]]);
+    // Cap fans.
+    tris.push([topC, top[i], top[j]]);
+    tris.push([botC, bot[i], bot[j]]);
   }
-
-  const data = new Float32Array(faces.length * 3 * 6);
-  let o = 0;
-  for (const [a, b, c] of faces) {
-    const pa = verts[a];
-    const pb = verts[b];
-    const pc = verts[c];
-    const ux = pb[0] - pa[0];
-    const uy = pb[1] - pa[1];
-    const uz = pb[2] - pa[2];
-    const vx = pc[0] - pa[0];
-    const vy = pc[1] - pa[1];
-    const vz = pc[2] - pa[2];
-    const nx = uy * vz - uz * vy;
-    const ny = uz * vx - ux * vz;
-    const nz = ux * vy - uy * vx;
-    const [fnx, fny, fnz] = norm([nx, ny, nz]);
-    for (const p of [pa, pb, pc]) {
-      data[o++] = p[0];
-      data[o++] = p[1];
-      data[o++] = p[2];
-      data[o++] = fnx;
-      data[o++] = fny;
-      data[o++] = fnz;
-    }
-  }
-  return { data, vertexCount: faces.length * 3 };
+  return emitFlatTris(tris);
 };

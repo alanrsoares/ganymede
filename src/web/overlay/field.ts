@@ -11,7 +11,11 @@ import {
   teamByName,
   type World,
 } from "../world";
-import { BASE_MAX_HP } from "../world/factory";
+import {
+  BASE_MAX_HP,
+  type CenterPadPhase,
+  centerPadPhase,
+} from "../world/factory";
 import type { PushFn, Rgba } from "./push";
 
 // Integrity bar under a base (green→red), hidden once razed.
@@ -64,18 +68,6 @@ function drawBaseDecorations(
     base.rgb[2],
     0.25 * (0.6 + 0.4 * Math.sin(now / 520 + base.x)) * hpFrac,
   ]);
-
-  // Vertical energy beam rising from base center
-  const beamPulse = 0.7 + 0.3 * Math.sin(now / 200 + base.x);
-  push(
-    bx,
-    by - 7 * cellPy, // rising from dock
-    1.6 * cellPx,
-    9 * cellPy,
-    0,
-    SHAPE.beam,
-    [base.rgb[0], base.rgb[1], base.rgb[2], 0.65 * beamPulse * hpFrac],
-  );
 
   // Orbital sparks circulating the base
   const numSparks = 3;
@@ -143,10 +135,11 @@ function writeBase3DInstance(
   baseInstances[o + R.cy] = by;
   baseInstances[o + R.radius] = 6.2 * cellPx;
 
-  // Portal base: slow flat spin on Z, slight 3D tilt on X/Y
-  baseInstances[o + R.rx] = 0.55;
-  baseInstances[o + R.ry] = 0.28;
-  baseInstances[o + R.rz] = now * 0.0003 + base.x;
+  // Platform laid flat facing the camera: a small fixed tilt shows the rim for
+  // depth, and a slow Z spin drifts the running lights around it.
+  baseInstances[o + R.rx] = 0.2;
+  baseInstances[o + R.ry] = -0.12;
+  baseInstances[o + R.rz] = now * 0.00025 + base.x;
 
   // Color team tint
   const dead = hpFrac <= 0;
@@ -249,9 +242,9 @@ function drawCenterPadSparks(
 ) {
   const numCenterSparks = 4;
   for (let i = 0; i < numCenterSparks; i++) {
-    // Ring 1: Clockwise
-    const angle1 = now / 600 + (i * Math.PI * 2) / numCenterSparks;
-    const dist1 = (r * 0.85 + 1.2 * Math.sin(now / 300 + i)) * cellPx;
+    // Ring 1: Clockwise, slow drift
+    const angle1 = now / 1600 + (i * Math.PI * 2) / numCenterSparks;
+    const dist1 = (r * 0.85 + 1.2 * Math.sin(now / 900 + i)) * cellPx;
     push(
       cx + Math.cos(angle1) * dist1,
       cy + Math.sin(angle1) * dist1,
@@ -264,8 +257,8 @@ function drawCenterPadSparks(
 
     // Ring 2: Counter-Clockwise, nested
     const angle2 =
-      -(now / 450) + (i * Math.PI * 2) / numCenterSparks + Math.PI / 4;
-    const dist2 = (r * 0.55 + 0.8 * Math.cos(now / 250 + i)) * cellPx;
+      -(now / 1150) + (i * Math.PI * 2) / numCenterSparks + Math.PI / 4;
+    const dist2 = (r * 0.55 + 0.8 * Math.cos(now / 780 + i)) * cellPx;
     push(
       cx + Math.cos(angle2) * dist2,
       cy + Math.sin(angle2) * dist2,
@@ -278,64 +271,81 @@ function drawCenterPadSparks(
   }
 }
 
-// The neutral center pad (foreground furniture): a gold/white platform under a
-// double pulsing ring — visually distinct from the green heal pads. It heals
-// ships over it and is the level-up finish line, so it reads as "the prize."
+// The resource the center pad currently dispenses drives its ring colour, so a
+// glance tells you what holding it is worth right now (matches the pickup hues).
+const PHASE_COLOR: Record<CenterPadPhase, readonly [number, number, number]> = {
+  hp: [0.3, 1.0, 0.5], // green — health
+  fuel: [1.0, 0.65, 0.1], // amber — fuel
+  shield: [0.4, 0.78, 1.0], // blue — shield
+};
+
+// The neutral center pad (foreground furniture): concentric neon rings radiating
+// outward like a beacon ping, around a bright pulsing core. Its colour tracks the
+// active resource phase (hp/fuel/shield), so it reads as "the prize" and signals
+// what it yields. Pure 2D vector; draws no 3D mesh instance (returns 0).
 export function drawCenterPad(
-  centerPadInstances: Float32Array<ArrayBuffer>,
+  _centerPadInstances: Float32Array<ArrayBuffer>,
   cellPx: number,
   cellPy: number,
   now: number,
   push: PushFn,
+  world: World,
 ): number {
   const cx = (CENTER_PAD.x + 0.5) * cellPx;
   const cy = (CENTER_PAD.y + 0.5) * cellPy;
-  const pulse = 0.5 + 0.5 * Math.sin(now / 300);
-  const gold: readonly [number, number, number] = [1.0, 0.82, 0.3];
+  const pulse = 0.5 + 0.5 * Math.sin(now / 620);
+  const col = PHASE_COLOR[centerPadPhase(world.age)];
+  // Core + boundary ring stay near-white but carry a hint of the phase colour.
+  const lit = (k: number, a: number): Rgba => [
+    col[0] + (1 - col[0]) * k,
+    col[1] + (1 - col[1]) * k,
+    col[2] + (1 - col[2]) * k,
+    a,
+  ];
+  const r = CENTER_PAD.r;
 
-  // 3D Crystal Obelisk Instance
-  const o = 0;
-  const R = ROCK_LAYOUT.idx;
-  centerPadInstances[o + R.cx] = cx;
-  centerPadInstances[o + R.cy] = cy;
-  centerPadInstances[o + R.radius] = CENTER_PAD.r * 1.15 * cellPx;
+  // Beacon ping: each ring eases from the core outward and fades as it goes, the
+  // set staggered in phase so a new wave leaves as the last dissolves. Slow
+  // period + ease-out expansion so the motion glides rather than ticks.
+  const RINGS = 4;
+  const period = 3200;
+  for (let i = 0; i < RINGS; i++) {
+    const t = (((now / period + i / RINGS) % 1) + 1) % 1;
+    const eased = 1 - (1 - t) * (1 - t); // fast-out, gentle settle
+    const rad = r * (0.35 + 1.2 * eased);
+    // Fade in from the core and out at the rim so recycling is never visible.
+    const alpha = Math.sin(t * Math.PI) * 0.7;
+    push(cx, cy, rad * cellPx, rad * cellPy, now / 4200, SHAPE.ring, [
+      col[0],
+      col[1],
+      col[2],
+      alpha,
+    ]);
+  }
 
-  // Floating crystal rotation: rotate on Y and Z axis
-  centerPadInstances[o + R.rx] = 0.35 + 0.1 * Math.sin(now / 1000);
-  centerPadInstances[o + R.ry] = now * 0.0006;
-  centerPadInstances[o + R.rz] = now * 0.0008;
-
-  centerPadInstances[o + R.r] = gold[0];
-  centerPadInstances[o + R.g] = gold[1];
-  centerPadInstances[o + R.b] = gold[2];
-  centerPadInstances[o + R.damage] = 0.2 + 0.5 * pulse; // pulsing cracks!
-
-  // Concentric neon soundwave ripples using the custom SHAPE.pad
+  // Steady inner boundary ring + a bright core so there is structure between
+  // pings and a clear point to aim for.
   push(
     cx,
     cy,
-    CENTER_PAD.r * 1.25 * cellPx,
-    CENTER_PAD.r * 1.25 * cellPy,
-    0,
-    SHAPE.pad,
-    [gold[0], gold[1], gold[2], 0.7 + 0.3 * pulse],
-    0.35 + 0.15 * Math.sin(now / 480), // drift parameter for the wave ripple offset
+    r * 0.42 * cellPx,
+    r * 0.42 * cellPy,
+    -now / 1900,
+    SHAPE.ring,
+    lit(0.7, 0.55 + 0.3 * pulse),
   );
-
-  // Major golden beacon beam rising from the center pad
-  const padPulse = 0.8 + 0.2 * Math.sin(now / 150);
   push(
     cx,
-    cy - 12 * cellPy, // Offset vertically so it extends upward
-    3.0 * cellPx, // Wide beam width
-    16 * cellPy, // Tall beam height
+    cy,
+    r * 0.16 * cellPx,
+    r * 0.16 * cellPy,
     0,
-    SHAPE.beam,
-    [1.0, 0.9, 0.65, 0.58 * padPulse],
+    SHAPE.solid,
+    lit(0.8, 0.75 + 0.25 * pulse),
   );
 
-  drawCenterPadSparks(push, cx, cy, cellPx, cellPy, now, CENTER_PAD.r);
-  return 1;
+  drawCenterPadSparks(push, cx, cy, cellPx, cellPy, now, r);
+  return 0;
 }
 
 export function drawRallyBeacon(

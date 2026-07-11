@@ -6,9 +6,8 @@ import type { GpuContext } from "./gpu-context";
 import {
   type Mesh,
   makeAsteroidMesh,
-  makeCrystalMesh,
+  makePrismMesh,
   makeSphereMesh,
-  makeTorusMesh,
 } from "./mesh";
 import {
   createMeshPass,
@@ -18,9 +17,11 @@ import {
 } from "./mesh-pass";
 // WGSL lives in .wgsl files (real syntax highlighting) and is imported as text.
 import backgroundWGSL from "./shaders/background.wgsl" with { type: "text" };
+import baseWGSL from "./shaders/base.wgsl" with { type: "text" };
 import bloomWGSL from "./shaders/bloom.wgsl" with { type: "text" };
 import orbWGSL from "./shaders/orb.wgsl" with { type: "text" };
 import overlayWGSL from "./shaders/overlay.wgsl" with { type: "text" };
+import padWGSL from "./shaders/pad.wgsl" with { type: "text" };
 import rockWGSL from "./shaders/rock.wgsl" with { type: "text" };
 import shieldWGSL from "./shaders/shield.wgsl" with { type: "text" };
 import { SPRITE_LAYER_COUNT, SPRITE_URLS } from "./sprites";
@@ -284,8 +285,8 @@ const createOpaquePasses = (
     device,
     format,
     ub,
-    makeTorusMesh(16, 8, 1.0, 0.35),
-    rockWGSL,
+    makePrismMesh(6, 1.0, 0.26), // hex platform
+    baseWGSL,
     ROCK_LAYOUT,
     MAX_BASES,
   ),
@@ -293,8 +294,8 @@ const createOpaquePasses = (
     device,
     format,
     ub,
-    makeCrystalMesh(),
-    rockWGSL,
+    makePrismMesh(8, 1.0, 0.32), // octagonal dais, a touch taller
+    padWGSL,
     ROCK_LAYOUT,
     MAX_CENTER_PADS,
   ),

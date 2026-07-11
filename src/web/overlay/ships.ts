@@ -116,6 +116,53 @@ function drawShipExhaust(
   );
 }
 
+// Comet tail: a bright coma just behind the engine that stretches into a long,
+// thin, tapering streak. Many tightly-spaced soft discs overlap into one
+// continuous glow — hot-white at the head, bleeding to the team color and
+// fading to nothing at the tip. Length + brightness scale with speed and stretch
+// under boost; a dead tank shows none. Deterministic — no sim state.
+function drawShipTrail(
+  push: PushFn,
+  cycle: LightCycle,
+  v: ShipVisual,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+) {
+  if (cycle.fuel <= 0) return;
+  const speed = Math.hypot(cycle.vx, cycle.vy);
+  const drive = Math.max(0.3, Math.min(1, speed / 3));
+  const boost = cycle.boostTime > 0 ? 1.7 : 1;
+  const hot: readonly [number, number, number] = [1.0, 0.95, 0.82];
+  const px = -v.hy; // perpendicular to heading
+  const py = v.hx;
+  const len = v.size * (2.2 + 4.5 * drive) * boost; // total tail reach
+  const PUFFS = 12;
+  for (let k = 1; k <= PUFFS; k++) {
+    const t = k / PUFFS; // 0 at head → 1 at tip
+    const back = 0.5 * v.size + t * len; // tight near the coma, spreading back
+    // Slight wispy sway that grows toward the tip so the tail curls, not rigid.
+    const wob = Math.sin(now * 0.02 + cycle.id * 1.7) * t * t * 0.5 * v.size;
+    const sz = v.size * (0.62 * (1 - t) ** 1.3 + 0.06); // fat coma → thin tip
+    const alpha = (1 - t) ** 1.8 * 0.6 * drive * boost;
+    const mix = t ** 0.6; // hot core bleeds to team colour quickly
+    push(
+      v.scx - v.hx * back * cellPx + px * wob * cellPx,
+      v.scy - v.hy * back * cellPy + py * wob * cellPy,
+      sz * cellPx,
+      sz * cellPy,
+      0,
+      SHAPE.solid,
+      [
+        hot[0] + (cycle.color[0] - hot[0]) * mix,
+        hot[1] + (cycle.color[1] - hot[1]) * mix,
+        hot[2] + (cycle.color[2] - hot[2]) * mix,
+        alpha,
+      ],
+    );
+  }
+}
+
 // Distress smoke: a hurt ship trails a few dark puffs from its tail that
 // grow + fade. Deterministic from `now` + ship id, so it costs no sim.
 function drawShipDistressSmoke(
@@ -478,6 +525,7 @@ function drawShip(
 ): number {
   const v = computeShipVisual(cycle, cellPx, cellPy, now);
   drawShipShadow(push, v, cellPx, cellPy);
+  drawShipTrail(push, cycle, v, cellPx, cellPy, now);
   drawShipExhaust(push, cycle, v, cellPx, cellPy, exhaustL);
   drawShipDistressSmoke(push, cycle, v, cellPx, cellPy, now);
   const nextShieldCount = drawShipShield(

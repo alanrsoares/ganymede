@@ -76,6 +76,7 @@ const drawFieldFurniture = (
     cellPy,
     now,
     push,
+    world,
   );
   drawRallyBeacon(push, cellPx, cellPy, now, world);
   return { baseCount, centerPadCount };
