@@ -43,10 +43,56 @@ function drawBaseIntegrityBar(
     [1 - hpFrac, 0.2 + 0.7 * hpFrac, 0.2, 0.9],
   );
 }
-
 // A single team base: slow team-tinted portal ring encircling the dock
 // platform, dimming as its integrity falls; a razed base (hp 0) shows only
 // faint rubble. An HP bar sits beneath it.
+function drawBaseDecorations(
+  push: PushFn,
+  bx: number,
+  by: number,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+  base: (typeof TEAM_BASES)[number],
+  hpFrac: number,
+) {
+  // Pulse energy halo under the base
+  push(bx, by, 10 * cellPx, 10 * cellPy, -now / 800, SHAPE.ring, [
+    base.rgb[0],
+    base.rgb[1],
+    base.rgb[2],
+    0.25 * (0.6 + 0.4 * Math.sin(now / 520 + base.x)) * hpFrac,
+  ]);
+
+  // Vertical energy beam rising from base center
+  const beamPulse = 0.7 + 0.3 * Math.sin(now / 200 + base.x);
+  push(
+    bx,
+    by - 7 * cellPy, // rising from dock
+    1.6 * cellPx,
+    9 * cellPy,
+    0,
+    SHAPE.beam,
+    [base.rgb[0], base.rgb[1], base.rgb[2], 0.65 * beamPulse * hpFrac],
+  );
+
+  // Orbital sparks circulating the base
+  const numSparks = 3;
+  for (let i = 0; i < numSparks; i++) {
+    const angle = now / 1000 + (i * Math.PI * 2) / numSparks + base.x;
+    const dist = (7 + 1.5 * Math.sin(now / 350 + i)) * cellPx;
+    push(
+      bx + Math.cos(angle) * dist,
+      by + Math.sin(angle) * dist,
+      1.1 * cellPx,
+      1.1 * cellPy,
+      0,
+      SHAPE.solid,
+      [base.rgb[0], base.rgb[1], base.rgb[2], 0.75 * hpFrac],
+    );
+  }
+}
+
 function drawBase(
   push: PushFn,
   base: (typeof TEAM_BASES)[number],
@@ -59,7 +105,9 @@ function drawBase(
   const by = (base.y + 0.5) * cellPy;
   const dead = hpFrac <= 0;
   const bpulse = 0.6 + 0.4 * Math.sin(now / 520 + base.x);
+
   if (!dead) {
+    // Portal base ring
     push(
       bx,
       by,
@@ -70,7 +118,10 @@ function drawBase(
       [base.rgb[0], base.rgb[1], base.rgb[2], (0.35 + 0.3 * bpulse) * hpFrac],
       PORTAL_LAYER,
     );
+    drawBaseDecorations(push, bx, by, cellPx, cellPy, now, base, hpFrac);
   }
+
+  // Main base platform
   push(
     bx,
     by,
@@ -81,6 +132,7 @@ function drawBase(
     [base.rgb[0], base.rgb[1], base.rgb[2], dead ? 0.18 : 0.4 + 0.45 * hpFrac],
     BASE_LAYER,
   );
+
   if (!dead) drawBaseIntegrityBar(push, bx, by, cellPx, cellPy, hpFrac);
 }
 
@@ -149,6 +201,46 @@ export function drawHealPads(
   }
 }
 
+function drawCenterPadSparks(
+  push: PushFn,
+  cx: number,
+  cy: number,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+  r: number,
+) {
+  const numCenterSparks = 4;
+  for (let i = 0; i < numCenterSparks; i++) {
+    // Ring 1: Clockwise
+    const angle1 = now / 600 + (i * Math.PI * 2) / numCenterSparks;
+    const dist1 = (r * 0.85 + 1.2 * Math.sin(now / 300 + i)) * cellPx;
+    push(
+      cx + Math.cos(angle1) * dist1,
+      cy + Math.sin(angle1) * dist1,
+      1.4 * cellPx,
+      1.4 * cellPy,
+      0,
+      SHAPE.solid,
+      [1.0, 0.85, 0.2, 0.9],
+    );
+
+    // Ring 2: Counter-Clockwise, nested
+    const angle2 =
+      -(now / 450) + (i * Math.PI * 2) / numCenterSparks + Math.PI / 4;
+    const dist2 = (r * 0.55 + 0.8 * Math.cos(now / 250 + i)) * cellPx;
+    push(
+      cx + Math.cos(angle2) * dist2,
+      cy + Math.sin(angle2) * dist2,
+      1.0 * cellPx,
+      1.0 * cellPy,
+      0,
+      SHAPE.solid,
+      [1.0, 1.0, 1.0, 0.8],
+    );
+  }
+}
+
 // The neutral center pad (foreground furniture): a gold/white platform under a
 // double pulsing ring — visually distinct from the green heal pads. It heals
 // ships over it and is the level-up finish line, so it reads as "the prize."
@@ -162,7 +254,8 @@ export function drawCenterPad(
   const cy = (CENTER_PAD.y + 0.5) * cellPy;
   const pulse = 0.5 + 0.5 * Math.sin(now / 300);
   const gold: readonly [number, number, number] = [1.0, 0.82, 0.3];
-  // Inner platform.
+
+  // Base platform
   push(
     cx,
     cy,
@@ -170,27 +263,34 @@ export function drawCenterPad(
     CENTER_PAD.r * 0.62 * cellPy,
     0,
     SHAPE.sprite,
-    [gold[0], gold[1], gold[2], 0.22 + 0.12 * pulse],
+    [gold[0], gold[1], gold[2], 0.25 + 0.15 * pulse],
   );
-  // Two counter-rotating rings.
+
+  // Concentric neon soundwave ripples using the custom SHAPE.pad
   push(
     cx,
     cy,
-    CENTER_PAD.r * cellPx,
-    CENTER_PAD.r * cellPy,
-    now / 900,
-    SHAPE.ring,
-    [gold[0], gold[1], gold[2], 0.5 + 0.3 * pulse],
+    CENTER_PAD.r * 1.25 * cellPx,
+    CENTER_PAD.r * 1.25 * cellPy,
+    0,
+    SHAPE.pad,
+    [gold[0], gold[1], gold[2], 0.7 + 0.3 * pulse],
+    0.35 + 0.15 * Math.sin(now / 480), // drift parameter for the wave ripple offset
   );
+
+  // Major golden beacon beam rising from the center pad
+  const padPulse = 0.8 + 0.2 * Math.sin(now / 150);
   push(
     cx,
-    cy,
-    CENTER_PAD.r * 0.74 * cellPx,
-    CENTER_PAD.r * 0.74 * cellPy,
-    -now / 650,
-    SHAPE.ring,
-    [1.0, 1.0, 1.0, 0.28 + 0.22 * pulse],
+    cy - 12 * cellPy, // Offset vertically so it extends upward
+    3.0 * cellPx, // Wide beam width
+    16 * cellPy, // Tall beam height
+    0,
+    SHAPE.beam,
+    [1.0, 0.9, 0.65, 0.58 * padPulse],
   );
+
+  drawCenterPadSparks(push, cx, cy, cellPx, cellPy, now, CENTER_PAD.r);
 }
 
 export function drawRallyBeacon(
