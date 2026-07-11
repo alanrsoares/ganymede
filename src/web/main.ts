@@ -108,11 +108,17 @@ const setupInputHandlers = (
 
   window.addEventListener("keydown", (e) => {
     const key = e.key.toLowerCase();
-    if (key === "z") dispatch({ kind: "launch", dir: "a" });
-    else if (key === "x") dispatch({ kind: "launch", dir: "b" });
-    else if (key === "c") dispatch({ kind: "launch", dir: "c" });
-    else if (key === "v") dispatch({ kind: "launch", dir: "d" });
-    else if (key === "h") ui.hpOn.val = !ui.hpOn.val;
+    switch (key) {
+      case "z":
+        dispatch({ kind: "launch", dir: "a" });
+        break;
+      case "x":
+        dispatch({ kind: "launch", dir: "b" });
+        break;
+      case "h":
+        ui.hpOn.val = !ui.hpOn.val;
+        break;
+    }
   });
 };
 

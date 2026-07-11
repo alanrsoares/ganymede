@@ -19,19 +19,21 @@ const MESH_NRM_LOC = 7;
  * Insert a field and every offset shifts in lock-step — the WGSL `@location`
  * struct is the only thing left to keep in the same order.
  */
-export interface InstanceLayout {
+export interface InstanceLayout<T extends string> {
   readonly floats: number;
   readonly attrs: GPUVertexAttribute[];
-  readonly idx: Record<string, number>;
+  readonly idx: Record<T, number>;
 }
-export const instanceLayout = (fields: readonly string[]): InstanceLayout => ({
+export const instanceLayout = <T extends string>(
+  fields: readonly T[],
+): InstanceLayout<T> => ({
   floats: fields.length,
   attrs: Array.from({ length: fields.length / 4 }, (_, i) => ({
     shaderLocation: i,
     offset: i * 16,
     format: "float32x4" as const,
   })),
-  idx: Object.fromEntries(fields.map((f, i) => [f, i])),
+  idx: Object.fromEntries(fields.map((f, i) => [f, i])) as Record<T, number>,
 });
 
 export interface MeshPass {
@@ -39,12 +41,12 @@ export interface MeshPass {
   draw(pass: GPURenderPassEncoder, data: Float32Array, count: number): void;
 }
 
-export interface MeshPassSpec {
+export interface MeshPassSpec<T extends string> {
   format: GPUTextureFormat;
   uniformBuffer: GPUBuffer;
   mesh: Mesh;
   shader: string;
-  layout: InstanceLayout;
+  layout: InstanceLayout<T>;
   maxInstances: number;
   blend?: GPUBlendState; // omit for opaque
   depthFormat: GPUTextureFormat;
@@ -52,9 +54,9 @@ export interface MeshPassSpec {
   depthCompare: GPUCompareFunction;
 }
 
-export const createMeshPass = (
+export const createMeshPass = <T extends string>(
   device: GPUDevice,
-  spec: MeshPassSpec,
+  spec: MeshPassSpec<T>,
 ): MeshPass => {
   const { mesh, layout } = spec;
   const meshBuffer = device.createBuffer({
