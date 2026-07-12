@@ -201,7 +201,7 @@ const emitFlatTris = (tris: readonly [V3, V3, V3][]): Mesh => {
  * A short faceted n-gon drum — a built platform / dais. The caps sit at z = ±h,
  * so seen head-on (our orthographic camera) it reads as a pad viewed from above
  * with a thin rim. Bases and the center pad are both scaled instances of this
- * one shape, shaded as metal with emissive trim (see base.wgsl / pad.wgsl).
+ * one shape, shaded as metal with emissive trim (see base.wgsl).
  */
 export const makePrismMesh = (sides = 8, radius = 1, height = 0.28): Mesh => {
   const top: V3[] = [];

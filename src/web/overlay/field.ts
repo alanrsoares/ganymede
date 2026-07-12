@@ -16,6 +16,7 @@ import {
   type CenterPadPhase,
   centerPadPhase,
 } from "../world/factory";
+import { drawForceField, type FieldDir } from "./effects";
 import type { PushFn, Rgba } from "./push";
 
 // Integrity bar under a base (green→red), hidden once razed.
@@ -48,105 +49,140 @@ function drawBaseIntegrityBar(
     [1 - hpFrac, 0.2 + 0.7 * hpFrac, 0.2, 0.9],
   );
 }
-// A single team base: slow team-tinted portal ring encircling the dock
-// platform, dimming as its integrity falls; a razed base (hp 0) shows only
-// faint rubble. An HP bar sits beneath it.
-function drawBaseDecorations(
+// A hex-prism "energy platform" — the shared visual spine of both team bases and
+// the center pad. It writes one 3D dais instance and layers the 2D glow over it:
+// a soft halo, a force-field ring wave, a counter-rotating boundary ring and a
+// bright core. Every 2D radius derives from `scale` (the platform radius in
+// cells), so a base and the ~2× center pad are the same composition at a
+// different size, tint and field direction. `intensity` (0..1) fades the whole
+// 2D glow at once — a base passes its hpFrac (razed → only the 3D rubble left);
+// the pad passes 1.
+interface PlatformSpec {
+  gx: number; // cell-space centre
+  gy: number;
+  scale: number; // platform radius in cells; drives every 2D radius
+  tint: readonly [number, number, number]; // 2D glow colour
+  dir: FieldDir; // "in" pulls (base), "out" repels (pad)
+  intensity: number; // 0..1 glow multiplier
+  seed: number; // per-instance phase offset (spin + pulse)
+  meshRgb: readonly [number, number, number]; // 3D dais colour
+  damage: number; // 3D crack amount, 0..1
+}
+
+// Write the 3D metal dais instance: flat to the camera with a small fixed tilt
+// for rim depth and a slow Z spin drifting its running lights.
+function writePlatformDais(
+  instances: Float32Array<ArrayBuffer>,
+  slot: number,
+  px: number,
+  py: number,
+  radius: number,
+  now: number,
+  spec: PlatformSpec,
+): void {
+  const R = ROCK_LAYOUT.idx;
+  const o = slot * ROCK_LAYOUT.floats;
+  instances[o + R.cx] = px;
+  instances[o + R.cy] = py;
+  instances[o + R.radius] = radius;
+  instances[o + R.rx] = 0.2;
+  instances[o + R.ry] = -0.12;
+  instances[o + R.rz] = now * 0.00025 + spec.seed;
+  instances[o + R.r] = spec.meshRgb[0];
+  instances[o + R.g] = spec.meshRgb[1];
+  instances[o + R.b] = spec.meshRgb[2];
+  instances[o + R.damage] = spec.damage;
+}
+
+function drawEnergyPlatform(
   push: PushFn,
-  bx: number,
-  by: number,
+  instances: Float32Array<ArrayBuffer>,
+  slot: number,
   cellPx: number,
   cellPy: number,
   now: number,
-  base: (typeof TEAM_BASES)[number],
-  hpFrac: number,
-) {
-  // Pulse energy halo under the base
-  push(bx, by, 10 * cellPx, 10 * cellPy, -now / 800, SHAPE.ring, [
-    base.rgb[0],
-    base.rgb[1],
-    base.rgb[2],
-    0.25 * (0.6 + 0.4 * Math.sin(now / 520 + base.x)) * hpFrac,
-  ]);
+  spec: PlatformSpec,
+): void {
+  const { scale: s, tint, intensity: I, seed } = spec;
+  const px = (spec.gx + 0.5) * cellPx;
+  const py = (spec.gy + 0.5) * cellPy;
+  const pulse = 0.5 + 0.4 * Math.sin(now / 560 + seed);
+  const lit = (k: number, a: number): Rgba => [
+    tint[0] + (1 - tint[0]) * k,
+    tint[1] + (1 - tint[1]) * k,
+    tint[2] + (1 - tint[2]) * k,
+    a * I,
+  ];
 
-  // Orbital sparks circulating the base
-  const numSparks = 3;
-  for (let i = 0; i < numSparks; i++) {
-    const angle = now / 1000 + (i * Math.PI * 2) / numSparks + base.x;
-    const dist = (7 + 1.5 * Math.sin(now / 350 + i)) * cellPx;
-    push(
-      bx + Math.cos(angle) * dist,
-      by + Math.sin(angle) * dist,
-      1.1 * cellPx,
-      1.1 * cellPy,
-      0,
-      SHAPE.solid,
-      [base.rgb[0], base.rgb[1], base.rgb[2], 0.75 * hpFrac],
-    );
-  }
+  writePlatformDais(instances, slot, px, py, s * cellPx, now, spec);
+
+  // 2D glow, every radius a fixed fraction of the platform scale.
+  push(
+    px,
+    py,
+    s * 1.6 * cellPx,
+    s * 1.6 * cellPy,
+    -now / 800,
+    SHAPE.ring,
+    lit(0, 0.25 * pulse),
+  ); // halo
+  drawForceField(push, px, py, cellPx, cellPy, s * 1.5, now, tint, {
+    dir: spec.dir,
+    alpha: 0.55 * I,
+  });
+  push(
+    px,
+    py,
+    s * 0.645 * cellPx,
+    s * 0.645 * cellPy,
+    -now / 1900,
+    SHAPE.ring,
+    lit(0.65, 0.5 + 0.3 * pulse),
+  ); // boundary
+  push(
+    px,
+    py,
+    s * 0.26 * cellPx,
+    s * 0.26 * cellPy,
+    0,
+    SHAPE.solid,
+    lit(0.8, 0.72 + 0.25 * pulse),
+  ); // core
 }
 
+// A team base: the energy platform tinted to the team with an inward (pulling)
+// field, its glow and 3D dais both fading as integrity falls, plus an HP bar.
 function drawBase(
   push: PushFn,
+  instances: Float32Array<ArrayBuffer>,
+  slot: number,
   base: (typeof TEAM_BASES)[number],
   cellPx: number,
   cellPy: number,
   now: number,
   hpFrac: number,
 ) {
-  const bx = (base.x + 0.5) * cellPx;
-  const by = (base.y + 0.5) * cellPy;
   const dead = hpFrac <= 0;
-  const bpulse = 0.6 + 0.4 * Math.sin(now / 520 + base.x);
-
+  const dim = 0.45 + 0.55 * hpFrac;
+  const meshRgb: readonly [number, number, number] = dead
+    ? [0.25, 0.25, 0.25]
+    : [base.rgb[0] * dim, base.rgb[1] * dim, base.rgb[2] * dim];
+  drawEnergyPlatform(push, instances, slot, cellPx, cellPy, now, {
+    gx: base.x,
+    gy: base.y,
+    scale: 6.2,
+    tint: base.rgb,
+    dir: "in",
+    intensity: hpFrac, // razed → glow vanishes, only the 3D rubble remains
+    seed: base.x,
+    meshRgb,
+    damage: dead ? 1 : 1 - hpFrac,
+  });
   if (!dead) {
-    // Portal base ring
-    push(
-      bx,
-      by,
-      13 * cellPx,
-      13 * cellPy,
-      now / 2200,
-      SHAPE.tintsprite,
-      [base.rgb[0], base.rgb[1], base.rgb[2], (0.35 + 0.3 * bpulse) * hpFrac],
-      PORTAL_LAYER,
-    );
-    drawBaseDecorations(push, bx, by, cellPx, cellPy, now, base, hpFrac);
+    const bx = (base.x + 0.5) * cellPx;
+    const by = (base.y + 0.5) * cellPy;
+    drawBaseIntegrityBar(push, bx, by, cellPx, cellPy, hpFrac);
   }
-
-  if (!dead) drawBaseIntegrityBar(push, bx, by, cellPx, cellPy, hpFrac);
-}
-
-function writeBase3DInstance(
-  baseInstances: Float32Array<ArrayBuffer>,
-  baseCount: number,
-  base: (typeof TEAM_BASES)[number],
-  cellPx: number,
-  cellPy: number,
-  now: number,
-  hpFrac: number,
-) {
-  const o = baseCount * ROCK_LAYOUT.floats;
-  const R = ROCK_LAYOUT.idx;
-  const bx = (base.x + 0.5) * cellPx;
-  const by = (base.y + 0.5) * cellPy;
-
-  baseInstances[o + R.cx] = bx;
-  baseInstances[o + R.cy] = by;
-  baseInstances[o + R.radius] = 6.2 * cellPx;
-
-  // Platform laid flat facing the camera: a small fixed tilt shows the rim for
-  // depth, and a slow Z spin drifts the running lights around it.
-  baseInstances[o + R.rx] = 0.2;
-  baseInstances[o + R.ry] = -0.12;
-  baseInstances[o + R.rz] = now * 0.00025 + base.x;
-
-  // Color team tint
-  const dead = hpFrac <= 0;
-  baseInstances[o + R.r] = dead ? 0.25 : base.rgb[0] * (0.45 + 0.55 * hpFrac);
-  baseInstances[o + R.g] = dead ? 0.25 : base.rgb[1] * (0.45 + 0.55 * hpFrac);
-  baseInstances[o + R.b] = dead ? 0.25 : base.rgb[2] * (0.45 + 0.55 * hpFrac);
-  baseInstances[o + R.damage] = dead ? 1.0 : 1.0 - hpFrac; // glow cracks scale with damage!
 }
 
 // Team bases (furthest back).
@@ -165,21 +201,9 @@ export function drawBases(
       Math.min(1, (world.baseHp[base.name] ?? 0) / BASE_MAX_HP),
     );
     if (hpFrac <= 0 && world.age > 0) continue; // razed or an inactive team (< 4 players)
-
-    if (baseCount < MAX_BASES) {
-      writeBase3DInstance(
-        baseInstances,
-        baseCount,
-        base,
-        cellPx,
-        cellPy,
-        now,
-        hpFrac,
-      );
-      baseCount++;
-    }
-
-    drawBase(push, base, cellPx, cellPy, now, hpFrac);
+    if (baseCount >= MAX_BASES) break;
+    drawBase(push, baseInstances, baseCount, base, cellPx, cellPy, now, hpFrac);
+    baseCount++;
   }
   return baseCount;
 }
@@ -231,46 +255,6 @@ export function drawHealPads(
   }
 }
 
-function drawCenterPadSparks(
-  push: PushFn,
-  cx: number,
-  cy: number,
-  cellPx: number,
-  cellPy: number,
-  now: number,
-  r: number,
-) {
-  const numCenterSparks = 4;
-  for (let i = 0; i < numCenterSparks; i++) {
-    // Ring 1: Clockwise, slow drift
-    const angle1 = now / 1600 + (i * Math.PI * 2) / numCenterSparks;
-    const dist1 = (r * 0.85 + 1.2 * Math.sin(now / 900 + i)) * cellPx;
-    push(
-      cx + Math.cos(angle1) * dist1,
-      cy + Math.sin(angle1) * dist1,
-      1.4 * cellPx,
-      1.4 * cellPy,
-      0,
-      SHAPE.solid,
-      [1.0, 0.85, 0.2, 0.9],
-    );
-
-    // Ring 2: Counter-Clockwise, nested
-    const angle2 =
-      -(now / 1150) + (i * Math.PI * 2) / numCenterSparks + Math.PI / 4;
-    const dist2 = (r * 0.55 + 0.8 * Math.cos(now / 780 + i)) * cellPx;
-    push(
-      cx + Math.cos(angle2) * dist2,
-      cy + Math.sin(angle2) * dist2,
-      1.0 * cellPx,
-      1.0 * cellPy,
-      0,
-      SHAPE.solid,
-      [1.0, 1.0, 1.0, 0.8],
-    );
-  }
-}
-
 // The resource the center pad currently dispenses drives its ring colour, so a
 // glance tells you what holding it is worth right now (matches the pickup hues).
 const PHASE_COLOR: Record<CenterPadPhase, readonly [number, number, number]> = {
@@ -279,73 +263,30 @@ const PHASE_COLOR: Record<CenterPadPhase, readonly [number, number, number]> = {
   shield: [0.4, 0.78, 1.0], // blue — shield
 };
 
-// The neutral center pad (foreground furniture): concentric neon rings radiating
-// outward like a beacon ping, around a bright pulsing core. Its colour tracks the
-// active resource phase (hp/fuel/shield), so it reads as "the prize" and signals
-// what it yields. Pure 2D vector; draws no 3D mesh instance (returns 0).
+// The center pad (foreground furniture): the same energy platform as a base, but
+// ~2× scale, a neutral-gold pristine dais, and an outward (repelling) field. Its
+// glow tint tracks the active resource phase (hp/fuel/shield) — the one piece of
+// state a base doesn't have — so it reads as "the prize" and signals its yield.
 export function drawCenterPad(
-  _centerPadInstances: Float32Array<ArrayBuffer>,
+  centerPadInstances: Float32Array<ArrayBuffer>,
   cellPx: number,
   cellPy: number,
   now: number,
   push: PushFn,
   world: World,
 ): number {
-  const cx = (CENTER_PAD.x + 0.5) * cellPx;
-  const cy = (CENTER_PAD.y + 0.5) * cellPy;
-  const pulse = 0.5 + 0.5 * Math.sin(now / 620);
-  const col = PHASE_COLOR[centerPadPhase(world.age)];
-  // Core + boundary ring stay near-white but carry a hint of the phase colour.
-  const lit = (k: number, a: number): Rgba => [
-    col[0] + (1 - col[0]) * k,
-    col[1] + (1 - col[1]) * k,
-    col[2] + (1 - col[2]) * k,
-    a,
-  ];
-  const r = CENTER_PAD.r;
-
-  // Beacon ping: each ring eases from the core outward and fades as it goes, the
-  // set staggered in phase so a new wave leaves as the last dissolves. Slow
-  // period + ease-out expansion so the motion glides rather than ticks.
-  const RINGS = 4;
-  const period = 3200;
-  for (let i = 0; i < RINGS; i++) {
-    const t = (((now / period + i / RINGS) % 1) + 1) % 1;
-    const eased = 1 - (1 - t) * (1 - t); // fast-out, gentle settle
-    const rad = r * (0.35 + 1.2 * eased);
-    // Fade in from the core and out at the rim so recycling is never visible.
-    const alpha = Math.sin(t * Math.PI) * 0.7;
-    push(cx, cy, rad * cellPx, rad * cellPy, now / 4200, SHAPE.ring, [
-      col[0],
-      col[1],
-      col[2],
-      alpha,
-    ]);
-  }
-
-  // Steady inner boundary ring + a bright core so there is structure between
-  // pings and a clear point to aim for.
-  push(
-    cx,
-    cy,
-    r * 0.42 * cellPx,
-    r * 0.42 * cellPy,
-    -now / 1900,
-    SHAPE.ring,
-    lit(0.7, 0.55 + 0.3 * pulse),
-  );
-  push(
-    cx,
-    cy,
-    r * 0.16 * cellPx,
-    r * 0.16 * cellPy,
-    0,
-    SHAPE.solid,
-    lit(0.8, 0.75 + 0.25 * pulse),
-  );
-
-  drawCenterPadSparks(push, cx, cy, cellPx, cellPy, now, r);
-  return 0;
+  drawEnergyPlatform(push, centerPadInstances, 0, cellPx, cellPy, now, {
+    gx: CENTER_PAD.x,
+    gy: CENTER_PAD.y,
+    scale: 13.0, // ~2× a base; boundary ring lands at CENTER_PAD.r * 0.42
+    tint: PHASE_COLOR[centerPadPhase(world.age)],
+    dir: "out",
+    intensity: 1,
+    seed: 0,
+    meshRgb: [1.0, 0.78, 0.35], // neutral gold — the prize dais, not a fourth base
+    damage: 0, // pristine: clean running lights, no cracks
+  });
+  return 1;
 }
 
 export function drawRallyBeacon(

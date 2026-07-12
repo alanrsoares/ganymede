@@ -4,7 +4,11 @@ import { nextFloat } from "../../engine/rng";
 import {
   acquireTarget,
   BASE_HEAL_RATE,
+  BASE_HORIZON,
   BASE_MAX_HP,
+  BASE_PULL,
+  BASE_PUSH,
+  BASE_RADIUS,
   BOOST_DURATION,
   baseHitsRequired,
   CARRIER_LEECH_LEVEL,
@@ -312,6 +316,35 @@ const pullTowardPortalHorizon = (
   }
 };
 
+/**
+ * Base gravity well: an intact base draws its own ships inward and repels
+ * intruders, the physical counterpart of the base's inward force-field visual.
+ * Reach and strength both scale with the base's remaining integrity, so a
+ * crumbling base loses its grip.
+ */
+const applyBaseGravity = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  steps: number,
+): void => {
+  for (const b of TEAM_BASES) {
+    const frac = ctx.baseHp[b.name] / BASE_MAX_HP;
+    if (frac <= 0) continue; // dead base has no field
+    const gx = wrapDelta(s.x, b.x, GRID_W);
+    const gy = wrapDelta(s.y, b.y, GRID_H);
+    const d2 = gx * gx + gy * gy;
+    const horizon = BASE_RADIUS * BASE_HORIZON;
+    if (d2 >= horizon * horizon || d2 < 1e-3) continue;
+    const d = Math.sqrt(d2);
+    const falloff = (1 - d / horizon) * frac * steps;
+    // gx/gy point toward the base: allies pull in (+), intruders shove out (−).
+    const accel =
+      s.colorName === b.name ? BASE_PULL * falloff : -BASE_PUSH * falloff;
+    s.vx += (gx / d) * accel;
+    s.vy += (gy / d) * accel;
+  }
+};
+
 /** Step through a portal mouth to the other one, if standing in it and off cooldown. */
 const teleportThroughPortal = (s: Mutable<LightCycle>): void => {
   if (s.portalCooldown > 0) return;
@@ -603,6 +636,7 @@ export const resolveInteractions = (
     healAtPad(s, steps);
     finishAtCenterPad(ctx, s, steps);
     pullTowardPortalHorizon(s, steps);
+    applyBaseGravity(ctx, s, steps);
     teleportThroughPortal(s);
     [mineId, seed] = dropMine(ctx, s, mines, mineId, seed, steps);
     dockAtHomeBase(ctx, s, steps);

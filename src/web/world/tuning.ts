@@ -69,6 +69,12 @@ export const BASE_RADIUS = 11; // solid collision radius of a base
 export const BASE_HEAL_RATE = 0.05; // base HP/gen while an ally sits on it
 export const BASE_RAM_DAMAGE = 1; // base HP lost per enemy ram (behind i-frames)
 export const BASE_LEVELUP_CHANCE = 0.005; // per-gen promotion odds while docked
+// Base gravity well: an intact base pulls its own ships home and repels
+// intruders. Reach tracks the inward force-field visual; both scale with the
+// base's remaining integrity, so a crumbling base loses its grip.
+export const BASE_PULL = 0.02; // ally inward accel inside the field
+export const BASE_PUSH = 0.028; // enemy outward accel (repelled from the base)
+export const BASE_HORIZON = 1.4; // field reach as a multiple of BASE_RADIUS
 export const SHRAPNEL_LIFE = 130; // gens a shrapnel fragment lives
 export const SHRAPNEL_RADIUS = 5; // fragment hit radius vs ships
 export const HIT_COOLDOWN = 20; // gens a ship is immune after trading a hit

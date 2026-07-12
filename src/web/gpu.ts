@@ -21,7 +21,6 @@ import baseWGSL from "./shaders/base.wgsl" with { type: "text" };
 import bloomWGSL from "./shaders/bloom.wgsl" with { type: "text" };
 import orbWGSL from "./shaders/orb.wgsl" with { type: "text" };
 import overlayWGSL from "./shaders/overlay.wgsl" with { type: "text" };
-import padWGSL from "./shaders/pad.wgsl" with { type: "text" };
 import rockWGSL from "./shaders/rock.wgsl" with { type: "text" };
 import shieldWGSL from "./shaders/shield.wgsl" with { type: "text" };
 import { SPRITE_LAYER_COUNT, SPRITE_URLS } from "./sprites";
@@ -294,8 +293,8 @@ const createOpaquePasses = (
     device,
     format,
     ub,
-    makePrismMesh(8, 1.0, 0.32), // octagonal dais, a touch taller
-    padWGSL,
+    makePrismMesh(6, 1.0, 0.32), // same hex platform as a base, a touch taller
+    baseWGSL,
     ROCK_LAYOUT,
     MAX_CENTER_PADS,
   ),
