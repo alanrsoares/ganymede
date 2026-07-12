@@ -1,12 +1,9 @@
 {
-  "name": "gemma4-game-of-life",
+  "name": "conway-machine",
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@elemaudio/core": "^4.0.1",
-    "@elemaudio/web-renderer": "^4.0.3",
     "@onrails/pattern": "^0.3.2",
-    "@onrails/result": "^0.4.0",
     "typegpu": "^0.11.9",
     "vanjs-core": "^1.6.0"
   },
@@ -18,7 +15,6 @@
     "typescript": "^7.0.2"
   },
   "scripts": {
-    "dev": "bun run src/index.ts",
     "web": "bun --hot src/web/server.ts",
     "test": "bun test",
     "check": "bun run lint && bun run typecheck",
