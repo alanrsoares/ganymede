@@ -8,10 +8,10 @@ import {
   normalize,
   rotate,
   wrapDelta,
-} from "~/web/engine/physics";
-import { nextFloat } from "~/web/engine/rng";
-import { makeAsteroidMesh, makeSphereMesh } from "~/web/mesh";
-import { instanceLayout } from "~/web/mesh-pass";
+} from "~/engine/physics";
+import { nextFloat } from "~/engine/rng";
+import { makeAsteroidMesh, makeSphereMesh } from "~/mesh";
+import { instanceLayout } from "~/mesh-pass";
 import {
   ASTEROID_VARIANTS,
   asteroidLayer,
@@ -19,7 +19,7 @@ import {
   clipLayer,
   SPRITE_LAYER_COUNT,
   SPRITE_URLS,
-} from "~/web/sprites";
+} from "~/sprites";
 import {
   acquireTarget,
   applyHit,
@@ -31,7 +31,7 @@ import {
   rollShip,
   toroidalDist,
   wrap,
-} from "~/web/world/factory";
+} from "~/world/factory";
 
 const close = (a: number, b: number, eps = 1e-6) =>
   expect(Math.abs(a - b)).toBeLessThan(eps);

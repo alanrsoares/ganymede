@@ -187,6 +187,7 @@ const buildAndRender = (
     baseCount,
     centerPadInstances,
     centerPadCount,
+    portalCount,
   } = overlay.build({
     w: canvas.width,
     h: canvas.height,
@@ -199,6 +200,7 @@ const buildAndRender = (
   renderer.render(
     instances,
     count,
+    portalCount,
     rockInstances,
     rockCount,
     shieldInstances,

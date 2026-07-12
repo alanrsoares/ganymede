@@ -263,4 +263,5 @@ export const SHAPE = {
   beam: 6.0,
   pad: 7.0,
   bolt: 8.0, // plasma weapon bolt: hot core + team glow, tapered streak
+  vortex: 9.0, // procedural spiraling accretion vortex (portals); layer = spin dir
 } as const;

@@ -63,7 +63,28 @@ fn fs(in: VSOut) -> @location(0) vec4f {
     let layer_idx = u32(clamp(round(in.layer), 0.0, LAYER_MAX));
     let texColor = textureSample(t_array, s_sampler, tex_coord, layer_idx);
 
-    if in.shape > 7.5 {
+    if in.shape > 8.5 {
+        // Spiraling accretion vortex (portals). A dark event horizon in the
+        // middle, logarithmic-spiral arms winding into it and heating to white,
+        // fading out inside the circular contour. in.layer carries the spin sign
+        // so a linked gate pair counter-rotates; the whole disc turns with time.
+        if d > 1.0 { discard; }
+        let spin = select(-1.0, 1.0, in.layer >= 0.0);
+        let theta = atan2(in.local.y, in.local.x);
+        let t = u.time * 1.2 * spin;
+        // Constant phase along log-radius curves ⇒ true logarithmic spiral arms.
+        let swirl = sin(3.0 * theta + 6.0 * log(d + 0.05) - t);
+        let arms = smoothstep(0.25, 1.0, swirl);
+        let hole = smoothstep(0.0, 0.55, d);          // 0 in the horizon → 1 mid
+        let rim = 1.0 - smoothstep(0.82, 1.0, d);     // fade inside the contour
+        let heat = 1.0 - smoothstep(0.15, 0.7, d);    // white-hot near the horizon
+        let base = mix(vec3f(0.02, 0.02, 0.06), in.color.rgb * 0.5, hole);
+        let armCol = mix(in.color.rgb, vec3f(1.0), heat);
+        let rgb = base + armCol * arms * (0.3 + 0.7 * hole);
+        let a = rim * in.color.a;
+        if a < 0.02 { discard; }
+        return vec4f(rgb, clamp(a, 0.0, 1.0));
+    } else if in.shape > 7.5 {
         // Plasma bolt: an elongated energy streak. The quad is scaled thin +
         // long and rotated to the bullet's heading, so local.x is the width and
         // local.y runs along travel. A hot white spine down the center melts

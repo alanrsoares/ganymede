@@ -2,6 +2,7 @@ import { normalize, wrapDelta } from "../engine/physics";
 import { hasRaidedAllEnemyBases } from "./math";
 import {
   ALIGN_GAIN,
+  ARCHETYPE_MODS,
   AVOID_GAIN,
   AVOID_RADIUS,
   baseHitsRequired,
@@ -9,6 +10,11 @@ import {
   CENTERPAD_SEEK_RADIUS,
   CENTERPAD_SEEK_THRESH,
   COHERE_GAIN,
+  COMBAT_FLOCK_DAMP,
+  CONCAVE_COMMIT_DIST,
+  CONCAVE_GAIN,
+  COORDINATE_MIN_LEVEL,
+  combatAggression,
   ENGAGE_GAIN,
   ENGAGE_RADIUS,
   FLOCK_RADIUS,
@@ -21,6 +27,7 @@ import {
   HEAL_SEEK_GAIN,
   HEAL_SEEK_RADIUS,
   isCarrier,
+  isRammer,
   KITE_DIST,
   OBJECTIVE_GAIN,
   OBJECTIVE_RADIUS,
@@ -30,6 +37,7 @@ import {
   RALLY_ARRIVE_RADIUS,
   RALLY_GAIN,
   RALLY_RADIUS,
+  targetPriority,
   WANDER_GAIN,
 } from "./tuning";
 import {
@@ -138,48 +146,99 @@ const steerAlignCohere = (
  * band hold their standoff distance (approach beyond it, retreat inside it);
  * lower ranks just bore straight in.
  */
-/** Nearest enemy within `rangeSq` of `self` as an offset vector, or null. */
-const nearestEnemyOffset = (
+// The enemy a ship tracks in combat, as an offset vector + the ship itself.
+type Foe = { ex: number; ey: number; d2: number; ship: LightCycle };
+
+// Should `self` converge on the shared focus target (weakest enemy) rather than
+// just the nearest threat? Rammers always gang up (that's their whole game);
+// other classes coordinate once they hit the focus-fire rank. When true the
+// pursuit target matches the fire target (acquireTarget), so a squad piles onto
+// one wounded enemy and finishes it — emergent teamwork, no shared state.
+const wantsFocus = (self: LightCycle): boolean =>
+  isRammer(self.archetype) || self.level >= COORDINATE_MIN_LEVEL;
+
+// Is candidate (priority, d2) a better pick than the current best? Focus mode
+// ranks by targetPriority (weakest hull, biased toward veterans; tiebreak
+// nearest); otherwise purely by nearest.
+const beatsFoe = (
+  focus: boolean,
+  p: number,
+  d2: number,
+  bestP: number,
+  bestD2: number,
+): boolean => (focus ? p > bestP || (p === bestP && d2 < bestD2) : d2 < bestD2);
+
+/**
+ * Pick the enemy within `rangeSq` for `self` to pursue. `focus` mode picks the
+ * highest-priority target (wounded, biased toward veterans; tiebreak nearest) so
+ * coordinating allies gang the same enemy and pile onto a leader; otherwise the
+ * nearest threat. Returns its offset vector + the ship, or null.
+ */
+const pickFoe = (
   self: LightCycle,
   ships: readonly LightCycle[],
   rangeSq: number,
-): { ex: number; ey: number; d2: number } | null => {
+  focus: boolean,
+): Foe | null => {
   let ex = 0;
   let ey = 0;
+  let bestP = Number.NEGATIVE_INFINITY;
   let bestD2 = rangeSq;
-  let locked = false;
+  let ship: LightCycle | null = null;
   for (const o of ships) {
     if (o.id === self.id || o.colorName === self.colorName) continue;
     const dx = wrapDelta(self.x, o.x, GRID_W); // self -> enemy
     const dy = wrapDelta(self.y, o.y, GRID_H);
     const d2 = dx * dx + dy * dy;
-    if (d2 < bestD2) {
-      bestD2 = d2;
-      ex = dx;
-      ey = dy;
-      locked = true;
-    }
+    const p = targetPriority(o);
+    if (d2 >= rangeSq || !beatsFoe(focus, p, d2, bestP, bestD2)) continue;
+    bestP = p;
+    bestD2 = d2;
+    ex = dx;
+    ey = dy;
+    ship = o;
   }
-  return locked ? { ex, ey, d2: bestD2 } : null;
+  return ship ? { ex, ey, d2: bestD2, ship } : null;
 };
 
+// Engage a locked target. Two class-driven behaviours ride on the counter-web:
+//  - Rammers (and anyone who *counters* this foe) bore in to contact (kiteDist
+//    0) to cash in the melee/ram bonus; everyone else holds the rank's gun
+//    standoff (KITE_DIST) and trades bolts.
+//  - The whole term is scaled by combatAggression(self, foe): a hurt, low-fuel,
+//    or out-classed ship presses far less, so survival + raid(level-up) steering
+//    wins and it won't throw itself into a losing trade.
+// `foe` is the nearest enemy in engage range, precomputed by flockSteer so it
+// doubles as the combat-mode flag.
 const steerPursuit = (
   self: LightCycle,
-  ships: readonly LightCycle[],
   level: number,
+  foe: Foe | null,
 ): [number, number] => {
   const engageGain = ENGAGE_GAIN[level - 1] ?? 0;
-  const engageR = ENGAGE_RADIUS[level - 1] ?? 0;
-  const kiteDist = KITE_DIST[level - 1] ?? 0;
-  if (!(engageGain > 0 && engageR > 0)) return [0, 0];
-  const hit = nearestEnemyOffset(self, ships, engageR * engageR);
-  if (!hit) return [0, 0];
-  const dist = Math.sqrt(hit.d2) || 1;
-  const ux = hit.ex / dist;
-  const uy = hit.ey / dist;
+  if (!foe || engageGain <= 0) return [0, 0];
+  const press =
+    isRammer(self.archetype) ||
+    ARCHETYPE_MODS[self.archetype].counters === foe.ship.archetype;
+  const kiteDist = press ? 0 : (KITE_DIST[level - 1] ?? 0);
+  const aggro = combatAggression(self, foe.ship);
+  const dist = Math.sqrt(foe.d2) || 1;
+  const ux = foe.ex / dist;
+  const uy = foe.ey / dist;
   // sign > 0 pulls toward the target, < 0 pushes away (kiting too close).
   const dir = kiteDist > 0 ? Math.sign(dist - kiteDist) : 1;
-  return [ux * engageGain * dir, uy * engageGain * dir];
+  // Concave surround: a pressing ship also drifts perpendicular to its approach,
+  // split to opposite flanks by ship-id parity, so squadmates fan onto an arc
+  // around the target. The sideways pull fades as it closes (commit to the ram).
+  const side = self.id % 2 === 0 ? 1 : -1;
+  const arc = press
+    ? CONCAVE_GAIN * side * Math.min(1, dist / CONCAVE_COMMIT_DIST)
+    : 0;
+  const px = -uy * arc; // perpendicular to the approach heading
+  const py = ux * arc;
+  const tx = ux * dir + px;
+  const ty = uy * dir + py;
+  return [tx * engageGain * aggro, ty * engageGain * aggro];
 };
 
 /**
@@ -531,21 +590,39 @@ export const flockSteer = (
   level: number,
   age: number,
 ): [number, number] => {
-  let [fx, fy] = steerSeparation(self, ships, rocks, level);
+  // Combat/mission terms first: the nearest enemy in engage range doubles as the
+  // combat flag, and the objective term tells us if the ship is on a goal.
+  const engageR = ENGAGE_RADIUS[level - 1] ?? 0;
+  const foe =
+    engageR > 0
+      ? pickFoe(self, ships, engageR * engageR, wantsFocus(self))
+      : null;
+  const [pursueDx, pursueDy] = steerPursuit(self, level, foe);
+  const [objDx, objDy] = steerCommandOrObjective(
+    self,
+    ships,
+    level,
+    baseHp,
+    rally,
+  );
+
+  // Committed (fighting or on a goal) → damp formation-keeping so it can't drag
+  // the ship off target. Idle → full murmuration.
+  const committed = foe !== null || objDx !== 0 || objDy !== 0;
+  const flock = committed ? COMBAT_FLOCK_DAMP : 1;
+
+  let [fx, fy] = steerSeparation(self, ships, rocks, level); // always on: anti-overlap
 
   const [alignDx, alignDy, cohereDx, cohereDy] = steerAlignCohere(
     self,
     ships,
     level,
   );
-  fx += alignDx;
-  fy += alignDy;
-  fx += cohereDx;
-  fy += cohereDy;
+  fx += (alignDx + cohereDx) * flock;
+  fy += (alignDy + cohereDy) * flock;
 
-  const [pursueDx, pursueDy] = steerPursuit(self, ships, level);
-  fx += pursueDx;
-  fy += pursueDy;
+  fx += pursueDx + objDx;
+  fy += pursueDy + objDy;
 
   const [pickDx, pickDy] = steerPickupSeek(self, pickups, level);
   fx += pickDx;
@@ -559,19 +636,9 @@ export const flockSteer = (
   fx += padDx;
   fy += padDy;
 
-  const [objDx, objDy] = steerCommandOrObjective(
-    self,
-    ships,
-    level,
-    baseHp,
-    rally,
-  );
-  fx += objDx;
-  fy += objDy;
-
   const [wanderDx, wanderDy] = steerWander(self, age, level);
-  fx += wanderDx;
-  fy += wanderDy;
+  fx += wanderDx * flock;
+  fy += wanderDy * flock;
 
   return [fx, fy];
 };

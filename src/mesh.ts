@@ -1,12 +1,16 @@
-// Procedural asteroid mesh: a subdivided icosphere displaced by a few sinusoidal
-// lumps, then expanded to a non-indexed triangle list with per-face (flat)
-// normals so it reads as a chunk of faceted rock rather than a smooth ball.
-// Built once at startup on the CPU; the GPU just instances it per asteroid.
+// Procedural meshes, built once on the CPU and instanced on the GPU: the faceted
+// asteroid, the smooth shield sphere, and the vertex-coloured base/pad orb. All
+// are non-indexed triangle lists so faces can be flat-shaded independently.
 
 export interface Mesh {
-  /** Interleaved [px, py, pz, nx, ny, nz] per vertex. */
+  /**
+   * Interleaved per vertex: [px, py, pz, nx, ny, nz] — plus [r, g, b] when
+   * `hasColor` is set (9 floats/vertex instead of 6).
+   */
   readonly data: Float32Array;
   readonly vertexCount: number;
+  /** True when each vertex carries a trailing rgb colour (see mesh-pass). */
+  readonly hasColor?: boolean;
 }
 
 type V3 = [number, number, number];
@@ -164,65 +168,77 @@ export const makeSphereMesh = (subdiv = 2): Mesh => {
   return { data, vertexCount: faces.length * 3 };
 };
 
-// Expand a flat triangle-point list to the interleaved [pos,normal] soup all our
-// meshes share. Each face gets one outward normal (flipped to point away from the
-// origin, so winding order never matters).
-const emitFlatTris = (tris: readonly [V3, V3, V3][]): Mesh => {
-  const data = new Float32Array(tris.length * 3 * 6);
+// Iñigo Quílez cosine palette → a smooth iridescent spectrum from a scalar in
+// [0,1]; the three channels are phase-shifted so the sweep runs through the hues.
+const iridescence = (t: number): V3 => [
+  0.5 + 0.5 * Math.cos(2 * Math.PI * (t + 0.0)),
+  0.5 + 0.5 * Math.cos(2 * Math.PI * (t + 0.33)),
+  0.5 + 0.5 * Math.cos(2 * Math.PI * (t + 0.67)),
+];
+
+// The 100 triangle corners of the UV sphere as unit direction vectors: quads in
+// the middle bands, single triangles at the poles.
+const orbTris = (stacks: number, slices: number): [V3, V3, V3][] => {
+  const dir = (i: number, j: number): V3 => {
+    const theta = (Math.PI * i) / stacks; // 0 = north pole, π = south
+    const phi = (2 * Math.PI * j) / slices;
+    return [
+      Math.sin(theta) * Math.cos(phi),
+      Math.cos(theta),
+      Math.sin(theta) * Math.sin(phi),
+    ];
+  };
+  const tris: [V3, V3, V3][] = [];
+  for (let i = 0; i < stacks; i++) {
+    for (let j = 0; j < slices; j++) {
+      const [a, b, c, d] = [
+        dir(i, j),
+        dir(i, j + 1),
+        dir(i + 1, j),
+        dir(i + 1, j + 1),
+      ];
+      if (i === 0)
+        tris.push([a, c, d]); // north cap: a is the pole
+      else if (i === stacks - 1)
+        tris.push([a, b, c]); // south cap: c is the pole
+      else tris.push([a, c, d], [a, d, b]);
+    }
+  }
+  return tris;
+};
+
+/**
+ * A faceted orb with exactly 100 triangular faces — a UV sphere at 6 stacks × 10
+ * slices (2·slices·(stacks−1) = 100). Flat-shaded (one outward normal per face)
+ * and non-indexed, and every vertex carries an iridescent colour keyed to its
+ * height, so faces catch the light as distinct facets. It is the glowing core of
+ * both bases and the center pad; the shader tints these vertex colours by the
+ * team/phase hue (9 floats/vertex: pos, normal, rgb — see mesh-pass).
+ */
+export const makeFacetedOrbMesh = (stacks = 6, slices = 10): Mesh => {
+  const tris = orbTris(stacks, slices);
+  // On a unit sphere the face centroid already points outward → use it as the
+  // flat normal. Vertex colour is the iridescent palette sampled by height.
+  const data = new Float32Array(tris.length * 3 * 9);
   let o = 0;
   for (const [pa, pb, pc] of tris) {
-    let [nx, ny, nz] = norm([
-      (pb[1] - pa[1]) * (pc[2] - pa[2]) - (pb[2] - pa[2]) * (pc[1] - pa[1]),
-      (pb[2] - pa[2]) * (pc[0] - pa[0]) - (pb[0] - pa[0]) * (pc[2] - pa[2]),
-      (pb[0] - pa[0]) * (pc[1] - pa[1]) - (pb[1] - pa[1]) * (pc[0] - pa[0]),
+    const [nx, ny, nz] = norm([
+      (pa[0] + pb[0] + pc[0]) / 3,
+      (pa[1] + pb[1] + pc[1]) / 3,
+      (pa[2] + pb[2] + pc[2]) / 3,
     ]);
-    // Face centroid points away from the mesh center; flip the normal to match.
-    const cx = (pa[0] + pb[0] + pc[0]) / 3;
-    const cy = (pa[1] + pb[1] + pc[1]) / 3;
-    const cz = (pa[2] + pb[2] + pc[2]) / 3;
-    if (nx * cx + ny * cy + nz * cz < 0) {
-      nx = -nx;
-      ny = -ny;
-      nz = -nz;
-    }
     for (const p of [pa, pb, pc]) {
+      const [cr, cg, cb] = iridescence(0.5 + 0.5 * p[1]);
       data[o++] = p[0];
       data[o++] = p[1];
       data[o++] = p[2];
       data[o++] = nx;
       data[o++] = ny;
       data[o++] = nz;
+      data[o++] = cr;
+      data[o++] = cg;
+      data[o++] = cb;
     }
   }
-  return { data, vertexCount: tris.length * 3 };
-};
-
-/**
- * A short faceted n-gon drum — a built platform / dais. The caps sit at z = ±h,
- * so seen head-on (our orthographic camera) it reads as a pad viewed from above
- * with a thin rim. Bases and the center pad are both scaled instances of this
- * one shape, shaded as metal with emissive trim (see base.wgsl).
- */
-export const makePrismMesh = (sides = 8, radius = 1, height = 0.28): Mesh => {
-  const top: V3[] = [];
-  const bot: V3[] = [];
-  for (let i = 0; i < sides; i++) {
-    const a = (i * Math.PI * 2) / sides;
-    const x = Math.cos(a) * radius;
-    const y = Math.sin(a) * radius;
-    top.push([x, y, height]);
-    bot.push([x, y, -height]);
-  }
-  const topC: V3 = [0, 0, height];
-  const botC: V3 = [0, 0, -height];
-  const tris: [V3, V3, V3][] = [];
-  for (let i = 0; i < sides; i++) {
-    const j = (i + 1) % sides;
-    // Side wall quad.
-    tris.push([top[i], top[j], bot[i]], [top[j], bot[j], bot[i]]);
-    // Cap fans.
-    tris.push([topC, top[i], top[j]]);
-    tris.push([botC, bot[i], bot[j]]);
-  }
-  return emitFlatTris(tris);
+  return { data, vertexCount: tris.length * 3, hasColor: true };
 };

@@ -6,7 +6,7 @@ import type { GpuContext } from "./gpu-context";
 import {
   type Mesh,
   makeAsteroidMesh,
-  makePrismMesh,
+  makeFacetedOrbMesh,
   makeSphereMesh,
 } from "./mesh";
 import {
@@ -89,6 +89,7 @@ export interface Renderer {
   render(
     instances: Float32Array<ArrayBuffer>,
     instanceCount: number,
+    portalCount: number,
     rockInstances: Float32Array<ArrayBuffer>,
     rockCount: number,
     shieldInstances: Float32Array<ArrayBuffer>,
@@ -284,7 +285,7 @@ const createOpaquePasses = (
     device,
     format,
     ub,
-    makePrismMesh(6, 1.0, 0.26), // hex platform
+    makeFacetedOrbMesh(), // 100-face vertex-coloured orb
     baseWGSL,
     ROCK_LAYOUT,
     MAX_BASES,
@@ -293,7 +294,7 @@ const createOpaquePasses = (
     device,
     format,
     ub,
-    makePrismMesh(6, 1.0, 0.32), // same hex platform as a base, a touch taller
+    makeFacetedOrbMesh(), // same 100-face orb as a base, scaled up by the instance
     baseWGSL,
     ROCK_LAYOUT,
     MAX_CENTER_PADS,
@@ -499,6 +500,7 @@ interface ScenePassInput {
   spriteBindGroup: GPUBindGroup;
   instanceBuffer: GPUBuffer;
   instanceCount: number;
+  portalCount: number; // leading instances = portals, drawn before the 3D passes
   orbPass: MeshPass;
   orbInstances: Float32Array<ArrayBuffer>;
   orbCount: number;
@@ -540,6 +542,19 @@ const encodeScenePass = (
   pass.setPipeline(input.bgPipeline);
   pass.setBindGroup(0, input.bgBindGroup);
   pass.draw(3);
+
+  const drawSprites = (count: number, first: number) => {
+    if (count <= 0) return;
+    pass.setPipeline(input.spritePipeline);
+    pass.setBindGroup(0, input.spriteBindGroup);
+    pass.setVertexBuffer(0, input.instanceBuffer);
+    pass.draw(6, count, 0, first);
+  };
+
+  // Portals are the leading sprite instances, drawn before the 3D passes so
+  // rocks, shrapnel and bases fly OVER the portal vortices (background floor).
+  drawSprites(input.portalCount, 0);
+
   input.rockPass.draw(pass, input.rockInstances, input.rockCount);
   input.basePass.draw(pass, input.baseInstances, input.baseCount);
   input.centerPadPass.draw(
@@ -547,12 +562,10 @@ const encodeScenePass = (
     input.centerPadInstances,
     input.centerPadCount,
   );
-  if (input.instanceCount > 0) {
-    pass.setPipeline(input.spritePipeline);
-    pass.setBindGroup(0, input.spriteBindGroup);
-    pass.setVertexBuffer(0, input.instanceBuffer);
-    pass.draw(6, input.instanceCount);
-  }
+
+  // The rest of the overlay (actors, HUD, base/pad glow) over the 3D passes.
+  drawSprites(input.instanceCount - input.portalCount, input.portalCount);
+
   input.orbPass.draw(pass, input.orbInstances, input.orbCount);
   input.shieldPass.draw(pass, input.shieldInstances, input.shieldCount);
   pass.end();
@@ -618,11 +631,12 @@ interface RenderFnDeps {
 // Builds the per-frame render() closure: write uniforms, encode the scene
 // pass, encode the bloom chain, submit. Split out of createRenderer purely so
 // the setup function itself stays short — behavior is identical either way.
-const createRenderFn = (deps: RenderFnDeps): Renderer["render"] => {
-  const { device, context, canvas, uniformBuffer, instanceBuffer } = deps;
-  return (
+const createRenderFn =
+  (deps: RenderFnDeps): Renderer["render"] =>
+  (
     instances,
     instanceCount,
+    portalCount,
     rockInstances,
     rockCount,
     shieldInstances,
@@ -635,6 +649,7 @@ const createRenderFn = (deps: RenderFnDeps): Renderer["render"] => {
     centerPadCount,
     time,
   ) => {
+    const { device, context, canvas, uniformBuffer, instanceBuffer } = deps;
     writeFrameUniforms(
       device,
       uniformBuffer,
@@ -644,37 +659,26 @@ const createRenderFn = (deps: RenderFnDeps): Renderer["render"] => {
       instances,
       instanceCount,
     );
-
     const encoder = device.createCommandEncoder();
-
     encodeScenePass(encoder, deps.targets, {
-      bgPipeline: deps.bgPipeline,
-      bgBindGroup: deps.bgBindGroup,
-      rockPass: deps.rockPass,
+      ...deps,
       rockInstances,
       rockCount,
-      spritePipeline: deps.spritePipeline,
-      spriteBindGroup: deps.spriteBindGroup,
       instanceBuffer,
       instanceCount,
-      orbPass: deps.orbPass,
+      portalCount,
       orbInstances,
       orbCount,
-      shieldPass: deps.shieldPass,
       shieldInstances,
       shieldCount,
-      basePass: deps.basePass,
       baseInstances,
       baseCount,
-      centerPadPass: deps.centerPadPass,
       centerPadInstances,
       centerPadCount,
     });
     encodeBloomPasses(encoder, context, deps.targets, deps.bloom);
-
     device.queue.submit([encoder.finish()]);
   };
-};
 
 export const createRenderer = (
   { device, context, format, root }: GpuContext,

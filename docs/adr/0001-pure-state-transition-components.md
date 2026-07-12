@@ -2,7 +2,7 @@
 
 ## Status
 Superseded (2026-07) — the repo pivoted to a roguelike autobattler under
-`src/web`. The Game-of-Life computer, its components (`src/components`), and
+`src`. The Game-of-Life computer, its components (`src/components`), and
 domain model (`src/domain`) have been removed. This ADR is retained as a
 historical record of the original design. See `CONTEXT.md`.
 

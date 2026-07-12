@@ -7,6 +7,10 @@ export interface Entity {
   readonly id: number;
 }
 
+/** Strip `readonly` off every field — a mutable view of an immutable entity,
+ * used by the tick's in-place scratch pass before it re-freezes the world. */
+export type Mutable<T> = { -readonly [P in keyof T]: T[P] };
+
 export interface EntityList<T extends Entity> {
   readonly items: readonly T[];
   readonly nextId: number;

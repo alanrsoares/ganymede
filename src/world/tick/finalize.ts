@@ -1,6 +1,6 @@
-import { cap, type EntityList, retain, spawn } from "../../engine/entities";
-import { nextInt, type Seed } from "../../engine/rng";
-import { EXPLOSION_VARIANTS } from "../../sprites";
+import { cap, type EntityList, retain, spawn } from "~/engine/entities";
+import { nextInt, type Seed } from "~/engine/rng";
+import { EXPLOSION_VARIANTS } from "~/sprites";
 import {
   EXPLOSION_DURATION,
   MAX_SHIPS,

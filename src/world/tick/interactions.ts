@@ -1,6 +1,6 @@
-import { normalize, wrapDelta } from "../../engine/physics";
-import type { Seed } from "../../engine/rng";
-import { nextFloat } from "../../engine/rng";
+import { normalize, wrapDelta } from "~/engine/physics";
+import type { Seed } from "~/engine/rng";
+import { nextFloat } from "~/engine/rng";
 import {
   acquireTarget,
   BASE_HEAL_RATE,
@@ -60,6 +60,8 @@ import {
   spawnEmpMissile,
   spawnMissile,
   toroidalDist,
+  type WeaponProfile,
+  weaponFor,
   wrap,
 } from "../factory";
 import {
@@ -118,7 +120,69 @@ const nearestEnemyBaseAim = (
   return tx !== null && ty !== null ? { x: tx, y: ty } : null;
 };
 
-/** Bolt at the nearest enemy ship in range, else strafe the nearest alive enemy base. */
+/** Tinted muzzle flash at the ship's nose, oriented along the bolt heading. */
+const muzzleFlash = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  angle: number,
+): void => {
+  const muzzle = shipRadius(s.level) + 1;
+  ctx.burstAt.push({
+    x: Math.floor(wrap(s.x + Math.sin(angle) * muzzle, GRID_W)),
+    y: Math.floor(wrap(s.y + Math.cos(angle) * muzzle, GRID_H)),
+    kind: BURST_MUZZLE,
+    rgb: s.color,
+    rot: angle,
+  });
+};
+
+/**
+ * Fire one salvo at `aim`: a burst fires a single bolt (its rhythm comes from
+ * the cadence), while parallel/single patterns fire `barrels` bolts abreast,
+ * centered on the nose and fanned out by the profile's spread. Returns the
+ * advanced bullet-id counter.
+ */
+const spawnSalvo = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  aim: Aim,
+  bullets: Mutable<Bullet>[],
+  bulletId: number,
+  wp: WeaponProfile,
+): number => {
+  const shots = wp.pattern === "burst" ? 1 : wp.barrels;
+  const mid = (shots - 1) / 2;
+  let id = bulletId;
+  for (let i = 0; i < shots; i++) {
+    const bolt = spawnBullet(id, s, aim.x, aim.y, (i - mid) * wp.spread);
+    bullets.push(bolt);
+    muzzleFlash(ctx, s, bolt.angle);
+    id += 1;
+  }
+  return id;
+};
+
+/**
+ * Cooldown after a shot, advancing burst state as a side effect: a burst uses
+ * the short intra-salvo gap until its last shot, then the full reload; every
+ * other pattern always reloads fully. Overcharge scales both.
+ */
+const applyFireCadence = (
+  s: Mutable<LightCycle>,
+  wp: WeaponProfile,
+): number => {
+  const oc = s.overchargeTime > 0 ? OVERCHARGE_MULT : 1;
+  const full = fireCooldownFor(s.archetype, s.level) * oc;
+  if (wp.pattern !== "burst") return full;
+  s.burstCount += 1;
+  if (s.burstCount >= wp.burstShots) {
+    s.burstCount = 0;
+    return full;
+  }
+  return wp.burstGap * oc;
+};
+
+/** Fire at the nearest enemy ship in range, else strafe the nearest alive enemy base. */
 const fireWeapon = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
@@ -136,22 +200,10 @@ const fireWeapon = (
       : nearestEnemyBaseAim(ctx, s);
   if (!aim) return bulletId;
 
-  const bolt = spawnBullet(bulletId, s, aim.x, aim.y);
-  bullets.push(bolt);
-  s.fireCooldown =
-    fireCooldownFor(s.archetype, s.level) *
-    (s.overchargeTime > 0 ? OVERCHARGE_MULT : 1);
-  const muzzle = shipRadius(s.level) + 1;
-  const ax = Math.sin(bolt.angle);
-  const ay = Math.cos(bolt.angle);
-  ctx.burstAt.push({
-    x: Math.floor(wrap(s.x + ax * muzzle, GRID_W)),
-    y: Math.floor(wrap(s.y + ay * muzzle, GRID_H)),
-    kind: BURST_MUZZLE,
-    rgb: s.color,
-    rot: bolt.angle,
-  });
-  return bulletId + 1;
+  const wp = weaponFor(s.archetype, s.level);
+  const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp);
+  s.fireCooldown = applyFireCadence(s, wp);
+  return nextId;
 };
 
 /** Missile-carriers roll to launch at their nearest enemy, in missile range. */
@@ -178,7 +230,9 @@ const fireMissile = (
   const tgt = acquireTarget(s, moved, MISSILE_RANGE, removed);
   if (!tgt || tgt.dist > MISSILE_RANGE) return [missileId, nextSeed];
 
-  missiles.push(spawnMissile(missileId, s, tgt.ship));
+  // L5 capstone: an ace interceptor's missiles detonate as area blasts.
+  const launch = s.level >= MAX_LEVEL ? spawnEmpMissile : spawnMissile;
+  missiles.push(launch(missileId, s, tgt.ship));
   return [missileId + 1, nextSeed];
 };
 
@@ -469,7 +523,7 @@ const forceFieldStrike = (
   e.vx += (dx / d) * push;
   e.vy += (dy / d) * push;
   if (e.hitCooldown > 0) return;
-  hit(ctx, e, FORCEFIELD_DAMAGE);
+  hit(ctx, e, FORCEFIELD_DAMAGE, "melee", s.id);
   e.hitCooldown = HIT_COOLDOWN;
   if (e.hp <= 0) {
     ctx.score[s.colorName] += SCORE_KILL;
@@ -595,7 +649,10 @@ const shareReconWith = (
   if (ally.colorName !== scout.colorName || ally.level >= MAX_LEVEL) return;
   const dx = toroidalDist(scout.x, ally.x, GRID_W);
   const dy = toroidalDist(scout.y, ally.y, GRID_H);
-  if (dx * dx + dy * dy >= RECON_SHARE_RADIUS * RECON_SHARE_RADIUS) return;
+  // L5 capstone: an ace scout broadcasts raid intel map-wide (Infinity reach),
+  // so a whole team can inherit its finished raids from anywhere.
+  const reach = scout.level >= MAX_LEVEL ? Infinity : RECON_SHARE_RADIUS;
+  if (dx * dx + dy * dy >= reach * reach) return;
   const merged = mergedRaidCredit(scout, ally);
   if (merged) ally.baseHits = merged;
 };

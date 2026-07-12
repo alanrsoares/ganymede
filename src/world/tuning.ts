@@ -1,7 +1,9 @@
 import { durationOf, EXPLOSION_CLIPS } from "../sprites";
 import {
   type Archetype,
+  type DamageType,
   type LightCycle,
+  MAX_LEVEL,
   MAX_TEAMS,
   type MatchConfig,
   type PickupKind,
@@ -56,11 +58,57 @@ export const CENTER_PAD_PHASES = ["hp", "fuel", "shield"] as const;
 export type CenterPadPhase = (typeof CENTER_PAD_PHASES)[number];
 export const centerPadPhase = (age: number): CenterPadPhase =>
   CENTER_PAD_PHASES[Math.floor(age / CENTER_PAD_PHASE_GENS) % 3];
+// Solid collision radius of the center pad's core (the faceted dais). Kept well
+// inside CENTER_PAD.r (the buff/finish trigger, 20) so bodies bounce off the
+// core while a ship can still hug the surrounding donut to heal and cash in.
+export const CENTER_PAD_RADIUS = 7;
 // Combat XP: shattering an asteroid banks XP for the shooter; enough advances a
 // level (same promotion as a rank-up pickup). XP_TO_LEVEL is indexed by current
 // level-1 — the amount needed to reach the next level; L5 (ace) is capped.
 export const XP_PER_ROCK = 1; // XP for shattering one asteroid with a shot
-export const XP_TO_LEVEL: readonly number[] = [4, 6, 9, 13, Infinity];
+export const XP_TO_LEVEL: readonly number[] = [3, 6, 10, 15, Infinity];
+// XP banked per hit landed on an enemy base (bolt, missile, or rammer slam). The
+// raid is the core loop ships spend most time on, so it's the steadiest leveling
+// stream — uncapped (the aggressive objective ranks to ace) and non-healing.
+export const BASE_RAID_XP = 1;
+// Rock XP is a catch-up trickle, not a solo carry: it can only rank a ship up to
+// this level. Ranks past here require earned combat — killing enemies (killXp,
+// uncapped) or the base-raid path — so the safe PvE farm never out-values the
+// contested objective. Rock XP still banks at the cap but can't cross it.
+export const XP_LEVEL_CAP = 3;
+
+// Kill XP scales with the *level delta* between killer and victim, so leveling
+// rewards punching up and starves the snowball (a veteran farming rookies barely
+// ranks — the economic half of the anti-runaway lever; focus-fire on veterans is
+// the tactical half). Killing a juicier (higher) prey is worth more; a pubstomp
+// floors at XP_KILL_MIN. Reference matrix (killer level → victim level), rounded:
+//
+//   killer\victim  L1   L2   L3   L4   L5
+//        L1         2    3    5    6    8
+//        L2         1    2    4    5    7
+//        L3         1    1    3    4    6
+//        L4         1    1    2    3    5
+//
+// At thresholds [4,6,9,13]: even-level kills ~2-3 → a level; an upset can jump a
+// rank in one or two kills; stomping down nets the L1 floor. Partial damage banks
+// a pro-rata slice of these (see awardCombatXp), so chip damage counts too.
+export const XP_KILL_BASE = 1.5; // baseline value of an even-level kill
+export const XP_KILL_VICTIM = 0.5; // + per victim level above L1 (juicier prey)
+export const XP_KILL_UPSET = 1.0; // + per level the victim outranks the killer
+export const XP_KILL_MIN = 1; // a kill always banks at least this
+export const XP_KILL_MAX = 8; // cap on a single kill (an L1→L5 giant-slaying)
+export const killXp = (killerLevel: number, victimLevel: number): number =>
+  Math.max(
+    XP_KILL_MIN,
+    Math.min(
+      XP_KILL_MAX,
+      Math.round(
+        XP_KILL_BASE +
+          XP_KILL_VICTIM * (victimLevel - 1) +
+          XP_KILL_UPSET * (victimLevel - killerLevel),
+      ),
+    ),
+  );
 export const xpForLevel = (level: number): number =>
   XP_TO_LEVEL[level - 1] ?? Infinity;
 export const HOME_RADIUS = 12; // over own base -> chance to promote
@@ -68,7 +116,6 @@ export const BASE_MAX_HP = 24; // base integrity; 0 = team eliminated
 export const BASE_RADIUS = 11; // solid collision radius of a base
 export const BASE_HEAL_RATE = 0.05; // base HP/gen while an ally sits on it
 export const BASE_RAM_DAMAGE = 1; // base HP lost per enemy ram (behind i-frames)
-export const BASE_LEVELUP_CHANCE = 0.005; // per-gen promotion odds while docked
 // Base gravity well: an intact base pulls its own ships home and repels
 // intruders. Reach tracks the inward force-field visual; both scale with the
 // base's remaining integrity, so a crumbling base loses its grip.
@@ -98,6 +145,69 @@ export const FIRE_RANGE = 95; // only fire when an enemy is within this
 const FIRE_COOLDOWN_BY_LEVEL = [90, 74, 60, 48, 38]; // gens between shots
 export const fireCooldownForLevel = (level: number): number =>
   FIRE_COOLDOWN_BY_LEVEL[level - 1] ?? FIRE_COOLDOWN_BY_LEVEL[0];
+// Bolt reach grows with rank: a bolt lives longer (flies farther) each level, so
+// veterans out-range rookies — the "leveling up increases range" half (cadence
+// above is the "increases frequency" half).
+export const BULLET_RANGE_GROWTH = 0.13; // +13% bolt lifetime per level over L1
+export const bulletLifeFor = (level: number): number =>
+  Math.round(BULLET_LIFE * (1 + (level - 1) * BULLET_RANGE_GROWTH));
+
+// --- Per-archetype firing patterns ------------------------------------------
+// Each class shoots differently: a "single" bolt, a "parallel" salvo of wing-
+// mounted barrels fired abreast (wide hulls), or a "burst" — a quick stream of
+// shots then a longer reload. Barrels/spread describe the parallel fan; burst
+// size + gap describe the stream. See fireWeapon (interactions.ts).
+export type WeaponPattern = "single" | "parallel" | "burst";
+export interface WeaponProfile {
+  readonly pattern: WeaponPattern;
+  readonly barrels: number; // parallel: bolts fired side-by-side (≥1)
+  readonly spread: number; // parallel: perpendicular spacing per barrel (cells)
+  readonly burstShots: number; // burst: shots in one salvo before the reload
+  readonly burstGap: number; // burst: gens between shots within the salvo
+}
+export const WEAPON_PROFILES: Record<Archetype, WeaponProfile> = {
+  // Nimble harasser: one bolt, but the fastest cadence (see fireCooldown).
+  scout: {
+    pattern: "single",
+    barrels: 1,
+    spread: 0,
+    burstShots: 1,
+    burstGap: 0,
+  },
+  // Balanced gunner: twin cannons firing abreast.
+  fighter: {
+    pattern: "parallel",
+    barrels: 2,
+    spread: 3,
+    burstShots: 1,
+    burstGap: 0,
+  },
+  // Wide hull: a broad three-barrel wing volley — the parallel-fire showcase.
+  heavy: {
+    pattern: "parallel",
+    barrels: 3,
+    spread: 5,
+    burstShots: 1,
+    burstGap: 0,
+  },
+  // Strike craft: a rapid three-shot burst, then a reload beat.
+  interceptor: {
+    pattern: "burst",
+    barrels: 1,
+    spread: 0,
+    burstShots: 3,
+    burstGap: 6,
+  },
+};
+// Weapon profile for a ship, with the L5 fighter capstone folded in: an ace
+// fighter mounts a third parallel barrel (2 → 3), widening its abreast volley.
+export const weaponFor = (a: Archetype, level: number): WeaponProfile => {
+  const wp = WEAPON_PROFILES[a];
+  if (a === "fighter" && level >= MAX_LEVEL) {
+    return { ...wp, barrels: wp.barrels + 1 };
+  }
+  return wp;
+};
 
 // Longest explosion variant — bursts live at least this long so none clip early.
 export const EXPLOSION_DURATION = Math.max(...EXPLOSION_CLIPS.map(durationOf));
@@ -120,9 +230,24 @@ export const WANDER_GAIN = [0.03, 0.032, 0.036, 0.04, 0.045];
 // and back off when inside it, so they settle at firing range and trade shots
 // instead of boring straight through. Engage radius ≥ FIRE_RANGE so they notice
 // and close from range; scrappier low ranks stand closer, aces kite farther.
-export const ENGAGE_GAIN = [0.032, 0.05, 0.065, 0.085, 0.1];
+export const ENGAGE_GAIN = [0.05, 0.075, 0.1, 0.12, 0.14];
 export const ENGAGE_RADIUS = [95, 110, 120, 135, 150];
 export const KITE_DIST = [56, 64, 72, 80, 84]; // preferred standoff (< FIRE_RANGE 95)
+// L3+ ships coordinate: they focus-fire (and pursue) the weakest enemy in range
+// so allies converge on one target. Lower ranks fight solo (nearest threat).
+export const COORDINATE_MIN_LEVEL = 3;
+// Concave surround: while charging a target, a pressing ship also drifts
+// sideways (perpendicular to its approach), split to opposite flanks by ship-id
+// parity, so a squad fans onto an arc around the enemy instead of stacking into
+// a column — more hulls reach the front at once. The sideways pull fades to a
+// straight ram inside CONCAVE_COMMIT_DIST so ships still close and connect.
+export const CONCAVE_GAIN = 0.7; // tangential strength relative to the approach
+export const CONCAVE_COMMIT_DIST = 42; // within this range, commit straight in
+// While a ship is committed — an enemy in engage range, or an active objective /
+// rally / refuel run — its flocking urges (align, cohere, wander) are damped to
+// this fraction so formation-keeping can't drag it off the fight or the goal.
+// Full murmuration returns only when the ship is idle.
+export const COMBAT_FLOCK_DAMP = 0.3;
 // Objective play: chase power-up bubbles, and when hurt peel off to a heal pad.
 // L1 is a pure brawler (0); higher ranks sense farther, pull harder, and retreat
 // to heal sooner — so battlefield IQ tracks rank.
@@ -139,7 +264,7 @@ export const CENTERPAD_SEEK_RADIUS = [0, 70, 100, 130, 165];
 export const CENTERPAD_SEEK_THRESH = 0.4; // seek once worst resource deficit exceeds this
 // Base-raid objective: L2+ ships steer toward enemy bases they still need to hit
 // (the leveling path). L1 rookies ignore it and just brawl.
-export const OBJECTIVE_GAIN = [0, 0.025, 0.04, 0.05, 0.055];
+export const OBJECTIVE_GAIN = [0, 0.05, 0.075, 0.09, 0.1];
 export const OBJECTIVE_RADIUS = [0, 90, 120, 150, 170];
 
 // How much a ship *wants* a bubble kind given its current deficit. Matching-need
@@ -236,8 +361,16 @@ export const ARCHETYPE_MODS: Record<
     missiles: boolean;
     fuelShare: boolean; // carrier: refuels nearby allies
     recon: boolean; // scout: shares enemy-base raid progress with allies
+    meleeDmg: number; // base ram damage on contact (before counter + level scale)
+    counters: Archetype; // class this one gets the melee/aggression bonus against
+    rammer: boolean; // brawler: closes to contact + rams bases for extra damage
+    meleeResist: number; // 0..1 melee armor — physical/ram damage soaked
+    pierceArmor: number; // 0..1 pierce armor — ranged bolt/missile/blast soaked
   }
 > = {
+  // Counter loop (each beats the next): scout → interceptor → heavy → fighter →
+  // scout. A ship that counters its foe rams harder and presses in; one that is
+  // countered chips lightly and holds off (see meleeDamage + combatAggression).
   scout: {
     speed: 1.3,
     hp: 0.75,
@@ -247,6 +380,11 @@ export const ARCHETYPE_MODS: Record<
     missiles: false,
     fuelShare: false,
     recon: true, // the recon: broadcasts raid intel to nearby squadmates
+    meleeDmg: 0.6, // fragile harasser — bad rammer
+    counters: "interceptor", // fast enough to run down the glass-cannon
+    rammer: false,
+    meleeResist: 0, // paper hull — takes rams full in the teeth
+    pierceArmor: 0, // …and full bolts too
   },
   fighter: {
     speed: 1.0,
@@ -257,6 +395,11 @@ export const ARCHETYPE_MODS: Record<
     missiles: false,
     fuelShare: false,
     recon: false,
+    meleeDmg: 1.0, // balanced baseline
+    counters: "scout", // gunner shreds the fragile scout
+    rammer: false,
+    meleeResist: 0.1,
+    pierceArmor: 0.15,
   },
   heavy: {
     speed: 0.78,
@@ -267,6 +410,11 @@ export const ARCHETYPE_MODS: Record<
     missiles: false,
     fuelShare: true, // the carrier: big tank, shares with allies
     recon: false,
+    meleeDmg: 1.7, // the bruiser — crushes on contact
+    counters: "fighter", // tank walks through the fighter's fire
+    rammer: true, // the melee ship: charges enemies, slams bases
+    meleeResist: 0.5, // reinforced hull — shrugs off half of every ram
+    pierceArmor: 0.45, // heavy plating — eats most incoming fire (the tank)
   },
   interceptor: {
     speed: 1.12,
@@ -277,7 +425,92 @@ export const ARCHETYPE_MODS: Record<
     missiles: true,
     fuelShare: false,
     recon: false,
+    meleeDmg: 0.9,
+    counters: "heavy", // missiles chase down the slow heavy
+    rammer: false,
+    meleeResist: 0.05,
+    pierceArmor: 0.1,
   },
+};
+
+// --- Counter-web combat: melee damage + survival-balanced aggression ---------
+export const MELEE_COUNTER_MULT = 1.75; // ram bonus when attacker counters the target
+export const MELEE_LEVEL_SCALE = 0.12; // +12% ram damage per level above L1
+
+// Focus-fire priority (higher = more attractive target): a blend of "finish the
+// wounded" (low hp) and "gang the veteran" (high level). The level term is the
+// tactical half of the anti-runaway lever — a leader draws fire instead of
+// snowballing untouched — while the hp term keeps the squad finishing kills. The
+// bounty is tuned so a *wounded* veteran is prized but a *full-hp* tank isn't
+// dived (its high hp still outweighs the bounty). See focusEnemy / pickFoe.
+export const TARGET_VETERAN_BOUNTY = 0.8; // hp-equivalent worth of each victim level
+export const targetPriority = (ship: LightCycle): number =>
+  ship.level * TARGET_VETERAN_BOUNTY - ship.hp;
+
+/** Does this class actively ram — close to contact and slam bases? */
+export const isRammer = (a: Archetype): boolean => ARCHETYPE_MODS[a].rammer;
+
+// Rammers hit bases harder on a hull slam; everyone else does the flat ram.
+export const BASE_RAM_MULT = 3; // rammer base-ram multiplier over BASE_RAM_DAMAGE
+
+// L5 capstone — the ace rammer's hull slam sets off an area shockwave (reuses the
+// EMP blast: damages + kills nearby enemies, credits XP to the rammer). Turns a
+// veteran heavy into a melee area-bruiser. See maybeRamShock (context.ts).
+export const RAM_SHOCK_DAMAGE = 2; // shockwave damage to each enemy in reach
+export const RAM_SHOCK_RADIUS = 30; // shockwave reach in cells
+
+/** Base integrity a ship strips per hull ram (rammers slam far harder). */
+export const baseRamDamage = (s: LightCycle): number =>
+  BASE_RAM_DAMAGE * (isRammer(s.archetype) ? BASE_RAM_MULT : 1);
+
+/**
+ * Raw ram damage `attacker` deals to `defender`: base × counter bonus × level
+ * scale. This is the attacker-side output only — the defender's melee armor is
+ * applied centrally when the hit lands (see `hit` → armorFor), so every damage
+ * type passes through one armor choke point.
+ */
+export const meleeDamage = (
+  attacker: LightCycle,
+  defender: LightCycle,
+): number => {
+  const mods = ARCHETYPE_MODS[attacker.archetype];
+  const counter = mods.counters === defender.archetype ? MELEE_COUNTER_MULT : 1;
+  const levelScale = 1 + (attacker.level - 1) * MELEE_LEVEL_SCALE;
+  return mods.meleeDmg * counter * levelScale;
+};
+
+/** Fraction of an incoming hit soaked by `a`'s armor for the given damage type. */
+export const armorFor = (a: Archetype, type: DamageType): number =>
+  type === "melee"
+    ? ARCHETYPE_MODS[a].meleeResist
+    : ARCHETYPE_MODS[a].pierceArmor;
+
+// Aggression gate: scales combat pursuit so ships fight hard only when it's safe
+// and favorable, otherwise deferring to survival + raid(level-up) steering.
+export const AGGRO_MIN = 0.3; // floor — a cornered ship still defends itself
+export const AGGRO_MAX = 1.5; // ceiling — a fresh, favored ship presses hardest
+export const AGGRO_FAVOR = 1.3; // matchup multiplier when self counters the foe
+export const AGGRO_FEAR = 0.5; // matchup multiplier when the foe counters self
+
+/**
+ * How hard `self` should press a fight with `foe`, in [AGGRO_MIN, AGGRO_MAX].
+ * Folds three restraints so aggression never overrides survival or leveling:
+ *  - health: a hurt ship backs off (peels to heal / keeps chasing its raid);
+ *  - fuel: a near-dry ship won't burn its tank on a chase (lets refuel win);
+ *  - matchup: press a foe you counter, shy from one that counters you.
+ */
+export const combatAggression = (self: LightCycle, foe: LightCycle): number => {
+  const health = self.maxHp > 0 ? self.hp / self.maxHp : 1;
+  const fuel = self.maxFuel > 0 ? self.fuel / self.maxFuel : 1;
+  const fuelFactor = 0.5 + 0.5 * Math.min(1, fuel / 0.5); // 1 at half-tank+, 0.5 dry
+  let matchup = 1;
+  if (ARCHETYPE_MODS[self.archetype].counters === foe.archetype) {
+    matchup = AGGRO_FAVOR;
+  } else if (ARCHETYPE_MODS[foe.archetype].counters === self.archetype) {
+    matchup = AGGRO_FEAR;
+  }
+  const raw = health * fuelFactor * matchup;
+  return Math.max(AGGRO_MIN, Math.min(AGGRO_MAX, raw));
 };
 
 export const maxHpForLevel = (level: number): number => 1 + level; // L1=2 … L5=6

@@ -4,7 +4,7 @@ import {
   elastic,
   normalize,
   wrapDelta,
-} from "../../engine/physics";
+} from "~/engine/physics";
 import {
   advanceAsteroid,
   advanceMissile,
@@ -64,15 +64,15 @@ const shipAccel = (
   empty
     ? [0, 0]
     : flockSteer(
-        s,
-        world.ships.items,
-        world.asteroids.items,
-        world.pickups.items,
-        baseHp,
-        world.rally,
-        s.level,
-        world.age,
-      );
+      s,
+      world.ships.items,
+      world.asteroids.items,
+      world.pickups.items,
+      baseHp,
+      world.rally,
+      s.level,
+      world.age,
+    );
 
 /** Advance one ship `steps` gens: steer, cruise-regulate, move, decay timers. */
 const advanceShip = (

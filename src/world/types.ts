@@ -47,6 +47,11 @@ export interface Cmd {
 export const ARCHETYPES = ["scout", "fighter", "heavy", "interceptor"] as const;
 export type Archetype = (typeof ARCHETYPES)[number];
 
+// How a hit is delivered — the defender's armor soaks each type differently:
+// melee = physical contact (rams, force-field, rocks/shrapnel); pierce = ranged
+// energy/ordnance (bolts, missiles, mines, EMP). See ARCHETYPE_MODS + armorFor.
+export type DamageType = "melee" | "pierce";
+
 export interface LightCycle extends Entity {
   readonly x: number;
   readonly y: number;
@@ -77,6 +82,7 @@ export interface LightCycle extends Entity {
   readonly boostTime: number; // gens of speed boost left (speed power-up)
   readonly portalCooldown: number; // gens before this ship can portal again
   readonly fireCooldown: number; // gens before this ship can fire its next bolt
+  readonly burstCount: number; // shots already fired in the current burst salvo
   readonly fuel: number; // remaining tank; 0 = no thrust, no weapons (drifts)
   readonly maxFuel: number; // tank capacity (archetype × level); refilled at home
   // Hits landed on each enemy base since the last level, keyed by base name.
@@ -108,6 +114,7 @@ export const BURST_DETONATION = 1;
 export const BURST_MUZZLE = 2;
 export const BURST_IMPACT = 3;
 export const BURST_EMP = 4;
+export const BURST_SHIELD = 5; // base shield deflection: expanding ring + flash
 
 export interface Burst extends Entity {
   readonly x: number;
@@ -271,4 +278,4 @@ export type Msg =
   | { readonly kind: "replenish" }
   | { readonly kind: "reset" };
 
-export type Mutable<T> = { -readonly [P in keyof T]: T[P] };
+export type { Mutable } from "../engine/entities";

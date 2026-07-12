@@ -1,5 +1,11 @@
-import { elastic, normalize, wrapDelta } from "../../engine/physics";
-import { HIT_COOLDOWN, SCORE_KILL, toroidalDist, wrap } from "../factory";
+import { elastic, normalize, wrapDelta } from "~/engine/physics";
+import {
+  HIT_COOLDOWN,
+  meleeDamage,
+  SCORE_KILL,
+  toroidalDist,
+  wrap,
+} from "../factory";
 import {
   BURST_EXPLOSION,
   GRID_H,
@@ -7,7 +13,7 @@ import {
   type LightCycle,
   type Mutable,
 } from "../types";
-import { hit, killShip, replace, type TickCtx } from "./context";
+import { hit, killShip, maybeRamShock, replace, type TickCtx } from "./context";
 
 type Ship = Mutable<LightCycle>;
 
@@ -103,14 +109,20 @@ const resolveDeaths = (ctx: TickCtx, a: Ship, b: Ship): void => {
   }
 };
 
-/** Two enemies collide → bounce, then (off i-frames) trade a hit each. */
+// Two enemies collide → bounce, then (off i-frames) ram each other. Each side's
+// hull damage is meleeDamage(attacker, defender): scaled by the attacker's class
+// ram, the counter-web bonus, its rank, and the defender's melee resistance — so
+// a rammer crushing its countered prey trades far better than a scout tapping a
+// heavy.
 const dogfight = (ctx: TickCtx, a: Ship, b: Ship): void => {
   bounceShips(a, b);
   if (a.hitCooldown > 0 || b.hitCooldown > 0) return;
-  hit(ctx, a, 1);
-  hit(ctx, b, 1);
+  hit(ctx, a, meleeDamage(b, a), "melee", b.id);
+  hit(ctx, b, meleeDamage(a, b), "melee", a.id);
   a.hitCooldown = HIT_COOLDOWN;
   b.hitCooldown = HIT_COOLDOWN;
+  maybeRamShock(ctx, a); // L5 rammer capstone: hull slam → area shockwave
+  maybeRamShock(ctx, b);
   resolveDeaths(ctx, a, b);
 };
 

@@ -2,7 +2,7 @@
 // 666-line monolith; these lock its observable behavior (determinism +
 // invariants) so it can be refactored into per-system functions safely later.
 import { expect, test } from "bun:test";
-import type { LightCycle } from "~/web/world";
+import type { LightCycle } from "~/world";
 import {
   type Archetype,
   CENTER_PAD,
@@ -14,7 +14,7 @@ import {
   TEAMS,
   update,
   type World,
-} from "~/web/world";
+} from "~/world";
 import {
   baseHitsRequired,
   cruiseFor,
@@ -24,8 +24,8 @@ import {
   MAX_SHIPS,
   maxFuelFor,
   rollShip,
-} from "~/web/world/factory";
-import { createTickCtx, creditBaseHit } from "~/web/world/tick/context";
+} from "~/world/factory";
+import { createTickCtx, creditBaseHit } from "~/world/tick/context";
 
 const run = (seed: number, ticks: number, steps = 3) => {
   let w = initWorld(seed);
@@ -197,11 +197,12 @@ test("docked ship refuels at its home base", () => {
 const enemyBaseNames = (team: string) =>
   TEAM_BASES.filter((b) => b.name !== team).map((b) => b.name);
 
-test("creditBaseHit only tallies raids — it never promotes on its own", () => {
+test("creditBaseHit tallies raids exactly and banks raid XP toward rank", () => {
   const w0 = initWorld(1);
   const ship = {
     ...w0.ships.items[0],
     level: 1,
+    xp: 0,
     colorName: "cyan",
     baseHits: {},
   };
@@ -209,11 +210,14 @@ test("creditBaseHit only tallies raids — it never promotes on its own", () => 
   ctx.moved = [ship];
   const enemies = enemyBaseNames("cyan");
   for (const e of enemies) creditBaseHit(ctx, ship.id, e);
-  // Every enemy base raided, yet no promotion — that's the center pad's job.
-  expect(ctx.moved[0].level).toBe(1);
+  // The raid tally is exact regardless of any promotion it triggers.
   for (const e of enemies) {
     expect(ctx.moved[0].baseHits[e]).toBe(baseHitsRequired(1));
   }
+  // Raiding is now a leveling stream (BASE_RAID_XP per hit), so the ship makes
+  // rank progress — it never stays stuck at L1 with no XP banked. The full-raid
+  // promote+heal+reset remains the center pad's job (finishAtCenterPad).
+  expect(ctx.moved[0].level > 1 || ctx.moved[0].xp > 0).toBe(true);
 });
 
 // A cyan L1 ship that has already raided every enemy base, placed either over

@@ -13,6 +13,7 @@ import {
   BURST_EMP,
   BURST_IMPACT,
   BURST_MUZZLE,
+  BURST_SHIELD,
   type Burst,
   type World,
 } from "../world";
@@ -197,6 +198,74 @@ function drawAoeBlast(
   }
 }
 
+// Shield deflection when a ship rams a base: a bright ring shell snaps outward
+// from the strike — a white leading edge trailed by the team tint — over a quick
+// point flash. Reads as the base's shield soaking the hit, not an explosion.
+function drawShieldDeflect(
+  push: PushFn,
+  cx: number,
+  cy: number,
+  cellPx: number,
+  cellPy: number,
+  t: number,
+  rgb: readonly [number, number, number],
+) {
+  const fade = 1 - t;
+  const ease = 1 - (1 - t) * (1 - t); // fast-out expansion
+  const R = 15; // reach in cells, just past the base's force field
+  const ring = (
+    radCells: number,
+    a: number,
+    col: readonly [number, number, number],
+  ) =>
+    push(cx, cy, radCells * cellPx, radCells * cellPy, 0, SHAPE.ring, [
+      col[0],
+      col[1],
+      col[2],
+      Math.max(0, a),
+    ]);
+  ring(R * ease, 0.7 * fade, [1, 1, 1]);
+  ring(R * 0.82 * ease, 0.55 * fade, rgb);
+  // Bright point flash at the impact, gone within the first third of the life.
+  push(cx, cy, (3 + 5 * t) * cellPx, (3 + 5 * t) * cellPy, 0, SHAPE.solid, [
+    1,
+    1,
+    1,
+    Math.max(0, 1 - t * 3),
+  ]);
+}
+
+// Time-based vector bursts (EMP fire blast, base shield deflection) — drawn
+// procedurally over their life `t` rather than as a sprite clip. Returns true
+// when it owns `burst`, so the caller skips the clip path.
+function drawFieldBurst(
+  push: PushFn,
+  burst: Burst,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+): boolean {
+  if (burst.kind !== BURST_EMP && burst.kind !== BURST_SHIELD) return false;
+  const t = (now - burst.start) / EXPLOSION_DURATION;
+  if (t >= 0 && t <= 1) {
+    const cx = (burst.x + 0.5) * cellPx;
+    const cy = (burst.y + 0.5) * cellPy;
+    if (burst.kind === BURST_EMP) drawAoeBlast(push, cx, cy, cellPx, cellPy, t);
+    else {
+      drawShieldDeflect(
+        push,
+        cx,
+        cy,
+        cellPx,
+        cellPy,
+        t,
+        burst.rgb ?? [0.6, 0.8, 1],
+      );
+    }
+  }
+  return true;
+}
+
 // Animated blast FX at their sites.
 export function drawBursts(
   push: PushFn,
@@ -206,20 +275,7 @@ export function drawBursts(
   world: World,
 ) {
   for (const burst of world.bursts.items) {
-    if (burst.kind === BURST_EMP) {
-      const t = (now - burst.start) / EXPLOSION_DURATION;
-      if (t >= 0 && t <= 1) {
-        drawAoeBlast(
-          push,
-          (burst.x + 0.5) * cellPx,
-          (burst.y + 0.5) * cellPy,
-          cellPx,
-          cellPy,
-          t,
-        );
-      }
-      continue;
-    }
+    if (drawFieldBurst(push, burst, cellPx, cellPy, now)) continue;
     const style = burstStyle(burst);
     const layer = clipLayer(style.clip, burst.start, now);
     if (layer < 0) continue;

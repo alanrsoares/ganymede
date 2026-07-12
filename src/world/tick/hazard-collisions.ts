@@ -1,7 +1,14 @@
-import { elastic, normalize, wrapDelta } from "../../engine/physics";
+import {
+  elastic,
+  normalize,
+  reflectOffDisc,
+  wrapDelta,
+} from "~/engine/physics";
 import {
   BASE_RADIUS,
   BASE_RAM_DAMAGE,
+  baseRamDamage,
+  CENTER_PAD_RADIUS,
   HIT_COOLDOWN,
   SHRAPNEL_RADIUS,
   shipRadius,
@@ -13,7 +20,8 @@ import {
   type Asteroid,
   type Base,
   BURST_EXPLOSION,
-  BURST_IMPACT,
+  BURST_SHIELD,
+  CENTER_PAD,
   GRID_H,
   GRID_W,
   type LightCycle,
@@ -21,7 +29,13 @@ import {
   type Projectile,
   TEAM_BASES,
 } from "../types";
-import { hit, killShip, type TickCtx } from "./context";
+import {
+  creditBaseHit,
+  hit,
+  killShip,
+  maybeRamShock,
+  type TickCtx,
+} from "./context";
 import type { MotionState } from "./motion";
 
 export interface HazardState {
@@ -38,13 +52,17 @@ type Ship = Mutable<LightCycle>;
 type Rock = Mutable<Asteroid>;
 type Step = "break" | "next"; // loop control returned by a pair handler
 
-/** Damage a team base by a ram and flag the impact FX (clamped at 0). */
-const ramBase = (ctx: TickCtx, base: Base): void => {
-  ctx.baseHp[base.name] = Math.max(0, ctx.baseHp[base.name] - BASE_RAM_DAMAGE);
+/** Damage a team base by a ram and flag the shield-deflection FX (clamped at 0). */
+const ramBase = (
+  ctx: TickCtx,
+  base: Base,
+  amount: number = BASE_RAM_DAMAGE,
+): void => {
+  ctx.baseHp[base.name] = Math.max(0, ctx.baseHp[base.name] - amount);
   ctx.burstAt.push({
     x: Math.floor(base.x),
     y: Math.floor(base.y),
-    kind: BURST_IMPACT,
+    kind: BURST_SHIELD,
     rgb: base.rgb,
   });
 };
@@ -97,7 +115,7 @@ const shipVsRock = (
   s.y = wrap(s.y - uy * (rad - dist), GRID_H);
 
   if (s.hitCooldown > 0) return "next";
-  hit(ctx, s, 1);
+  hit(ctx, s, 1, "melee");
   s.hitCooldown = HIT_COOLDOWN;
   r.hp -= 1;
   if (r.hp <= 0) {
@@ -124,28 +142,13 @@ const collideShipsRocks = (
   }
 };
 
-/** Bounce a body off a base with a reflection; caller supplies the damage step. */
+/** Bounce a body off a base; caller supplies the damage step. */
 const reflectOffBase = (
   pos: { x: number; y: number; vx: number; vy: number },
   base: Base,
   bodyRad: number,
-): { dist: number; vdot: number } => {
-  const nx = wrapDelta(pos.x, base.x, GRID_W);
-  const ny = wrapDelta(pos.y, base.y, GRID_H);
-  const rad = BASE_RADIUS + bodyRad;
-  const dist = Math.hypot(nx, ny);
-  if (dist >= rad || dist < 1e-3) return { dist, vdot: -1 };
-  const ux = nx / dist;
-  const uy = ny / dist;
-  pos.x = wrap(pos.x - ux * (rad - dist), GRID_W);
-  pos.y = wrap(pos.y - uy * (rad - dist), GRID_H);
-  const vdot = pos.vx * ux + pos.vy * uy;
-  if (vdot > 0) {
-    pos.vx -= 2 * vdot * ux;
-    pos.vy -= 2 * vdot * uy;
-  }
-  return { dist, vdot };
-};
+): { dist: number; vdot: number } =>
+  reflectOffDisc(pos, base.x, base.y, BASE_RADIUS, bodyRad, GRID_W, GRID_H);
 
 const shipVsBase = (ctx: TickCtx, s: Ship, base: Base): Step => {
   if (base.name === s.colorName || ctx.baseHp[base.name] <= 0) return "next";
@@ -158,9 +161,13 @@ const shipVsBase = (ctx: TickCtx, s: Ship, base: Base): Step => {
     s.dy = hy;
   }
   if (s.hitCooldown <= 0) {
-    hit(ctx, s, 1);
+    // Rammers slam bases far harder (baseRamDamage) and shrug off the recoil —
+    // the melee armor that softens the self-hit is applied centrally in `hit`.
+    hit(ctx, s, 1, "melee");
     s.hitCooldown = HIT_COOLDOWN;
-    ramBase(ctx, base);
+    ramBase(ctx, base, baseRamDamage(s));
+    creditBaseHit(ctx, s.id, base.name); // rammer slams tally the raid too (+XP)
+    maybeRamShock(ctx, s); // L5 rammer capstone: base slam → area shockwave
     if (s.hp <= 0) killShip(ctx, s);
   }
   return "break";
@@ -197,6 +204,69 @@ const collideRocksBases = (
   }
 };
 
+// Neutral gold, matching the center pad's dais tint, for its deflection ripple.
+const CENTER_PAD_RGB = [1.0, 0.78, 0.35] as const;
+
+/** Deflection ripple + point flash at the center-pad core, tinted its gold. */
+const centerPadDeflect = (ctx: TickCtx): void => {
+  ctx.burstAt.push({
+    x: Math.floor(CENTER_PAD.x),
+    y: Math.floor(CENTER_PAD.y),
+    kind: BURST_SHIELD,
+    rgb: CENTER_PAD_RGB,
+  });
+};
+
+/** Ship ↔ center-pad core: bounce off the solid dais and chip the hull. */
+const shipVsCenterPad = (ctx: TickCtx, s: Ship): void => {
+  const { dist, vdot, rad } = reflectOffDisc(
+    s,
+    CENTER_PAD.x,
+    CENTER_PAD.y,
+    CENTER_PAD_RADIUS,
+    shipRadius(s.level),
+    GRID_W,
+    GRID_H,
+  );
+  if (dist >= rad || dist < 1e-3) return;
+  if (vdot > 0) {
+    const [hx, hy] = normalize([s.vx, s.vy], [s.dx, s.dy]);
+    s.dx = hx;
+    s.dy = hy;
+  }
+  if (s.hitCooldown > 0) return;
+  hit(ctx, s, 1, "melee");
+  s.hitCooldown = HIT_COOLDOWN;
+  centerPadDeflect(ctx);
+  if (s.hp <= 0) killShip(ctx, s);
+};
+
+/** Rock ↔ center-pad core: bounce off; the neutral dais is indestructible. */
+const rockVsCenterPad = (r: Rock): void => {
+  reflectOffDisc(
+    r,
+    CENTER_PAD.x,
+    CENTER_PAD.y,
+    CENTER_PAD_RADIUS,
+    r.size,
+    GRID_W,
+    GRID_H,
+  );
+};
+
+const collideBodiesCenterPad = (
+  ctx: TickCtx,
+  motion: MotionState,
+  hazards: HazardState,
+): void => {
+  for (const s of ctx.moved) {
+    if (!ctx.removed.has(s.id)) shipVsCenterPad(ctx, s);
+  }
+  for (const r of motion.rocks) {
+    if (!hazards.removedRocks.has(r.id)) rockVsCenterPad(r);
+  }
+};
+
 const shardVsShip = (
   ctx: TickCtx,
   hazards: HazardState,
@@ -209,7 +279,7 @@ const shardVsShip = (
   if (dx * dx + dy * dy >= rad * rad) return "next";
   hazards.removedShards.add(f.id);
   if (s.hitCooldown <= 0) {
-    hit(ctx, s, 1);
+    hit(ctx, s, 1, "melee");
     s.hitCooldown = HIT_COOLDOWN;
     if (s.hp <= 0) killShip(ctx, s);
   }
@@ -238,6 +308,7 @@ export const resolveHazardCollisions = (
   collideShipsRocks(ctx, motion, hazards);
   collideShipsBases(ctx);
   collideRocksBases(ctx, motion, hazards);
+  collideBodiesCenterPad(ctx, motion, hazards);
   collideShardsShips(ctx, motion, hazards);
 };
 

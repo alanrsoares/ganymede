@@ -10,6 +10,7 @@ import type { Mesh } from "./mesh";
 // (0..N-1) never collide with them, regardless of how many an instance has.
 const MESH_POS_LOC = 6;
 const MESH_NRM_LOC = 7;
+const MESH_COL_LOC = 8; // optional per-vertex rgb (meshes with `hasColor`)
 
 /**
  * One source of truth for an instance layout. `fields` is a flat list of scalar
@@ -54,6 +55,26 @@ export interface MeshPassSpec<T extends string> {
   depthCompare: GPUCompareFunction;
 }
 
+// The per-vertex buffer layout: pos + normal, plus rgb at MESH_COL_LOC when the
+// mesh carries per-vertex colour.
+const meshVertexBufferLayout = (mesh: Mesh): GPUVertexBufferLayout => ({
+  arrayStride: (mesh.hasColor ? 9 : 6) * 4,
+  stepMode: "vertex",
+  attributes: [
+    { shaderLocation: MESH_POS_LOC, offset: 0, format: "float32x3" },
+    { shaderLocation: MESH_NRM_LOC, offset: 12, format: "float32x3" },
+    ...(mesh.hasColor
+      ? [
+          {
+            shaderLocation: MESH_COL_LOC,
+            offset: 24,
+            format: "float32x3" as const,
+          },
+        ]
+      : []),
+  ],
+});
+
 export const createMeshPass = <T extends string>(
   device: GPUDevice,
   spec: MeshPassSpec<T>,
@@ -80,14 +101,7 @@ export const createMeshPass = <T extends string>(
           stepMode: "instance",
           attributes: layout.attrs,
         },
-        {
-          arrayStride: 6 * 4, // interleaved pos(3) + normal(3)
-          stepMode: "vertex",
-          attributes: [
-            { shaderLocation: MESH_POS_LOC, offset: 0, format: "float32x3" },
-            { shaderLocation: MESH_NRM_LOC, offset: 12, format: "float32x3" },
-          ],
-        },
+        meshVertexBufferLayout(mesh),
       ],
     },
     fragment: {

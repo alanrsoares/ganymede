@@ -28,10 +28,10 @@ export interface Loop {
  * rAF driver. Calls `frame(dt, now)` each animation frame with dt clamped to
  * `maxDt` (seconds) so a backgrounded tab doesn't produce a huge catch-up step.
  */
-export const createLoop = (
+export function createLoop(
   frame: (dt: number, now: number) => void,
   maxDt = 0.1,
-): Loop => {
+): Loop {
   let last = 0;
   let running = false;
 
@@ -54,4 +54,4 @@ export const createLoop = (
       running = false;
     },
   };
-};
+}

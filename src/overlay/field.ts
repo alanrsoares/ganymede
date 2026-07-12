@@ -208,7 +208,9 @@ export function drawBases(
   return baseCount;
 }
 
-// Portals (background). Two linked gates, slowly counter-rotating.
+// Portals (background). The game-asset sprite is the circular contour; inside it
+// a procedural shader vortex spirals into a dark event horizon. The two gates
+// counter-rotate (layer = spin sign) so the pair reads as an in/out throat.
 export function drawPortals(
   push: PushFn,
   cellPx: number,
@@ -216,14 +218,28 @@ export function drawPortals(
   now: number,
 ) {
   const portalTints: readonly Rgba[] = [
-    [0.55, 0.8, 1.0, 0.95],
-    [1.0, 0.6, 0.95, 0.95],
+    [0.55, 0.8, 1.0, 0.95], // cyan gate
+    [1.0, 0.6, 0.95, 0.95], // magenta gate
   ];
   PORTALS.forEach((gate, i) => {
+    const px = (gate.x + 0.5) * cellPx;
+    const py = (gate.y + 0.5) * cellPy;
     const dir = i === 0 ? 1 : -1;
+    // Shader vortex, sitting just inside the sprite's circular contour.
     push(
-      (gate.x + 0.5) * cellPx,
-      (gate.y + 0.5) * cellPy,
+      px,
+      py,
+      gate.r * 1.15 * cellPx,
+      gate.r * 1.15 * cellPy,
+      0,
+      SHAPE.vortex,
+      portalTints[i],
+      dir,
+    );
+    // Game-asset ring as the contour/frame around it.
+    push(
+      px,
+      py,
       gate.r * 1.3 * cellPx,
       gate.r * 1.3 * cellPy,
       (now / 1400) * dir,

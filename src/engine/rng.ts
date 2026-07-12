@@ -6,46 +6,42 @@
 export type Seed = number;
 
 /** Next float in [0, 1) and the advanced seed. */
-export const nextFloat = (seed: Seed): [number, Seed] => {
+export function nextFloat(seed: Seed): [number, Seed] {
   const s = (seed + 0x6d2b79f5) | 0;
   let t = Math.imul(s ^ (s >>> 15), s | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   const value = ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   return [value, s];
-};
+}
 
 /** Integer in [0, n) and the advanced seed. */
-export const nextInt = (seed: Seed, n: number): [number, Seed] => {
+export function nextInt(seed: Seed, n: number): [number, Seed] {
   const [f, next] = nextFloat(seed);
   return [Math.floor(f * n), next];
-};
+}
 
 /** Float in [lo, hi) and the advanced seed. */
-export const nextRange = (
-  seed: Seed,
-  lo: number,
-  hi: number,
-): [number, Seed] => {
+export function nextRange(seed: Seed, lo: number, hi: number): [number, Seed] {
   const [f, next] = nextFloat(seed);
   return [lo + f * (hi - lo), next];
-};
+}
 
 /** A uniformly chosen element of `arr` and the advanced seed. */
-export const pick = <T>(seed: Seed, arr: readonly T[]): [T, Seed] => {
+export function pick<T>(seed: Seed, arr: readonly T[]): [T, Seed] {
   const [i, next] = nextInt(seed, arr.length);
   return [arr[i], next];
-};
+}
 
 /**
  * Fold `count` seed-threaded builds into a list, returning [items, nextSeed].
  * Encapsulates the "draw N deterministic entities" pattern so call sites stay
  * declarative. O(count) — same as the hand-rolled loop it replaces.
  */
-export const rollMany = <T>(
+export function rollMany<T>(
   count: number,
   seed: Seed,
   roll: (seed: Seed, index: number) => [T, Seed],
-): [T[], Seed] => {
+): [T[], Seed] {
   const items: T[] = [];
   let s = seed;
   for (let i = 0; i < count; i++) {
@@ -54,4 +50,4 @@ export const rollMany = <T>(
     s = next;
   }
   return [items, s];
-};
+}

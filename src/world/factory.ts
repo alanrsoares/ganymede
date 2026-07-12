@@ -15,8 +15,9 @@ import { applyHit, wrap } from "./math";
 import {
   asteroidHp,
   BULLET_DAMAGE,
-  BULLET_LIFE,
   BULLET_SPEED,
+  bulletLifeFor,
+  COORDINATE_MIN_LEVEL,
   cruiseFor,
   EMP_DAMAGE,
   EMP_RADIUS,
@@ -31,6 +32,7 @@ import {
   SHRAPNEL_LIFE,
   shieldForLevel,
   shipRadius,
+  targetPriority,
 } from "./tuning";
 import {
   ARCHETYPES,
@@ -139,6 +141,7 @@ const buildShip = (
     boostTime: 0,
     portalCooldown: 0,
     fireCooldown: fireCooldownForLevel(level),
+    burstCount: 0,
     fuel: maxFuelFor(archetype, level),
     maxFuel: maxFuelFor(archetype, level),
     baseHits: {},
@@ -281,8 +284,7 @@ export const advanceMissile = (
   };
 };
 
-// --- Squad coordination (rank-gated) ----------------------------------------
-export const COORDINATE_MIN_LEVEL = 3; // L3+ focus-fire; lower ranks fight solo
+// --- Squad coordination (rank-gated; COORDINATE_MIN_LEVEL lives in tuning) ---
 
 /** Is `o` a valid focus-fire candidate for `self` (enemy, not already excluded)? */
 const isFocusCandidate = (
@@ -292,18 +294,20 @@ const isFocusCandidate = (
 ): boolean =>
   o.id !== self.id && o.colorName !== self.colorName && !skip.has(o.id);
 
-/** Does candidate `o` beat the current best (weaker, or tied-and-closer)? */
+/** Does candidate `o` beat the current best (higher priority, or tied-and-closer)? */
 const isBetterFocusTarget = (
-  o: LightCycle,
+  p: number,
   d2: number,
-  bestHp: number,
+  bestP: number,
   bestD2: number,
-): boolean => o.hp < bestHp || (o.hp === bestHp && d2 < bestD2);
+): boolean => p > bestP || (p === bestP && d2 < bestD2);
 
 /**
- * Focus-fire target: the *weakest* enemy within `range` (tiebreak nearest), or
- * null. Because coordinating allies all apply this same policy, they converge
- * fire on one wounded target and finish it — emergent teamwork, no shared state.
+ * Focus-fire target: the highest-`targetPriority` enemy within `range` — the
+ * weakest hull, biased toward high-level veterans (tiebreak nearest) — or null.
+ * Because coordinating allies all apply this same policy, they converge fire on
+ * one target and finish it, and a snowballing leader draws the squad's guns
+ * rather than farming untouched — emergent teamwork, no shared state.
  */
 export const focusEnemy = (
   self: LightCycle,
@@ -313,7 +317,7 @@ export const focusEnemy = (
 ): { ship: LightCycle; dist: number } | null => {
   const r2 = range * range;
   let best: LightCycle | null = null;
-  let bestHp = Number.POSITIVE_INFINITY;
+  let bestP = Number.NEGATIVE_INFINITY;
   let bestD2 = Number.POSITIVE_INFINITY;
   for (const o of ships) {
     if (!isFocusCandidate(self, o, skip)) continue;
@@ -321,9 +325,10 @@ export const focusEnemy = (
     const dy = wrapDelta(self.y, o.y, GRID_H);
     const d2 = dx * dx + dy * dy;
     if (d2 > r2) continue;
-    if (isBetterFocusTarget(o, d2, bestHp, bestD2)) {
+    const p = targetPriority(o);
+    if (isBetterFocusTarget(p, d2, bestP, bestD2)) {
       best = o;
-      bestHp = o.hp;
+      bestP = p;
       bestD2 = d2;
     }
   }
@@ -341,29 +346,37 @@ export const acquireTarget = (
     ? focusEnemy(self, ships, range, skip)
     : nearestEnemy(self, ships, skip);
 
-/** A weapon bolt fired from `s` toward point (tx, ty) — an enemy ship or base. */
+/**
+ * A weapon bolt fired from `s` toward point (tx, ty) — an enemy ship or base.
+ * `lateral` shifts the muzzle sideways (perpendicular to the aim) for wing-
+ * mounted parallel barrels: the bolts fly abreast on the same heading. Range
+ * (bolt lifetime) scales with the shooter's rank via `bulletLifeFor`.
+ */
 export const spawnBullet = (
   id: number,
   s: LightCycle,
   tx: number,
   ty: number,
+  lateral = 0,
 ): Bullet => {
   const [ax, ay] = normalize(
     [wrapDelta(tx, s.x, GRID_W), wrapDelta(ty, s.y, GRID_H)],
     [s.dx, s.dy],
   );
   const nose = shipRadius(s.level) + 1;
+  const px = -ay; // unit perpendicular to the aim heading
+  const py = ax;
   return {
     id,
-    x: wrap(s.x + ax * nose, GRID_W),
-    y: wrap(s.y + ay * nose, GRID_H),
+    x: wrap(s.x + ax * nose + px * lateral, GRID_W),
+    y: wrap(s.y + ay * nose + py * lateral, GRID_H),
     vx: ax * BULLET_SPEED,
     vy: ay * BULLET_SPEED,
     team: s.colorName,
     rgb: s.color,
     angle: angleTo([ax, ay]),
     damage: BULLET_DAMAGE,
-    life: BULLET_LIFE,
+    life: bulletLifeFor(s.level),
     owner: s.id,
   };
 };

@@ -45,6 +45,7 @@ export interface Overlay {
   build(frame: OverlayFrame): {
     instances: Float32Array<ArrayBuffer>;
     count: number;
+    portalCount: number;
     rockInstances: Float32Array<ArrayBuffer>;
     rockCount: number;
     shieldInstances: Float32Array<ArrayBuffer>;
@@ -68,7 +69,6 @@ const drawFieldFurniture = (
   world: World,
 ) => {
   const baseCount = drawBases(baseInstances, cellPx, cellPy, now, world, push);
-  drawPortals(push, cellPx, cellPy, now);
   drawHealPads(push, cellPx, cellPy, now);
   const centerPadCount = drawCenterPad(
     centerPadInstances,
@@ -147,6 +147,11 @@ export const createOverlay = (): Overlay => {
       const cellPx = w / gridW;
       const cellPy = h / gridH;
 
+      // Portals go FIRST so they occupy the leading instances: the renderer
+      // draws that slice before the 3D passes, letting objects fly over them.
+      drawPortals(push, cellPx, cellPy, now);
+      const portalCount = getCount();
+
       const { baseCount, centerPadCount } = drawFieldFurniture(
         push,
         baseInstances,
@@ -171,6 +176,7 @@ export const createOverlay = (): Overlay => {
       return {
         instances,
         count: getCount(),
+        portalCount,
         rockInstances,
         rockCount,
         shieldInstances,

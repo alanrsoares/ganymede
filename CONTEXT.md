@@ -3,7 +3,7 @@
 A deterministic **roguelike autobattler** rendered with raw WebGPU. The sim is a
 pure Elm-style state transition; the renderer is a hybrid 2D-sprite + 3D-mesh
 pass. (The repo began as a Game-of-Life computer — see `docs/adr/0001`, now
-superseded; that lineage has been removed. All live code lives under `src/web`.)
+superseded; that lineage has been removed. All live code lives under `src`.)
 
 ## Domain glossary
 
