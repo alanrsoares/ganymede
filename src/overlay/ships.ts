@@ -7,7 +7,7 @@ import type { LightCycle, World } from "../world";
 import { hasRaidedAllEnemyBases, SHIELD_FLASH } from "../world/factory";
 import type { PushFn, Rgba } from "./push";
 
-const SHIP_LEVEL_SIZES = [4.5, 6.5, 7.8, 9.0, 10.2];
+const SHIP_LEVEL_SIZES = [4.5, 5.9, 7.0, 8.1, 9.2];
 
 export const shipSize = (level: number): number => SHIP_LEVEL_SIZES[level - 1];
 

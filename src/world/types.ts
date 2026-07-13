@@ -109,7 +109,18 @@ export interface Bullet extends Entity {
   readonly life: number; // gens remaining
   readonly owner: number; // shooter ship id (credits base-raid hits back to it)
   readonly bounces: number; // ricochets left off asteroids (0 = spent on contact)
+  readonly kind: number; // projectile skin (BOLT_*), chosen by shooter archetype
 }
+
+// Projectile skins, picked by shooter archetype so each class fires a visually
+// distinct bolt: vulcan (orange gun round), plasma (green energy), proton (blue
+// slug). The renderer maps these to their SpaceRage sprite clips.
+export const BOLT_VULCAN = 0;
+export const BOLT_PLASMA = 1;
+export const BOLT_PROTON = 2;
+/** scout/fighter → vulcan, interceptor → plasma, heavy → proton. */
+export const boltKindFor = (a: Archetype): number =>
+  a === "interceptor" ? BOLT_PLASMA : a === "heavy" ? BOLT_PROTON : BOLT_VULCAN;
 
 // FX blast kinds. Explosion = ship/rock death; detonation = mine proton flash;
 // muzzle = gun fire flash at the nose; impact = bolt hitting a target;

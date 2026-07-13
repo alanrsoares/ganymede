@@ -41,6 +41,7 @@ import {
   type Archetype,
   type Asteroid,
   type Bullet,
+  boltKindFor,
   type LightCycle,
   type Missile,
   PICKUP_KINDS,
@@ -378,6 +379,7 @@ export function spawnBullet(
     life: bulletLifeFor(s.level),
     owner: s.id,
     bounces: BULLET_RICOCHETS,
+    kind: boltKindFor(s.archetype),
   };
 }
 

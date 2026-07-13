@@ -14,8 +14,7 @@ import { makeAsteroidMesh, makeSphereMesh } from "~/mesh";
 import { instanceLayout } from "~/mesh-pass";
 import { shipSize } from "~/overlay/ships";
 import {
-  ASTEROID_VARIANTS,
-  asteroidLayer,
+  BOLT_CLIPS,
   CLIP,
   clipLayer,
   SPRITE_LAYER_COUNT,
@@ -195,9 +194,9 @@ test("SPRITE_URLS length matches the layer count", () => {
 });
 
 test("every atlas layer index is in range", () => {
-  for (let v = 0; v < ASTEROID_VARIANTS; v++) {
-    expect(asteroidLayer(v)).toBeLessThan(SPRITE_LAYER_COUNT);
-    expect(asteroidLayer(v)).toBeGreaterThanOrEqual(0);
+  for (const clip of BOLT_CLIPS) {
+    expect(clip.layer0).toBeGreaterThanOrEqual(0);
+    expect(clip.layer0 + clip.frames).toBeLessThanOrEqual(SPRITE_LAYER_COUNT);
   }
   // clipLayer loops a looping clip and stays within its frame band.
   const a = clipLayer(CLIP.mine, 0, 0);

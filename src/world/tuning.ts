@@ -333,7 +333,7 @@ export const SPEED_EASE_LVL = [0.05, 0.09, 0.14, 0.18, 0.22]; // cruise control
 export const REGEN_BY_LEVEL = [0.0015, 0.0045, 0.01, 0.016, 0.022];
 export const SHIELD_BY_LEVEL = [1, 2, 3, 4, 5]; // secondary shield capacity
 export const SPEED_BY_LEVEL = [0.65, 0.95, 1.35, 1.7, 2.0];
-export const RADIUS_BY_LEVEL = [4.5, 6.5, 7.8, 9.0, 10.2]; // matches overlay sprite sizes
+export const RADIUS_BY_LEVEL = [4.5, 5.9, 7.0, 8.1, 9.2]; // matches overlay sprite sizes; L5/L1 = 2.04x
 export const MINES_BY_LEVEL = [0, 0, 2, 3, 4]; // only L3+ carry mines
 
 // --- Fuel: ships burn fuel to thrust, refuel at their home base -------------

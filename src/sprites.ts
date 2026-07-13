@@ -55,10 +55,11 @@ export const EXPLOSION_FRAME_COUNTS = [11, 9, 9] as const;
 export const EXPLOSION_VARIANTS = EXPLOSION_FRAME_COUNTS.length;
 export const EXHAUST_FRAMES = 5;
 export const MINE_FRAMES = 9; // mine_1 tumble loop
-export const DETONATION_FRAMES = 3; // proton FX flash
-export const VULCAN_FRAMES = 3; // vulcan muzzle/impact spark
-// Five distinct hand-drawn rocks (Space Pack). Swirl comes from per-rock
-// rotation in the sim, so these are static textures, not an animation clip.
+export const PROTON_FRAMES = 3; // proton bolt-projectile flicker loop
+export const VULCAN_FRAMES = 3; // vulcan muzzle/impact spark + bolt projectile
+export const PLASMA_FRAMES = 2; // plasma bolt-body flicker loop
+// Number of distinct asteroid shapes the 3D mesh pass builds (procedural, no
+// texture): the sim rolls a variant per rock so the field reads as varied.
 export const ASTEROID_VARIANTS = 5;
 
 const EXPLOSION_URLS = EXPLOSION_FRAME_COUNTS.flatMap((count, v) =>
@@ -68,43 +69,32 @@ const EXHAUST_URLS = frames(
   EXHAUST_FRAMES,
   (n) => `${ROOT}/FX/exhaust_${pad2(n)}.png`,
 );
-const ASTEROID_URLS = frames(
-  ASTEROID_VARIANTS,
-  (n) => `/assets/SpacePack/Asteroids/Asteroid_${n}.png`,
-);
 const MINE_URLS = frames(
   MINE_FRAMES,
   (n) => `${ROOT}/Enemies/mine_1_${pad2(n)}.png`,
 );
-const DETONATION_URLS = frames(
-  DETONATION_FRAMES,
+// proton_01..03 — the blue bolt projectile fired by heavies.
+const PROTON_URLS = frames(
+  PROTON_FRAMES,
   (n) => `${ROOT}/FX/proton_${pad2(n)}.png`,
 );
 // vulcan_1..3 (no zero-pad) — reused for both muzzle flash and bolt impact.
 const VULCAN_URLS = frames(VULCAN_FRAMES, (n) => `${ROOT}/FX/vulcan_${n}.png`);
-
-// Power-up bubbles, indexed by PickupKind (heal, shield, speed).
-export const PICKUP_URLS: readonly string[] = [
-  "/assets/SpacePack/Baloons/Green_Balloon.png", // heal
-  "/assets/SpacePack/Baloons/Blue_Balloon.png", // shield
-  "/assets/SpacePack/Baloons/Yellow_Balloon.png", // speed
-];
-const PORTAL_URL = "/assets/SpacePack/Portal/Base.png";
-const BASE_URL = "/assets/SpacePack/Base/Cube_1.png";
+// plasma_1..2 (no zero-pad) — the glowing bolt body, flickered as a 2-frame loop.
+const PLASMA_URLS = frames(PLASMA_FRAMES, (n) => `${ROOT}/FX/plasma_${n}.png`);
 
 // Ordered atlas tail (everything after the ship hulls). This list is the ONE
 // source of truth for both texture-upload order and layer offsets — derive both
-// from it so the two can never drift out of sync.
+// from it so the two can never drift out of sync. Asteroids, pickups, portals
+// and bases are drawn procedurally (mesh / shader shapes), so they carry no
+// texture here.
 const ATLAS_TAIL = [
   { key: "explosion", urls: EXPLOSION_URLS },
   { key: "exhaust", urls: EXHAUST_URLS },
-  { key: "asteroid", urls: ASTEROID_URLS },
-  { key: "pickup", urls: PICKUP_URLS },
-  { key: "portal", urls: [PORTAL_URL] },
-  { key: "base", urls: [BASE_URL] },
   { key: "mine", urls: MINE_URLS },
-  { key: "detonation", urls: DETONATION_URLS },
+  { key: "proton", urls: PROTON_URLS },
   { key: "vulcan", urls: VULCAN_URLS },
+  { key: "plasma", urls: PLASMA_URLS },
 ] as const;
 type AtlasKey = (typeof ATLAS_TAIL)[number]["key"];
 
@@ -184,11 +174,6 @@ export const EXPLOSION_CLIPS: readonly AnimClip[] = EXPLOSION_FRAME_COUNTS.map(
   }),
 );
 
-const ASTEROID_LAYER0 = L("asteroid");
-const PICKUP_LAYER0 = L("pickup");
-const PORTAL_LAYER0 = L("portal");
-const BASE_LAYER0 = L("base");
-
 export const CLIP = {
   // Default explosion (variant 0) — used where a single clip is needed.
   explosion: EXPLOSION_CLIPS[0],
@@ -199,37 +184,34 @@ export const CLIP = {
     loop: true,
   },
   mine: { layer0: L("mine"), frames: MINE_FRAMES, frameMs: 80, loop: true },
-  detonation: {
-    layer0: L("detonation"),
-    frames: DETONATION_FRAMES,
-    frameMs: 40,
-    loop: false,
-  },
   vulcan: {
     layer0: L("vulcan"),
     frames: VULCAN_FRAMES,
     frameMs: 28,
     loop: false,
   },
+  plasma: {
+    layer0: L("plasma"),
+    frames: PLASMA_FRAMES,
+    frameMs: 55,
+    loop: true,
+  },
 } as const satisfies Record<string, AnimClip>;
+
+// Projectile bolt bodies keyed by Bullet.kind (BOLT_VULCAN/PLASMA/PROTON) — each
+// a looping flicker of its SpaceRage sprite. Index order matches the BOLT_*
+// constants in world/types (vulcan, plasma, proton).
+export const BOLT_CLIPS: readonly AnimClip[] = [
+  { layer0: L("vulcan"), frames: VULCAN_FRAMES, frameMs: 50, loop: true },
+  CLIP.plasma,
+  { layer0: L("proton"), frames: PROTON_FRAMES, frameMs: 50, loop: true },
+];
 
 /** Explosion clip for a variant index (wrapped into range). */
 export const explosionClip = (v: number): AnimClip =>
   EXPLOSION_CLIPS[
     ((v % EXPLOSION_VARIANTS) + EXPLOSION_VARIANTS) % EXPLOSION_VARIANTS
   ];
-
-/** Texture layer for asteroid variant `v` (wrapped into range). */
-export const asteroidLayer = (v: number): number =>
-  ASTEROID_LAYER0 +
-  (((v % ASTEROID_VARIANTS) + ASTEROID_VARIANTS) % ASTEROID_VARIANTS);
-
-/** Texture layer for power-up kind index (0 heal, 1 shield, 2 speed). */
-export const pickupLayer = (kind: number): number => PICKUP_LAYER0 + kind;
-/** Texture layer for the portal ring. */
-export const PORTAL_LAYER = PORTAL_LAYER0;
-/** Texture layer for the team base platform. */
-export const BASE_LAYER = BASE_LAYER0;
 
 export const durationOf = (clip: AnimClip): number =>
   clip.frames * clip.frameMs;

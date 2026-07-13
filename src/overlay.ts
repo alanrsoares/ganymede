@@ -111,7 +111,7 @@ const drawDynamicEntities = (
     now,
     world,
   );
-  drawBolts(push, cellPx, cellPy, world);
+  drawBolts(push, cellPx, cellPy, now, world);
 
   const exhaustL = clipLayer(CLIP.exhaust, 0, now);
   drawMissiles(push, cellPx, cellPy, now, world, exhaustL);

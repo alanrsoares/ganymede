@@ -452,6 +452,7 @@ test("a bolt ricochets off a surviving asteroid", () => {
     life: 120,
     owner: 0,
     bounces: 1,
+    kind: 0,
   };
   const rock = {
     id: 1,

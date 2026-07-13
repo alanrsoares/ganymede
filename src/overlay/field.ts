@@ -2,7 +2,7 @@
 // the rally beacon. Pure — reads world, animation is derived from `now`.
 
 import { MAX_BASES, ROCK_LAYOUT } from "../gpu";
-import { PORTAL_LAYER, SHAPE } from "../sprites";
+import { SHAPE } from "../sprites";
 import {
   CENTER_PAD,
   HEAL_PADS,
@@ -208,9 +208,9 @@ export function drawBases(
   return baseCount;
 }
 
-// Portals (background). The game-asset sprite is the circular contour; inside it
-// a procedural shader vortex spirals into a dark event horizon. The two gates
-// counter-rotate (layer = spin sign) so the pair reads as an in/out throat.
+// Portals (background). A procedural shader vortex spirals into a dark event
+// horizon, framed by a bright ring contour. The two gates counter-rotate
+// (layer = spin sign) so the pair reads as an in/out throat.
 export function drawPortals(
   push: PushFn,
   cellPx: number,
@@ -225,7 +225,7 @@ export function drawPortals(
     const px = (gate.x + 0.5) * cellPx;
     const py = (gate.y + 0.5) * cellPy;
     const dir = i === 0 ? 1 : -1;
-    // Shader vortex, sitting just inside the sprite's circular contour.
+    // Shader vortex, sitting just inside the ring contour.
     push(
       px,
       py,
@@ -236,16 +236,15 @@ export function drawPortals(
       portalTints[i],
       dir,
     );
-    // Game-asset ring as the contour/frame around it.
+    // Procedural ring as the contour/frame around it.
     push(
       px,
       py,
       gate.r * 1.3 * cellPx,
       gate.r * 1.3 * cellPy,
       (now / 1400) * dir,
-      SHAPE.sprite,
+      SHAPE.ring,
       portalTints[i],
-      PORTAL_LAYER,
     );
   });
 }

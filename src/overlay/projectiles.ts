@@ -3,6 +3,7 @@
 
 import {
   type AnimClip,
+  BOLT_CLIPS,
   CLIP,
   clipLayer,
   explosionClip,
@@ -21,26 +22,41 @@ import {
 import { EMP_RADIUS, EXPLOSION_DURATION } from "../world/tuning";
 import type { PushFn, Rgba } from "./push";
 
-// Weapon bolts — one shader-drawn plasma streak per bullet, thin + long and
-// rotated to heading. The bolt shape paints a hot core + team glow +
-// tapered tips, so a single quad replaces old flat dots.
+// Weapon bolts — a shader-drawn streak (team glow + tapered tips) with the
+// shooter class's SpaceRage projectile sprite riding on top: vulcan (orange gun
+// round), plasma (green energy) or proton (blue slug), each a looping flicker
+// oriented to heading. The sprite keeps its own colour for weapon identity; the
+// streak underneath carries the team tint.
 export function drawBolts(
   push: PushFn,
   cellPx: number,
   cellPy: number,
+  now: number,
   world: World,
 ) {
   const boltW = 1.15;
   const boltL = 4.6;
+  const layers = BOLT_CLIPS.map((c) => clipLayer(c, 0, now)); // free-running
   for (const b of world.bullets.items) {
+    const x = (b.x + 0.5) * cellPx;
+    const y = (b.y + 0.5) * cellPy;
+    // Shader streak underneath — team-tinted glow + tapered tips.
+    push(x, y, boltW * cellPx, boltL * cellPy, b.angle, SHAPE.bolt, [
+      b.rgb[0],
+      b.rgb[1],
+      b.rgb[2],
+      1.0,
+    ]);
+    // Projectile sprite on top, keeping its native colour (untinted).
     push(
-      (b.x + 0.5) * cellPx,
-      (b.y + 0.5) * cellPy,
-      boltW * cellPx,
-      boltL * cellPy,
+      x,
+      y,
+      2.2 * cellPx,
+      4.2 * cellPy,
       b.angle,
-      SHAPE.bolt,
-      [b.rgb[0], b.rgb[1], b.rgb[2], 1.0],
+      SHAPE.sprite,
+      [1, 1, 1, 1],
+      layers[b.kind] ?? layers[0],
     );
   }
 }
@@ -121,11 +137,12 @@ interface BurstStyle {
 // Explosions + detonations use the FX sprite (soft radial edge fade so the
 // glow never hard-cuts into a square); muzzle/impact use tintsprite so
 // SHAPE.tintsprite can multiply the vulcan flare by the shooter's team
-// color. Explosions + mine detonations use fixed fire/proton tints.
+// color. Mine detonations reuse a small explosion clip tinted electric-blue —
+// no projectile art here.
 export function burstStyle(burst: Burst): BurstStyle {
   if (burst.kind === BURST_DETONATION) {
     return {
-      clip: CLIP.detonation,
+      clip: explosionClip(2),
       bsize: 9,
       shape: SHAPE.fxsprite,
       tint: [0.7, 0.9, 1.0, 1.0],
