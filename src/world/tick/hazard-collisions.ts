@@ -308,6 +308,3 @@ export const resolveHazardCollisions = (
   collideBodiesCenterPad(ctx, motion, hazards);
   collideShardsShips(ctx, motion, hazards);
 };
-
-export type MutableAsteroid = Mutable<Asteroid>;
-export type MutableProjectile = Mutable<Projectile>;

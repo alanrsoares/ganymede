@@ -2,6 +2,7 @@ import {
   angleTo,
   easeAngle,
   elastic,
+  lerp,
   normalize,
   wrapDelta,
 } from "~/engine/physics";
@@ -106,7 +107,7 @@ const advanceShip = (
       : (TURN_EASE_LVL[s.level - 1] ?? 0.14);
   const sp = Math.hypot(s.vx, s.vy) || cruise;
   const [hx, hy] = normalize([bvx, bvy], [s.dx, s.dy]);
-  const nextSp = sp + (cruise - sp) * Math.min(1, speedEase * steps);
+  const nextSp = lerp(sp, cruise, Math.min(1, speedEase * steps));
   const vx = hx * nextSp;
   const vy = hy * nextSp;
   const beamTime = s.beamActive ? s.beamTime - steps : s.beamTime;

@@ -28,7 +28,6 @@ import {
   carriesMissiles,
   centerPadPhase,
   EMP_MISSILE_LOCK,
-  FIRE_RANGE,
   FORCEFIELD_DAMAGE,
   FORCEFIELD_DURATION,
   FORCEFIELD_PUSH,
@@ -41,6 +40,7 @@ import {
   FUEL_SHARE_RATE,
   FUEL_SHARE_RESERVE,
   fireCooldownFor,
+  fireRangeFor,
   HIT_COOLDOWN,
   HOME_RADIUS,
   hasRaidedAllEnemyBases,
@@ -114,7 +114,8 @@ const nearestEnemyBaseAim = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
 ): Aim | null => {
-  let best = FIRE_RANGE * FIRE_RANGE;
+  const range = fireRangeFor(s.level, s.archetype);
+  let best = range * range;
   let tx: number | null = null;
   let ty: number | null = null;
   for (const base of TEAM_BASES) {
@@ -210,10 +211,11 @@ const fireWeapon = (
   const { moved, removed } = ctx;
   if (!(s.fuel > 0 && s.fireCooldown <= 0)) return bulletId;
 
-  const target = acquireTarget(s, moved, FIRE_RANGE, removed);
+  const range = fireRangeFor(s.level, s.archetype);
+  const target = acquireTarget(s, moved, range, removed);
   // No enemy ship in range → strafe the nearest alive enemy base (the raid).
   const aim: Aim | null =
-    target && target.dist <= FIRE_RANGE
+    target && target.dist <= range
       ? { x: target.ship.x, y: target.ship.y }
       : nearestEnemyBaseAim(ctx, s);
   if (!aim) return bulletId;

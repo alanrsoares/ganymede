@@ -8,6 +8,7 @@
 
 import van, { type State } from "vanjs-core";
 import { focusFirst, trapTab } from "./a11y";
+import { clamp01 } from "./engine/physics";
 import { ARCHETYPE_INFO, PEAK, TIERS } from "./shipInfo";
 import { ARCHETYPES, type Archetype, MAX_LEVEL } from "./world";
 import {
@@ -53,7 +54,7 @@ const COUNTERED_BY = ARCHETYPES.reduce(
 // to the strongest class on that axis, so the row reads as a comparison.
 const SEGMENTS = 7;
 const meter = (label: string, frac: number, tint: string, value: string) => {
-  const on = Math.round(Math.max(0, Math.min(1, frac)) * SEGMENTS);
+  const on = Math.round(clamp01(frac) * SEGMENTS);
   return div(
     { class: "flex items-center gap-2" },
     span(

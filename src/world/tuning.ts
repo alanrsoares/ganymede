@@ -1,5 +1,6 @@
 import { durationOf, EXPLOSION_CLIPS } from "../sprites";
 import {
+  type ArcadeDifficulty,
   type Archetype,
   type DamageType,
   type LightCycle,
@@ -117,6 +118,22 @@ export const killXp = (killerLevel: number, victimLevel: number): number =>
   );
 export const xpForLevel = (level: number): number =>
   XP_TO_LEVEL[level - 1] ?? Infinity;
+
+// Autobattle only: combat-XP leveling gets progressively harder as the match
+// ages, so early ranks come fast but late-game promotion via kills/rocks/raid-XP
+// slows — a time brake on the snowball. Arcade paces itself by wave, so it opts
+// out (scale 1). Applied to the XP threshold in awardXp (context.ts).
+export const LEVELUP_RAMP_GENS = 900; // ~20s at 45 gen/s per +1 ramp step
+export const LEVELUP_RAMP_STEP = 0.5; // +50% of the base requirement per step
+export const LEVELUP_RAMP_MAX = 3; // cap the requirement at 3× its base
+export const levelUpScale = (
+  age: number,
+  format: MatchConfig["format"],
+): number => {
+  if (format === "arcade") return 1;
+  const steps = Math.floor(Math.max(0, age) / LEVELUP_RAMP_GENS);
+  return Math.min(LEVELUP_RAMP_MAX, 1 + steps * LEVELUP_RAMP_STEP);
+};
 export const HOME_RADIUS = 12; // over own base -> chance to promote
 export const BASE_MAX_HP = 24; // base integrity; 0 = team eliminated
 export const BASE_RADIUS = 11; // solid collision radius of a base
@@ -145,12 +162,26 @@ export const SCORE_PICKUP = 25; // a power-up bubble collected
 export const BULLET_SPEED = 3.4; // cells/gen
 export const BULLET_LIFE = 30; // gens; range ≈ SPEED * LIFE ≈ 100 cells
 export const BULLET_RADIUS = 3.5; // hit radius vs a ship (plus its own radius)
-export const BULLET_DAMAGE = 1;
+// Per-bolt damage grows with rank so gun offense keeps pace with the ~3.3× HP
+// growth L1→L5 (hull + shield). Without this, veteran fights got grindy since
+// only cadence/range scaled while pools ballooned. Indexed by level-1.
+export const BULLET_DAMAGE_BY_LEVEL = [1, 1.15, 1.3, 1.45, 1.6];
+export const bulletDamageFor = (level: number): number =>
+  BULLET_DAMAGE_BY_LEVEL[level - 1] ?? BULLET_DAMAGE_BY_LEVEL[0];
 // Ricochet: a bolt deflects off a surviving asteroid this many times before it
 // is spent, turning rocks into cover that skips fire around the field. Chips
 // the rock on every bounce; a rock it shatters absorbs the bolt regardless.
 export const BULLET_RICOCHETS = 1;
-export const FIRE_RANGE = 95; // only fire when an enemy is within this
+export const FIRE_RANGE = 95; // base reference; real reach = fireRangeFor(...)
+// Per-archetype bolt reach so the range axis expresses role, not just level:
+// the tank/brawler heavy fires short (must close), skirmishers reach farther.
+// Multiplies bolt lifetime (→ range). Kept so fireRangeFor stays under reach.
+export const BOLT_RANGE_MULT: Record<Archetype, number> = {
+  scout: 1.12,
+  fighter: 1.0,
+  heavy: 0.85,
+  interceptor: 1.1,
+};
 // Fire cadence tightens with rank: aces spit bolts ~2.5× as fast as rookies.
 const FIRE_COOLDOWN_BY_LEVEL = [90, 74, 60, 48, 38]; // gens between shots
 export const fireCooldownForLevel = (level: number): number =>
@@ -159,8 +190,21 @@ export const fireCooldownForLevel = (level: number): number =>
 // veterans out-range rookies — the "leveling up increases range" half (cadence
 // above is the "increases frequency" half).
 export const BULLET_RANGE_GROWTH = 0.13; // +13% bolt lifetime per level over L1
-export const bulletLifeFor = (level: number): number =>
-  Math.round(BULLET_LIFE * (1 + (level - 1) * BULLET_RANGE_GROWTH));
+export const bulletLifeFor = (level: number, archetype?: Archetype): number =>
+  Math.round(
+    BULLET_LIFE *
+      (1 + (level - 1) * BULLET_RANGE_GROWTH) *
+      (archetype ? BOLT_RANGE_MULT[archetype] : 1),
+  );
+// Actual bolt reach in cells (speed × lifetime), archetype- and level-aware.
+export const boltRange = (level: number, archetype?: Archetype): number =>
+  BULLET_SPEED * bulletLifeFor(level, archetype);
+// Engagement reach: ships open fire at 90% of their bolt's actual range, so the
+// range axis (level growth + archetype reach) is *felt* — veterans and long-reach
+// hulls fire sooner/farther, brawler heavies must close. Always < boltRange, so
+// a bolt fired at the fire boundary still reaches its mark.
+export const fireRangeFor = (level: number, archetype?: Archetype): number =>
+  Math.round(boltRange(level, archetype) * 0.9);
 
 // --- Per-archetype firing patterns ------------------------------------------
 // Each class shoots differently: a "single" bolt, a "parallel" salvo of wing-
@@ -218,6 +262,10 @@ export const weaponFor = (a: Archetype, level: number): WeaponProfile => {
   }
   return wp;
 };
+// The L5 fighter's third barrel used to nearly double its DPS — a spike, not a
+// bump. Pair the extra barrel with a slower cadence so the capstone reads as a
+// wider volley, not a firehose (see fireCooldownFor).
+export const FIGHTER_CAPSTONE_FIRE_MULT = 1.4;
 
 // Longest explosion variant — bursts live at least this long so none clip early.
 export const EXPLOSION_DURATION = Math.max(...EXPLOSION_CLIPS.map(durationOf));
@@ -338,7 +386,7 @@ export const MINES_BY_LEVEL = [0, 0, 2, 3, 4]; // only L3+ carry mines
 
 // --- Fuel: ships burn fuel to thrust, refuel at their home base -------------
 export const FUEL_BASE = 1400; // L1 tank size before the archetype multiplier
-export const FUEL_BURN = 1; // tank units spent per gen of thrust
+export const FUEL_BURN = 1.5; // tank units spent per gen of thrust
 export const FUEL_REFILL = 16; // units/gen refilled while docked at home base
 export const FUEL_LOW_FRAC = 0.3; // hard floor: below this fraction, always refuel
 // Range-aware refuel: peel off once the tank only just covers the trip to the
@@ -587,8 +635,12 @@ export const cruiseFor = (a: Archetype, level: number): number =>
   speedForLevel(level) * ARCHETYPE_MODS[a].speed;
 export const maxHpFor = (a: Archetype, level: number): number =>
   Math.max(1, Math.round(maxHpForLevel(level) * ARCHETYPE_MODS[a].hp));
-export const fireCooldownFor = (a: Archetype, level: number): number =>
-  fireCooldownForLevel(level) * ARCHETYPE_MODS[a].fire;
+export const fireCooldownFor = (a: Archetype, level: number): number => {
+  const base = fireCooldownForLevel(level) * ARCHETYPE_MODS[a].fire;
+  return a === "fighter" && level >= MAX_LEVEL
+    ? base * FIGHTER_CAPSTONE_FIRE_MULT
+    : base;
+};
 export const minesFor = (a: Archetype, level: number): number =>
   ARCHETYPE_MODS[a].mines ? minesForLevel(level) : 0;
 export const carriesMissiles = (a: Archetype): boolean =>
@@ -605,3 +657,61 @@ export const maxFuelFor = (a: Archetype, level: number): number =>
 export const baseHitsRequired = (level: number): number => level;
 export const asteroidHp = (size: number): number =>
   Math.max(2, Math.round(size / 3));
+
+// --- Arcade mode ------------------------------------------------------------
+// Pilot-first wave survival, in four difficulty tiers. Each tier sets starting
+// lives, the inter-wave breather, and the escalation curve (enemy count + level
+// cap grow with the wave). See docs/arcade-mode-plan.md.
+export const ARCADE_LIVES = 3; // legacy default (Normal supersedes it)
+export const ARCADE_INTERMISSION_GENS = 3 * 45; // ~3s at 45 gen/s
+
+export type WaveSpawn = { count: number; maxLevel: number };
+export interface ArcadeTier {
+  readonly key: ArcadeDifficulty;
+  readonly label: string;
+  readonly blurb: string;
+  readonly lives: number;
+  readonly intermissionGens: number;
+  readonly spawn: (wave: number) => WaveSpawn;
+}
+const levelCap = (wave: number, per: number): number =>
+  Math.min(MAX_LEVEL, 1 + Math.floor(wave / per));
+export const ARCADE_TIERS: Record<ArcadeDifficulty, ArcadeTier> = {
+  easy: {
+    key: "easy",
+    label: "Easy",
+    blurb: "5 lives · gentle ramp",
+    lives: 5,
+    intermissionGens: 4 * 45,
+    spawn: (w) => ({ count: 1 + w, maxLevel: levelCap(w, 3) }),
+  },
+  normal: {
+    key: "normal",
+    label: "Normal",
+    blurb: "4 lives · a fair fight",
+    lives: 4,
+    intermissionGens: 3 * 45,
+    spawn: (w) => ({ count: 2 + w, maxLevel: levelCap(w, 2) }),
+  },
+  hard: {
+    key: "hard",
+    label: "Hard",
+    blurb: "3 lives · swarms fast",
+    lives: 3,
+    intermissionGens: 3 * 45,
+    spawn: (w) => ({ count: 3 + w, maxLevel: levelCap(w, 2) }),
+  },
+  endless: {
+    key: "endless",
+    label: "Endless",
+    blurb: "3 lives · relentless",
+    lives: 3,
+    intermissionGens: 2 * 45,
+    spawn: (w) => ({
+      count: 2 + Math.floor(w * 1.5),
+      maxLevel: levelCap(w, 1),
+    }),
+  },
+};
+// Back-compat: the original fixed curve is now the Hard tier's.
+export const arcadeWaveSpawn = ARCADE_TIERS.hard.spawn;

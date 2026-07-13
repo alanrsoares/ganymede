@@ -1,6 +1,7 @@
 import { empty } from "../engine/entities";
 import { nextRange, type Seed } from "../engine/rng";
 import {
+  ARCADE_LIVES,
   activeTeams,
   DEFAULT_CONFIG,
   fullBaseHp,
@@ -67,6 +68,7 @@ export function initWorld(
     age: 0,
     winner: null,
     config,
+    arcade: null,
     controlledShipId: null,
     controlKeys: {
       up: false,
@@ -75,6 +77,74 @@ export function initWorld(
       right: false,
       space: false,
     },
+  };
+}
+
+const NO_KEYS = {
+  up: false,
+  down: false,
+  left: false,
+  right: false,
+  space: false,
+} as const;
+
+/**
+ * Arcade world: one player ship docked at its base with control handed over, a
+ * fresh run state (lives/wave), and the standard rock/pickup field. Enemy waves
+ * are mustered lazily by `arcadeStep` on the first tick. `config.arcade` required.
+ */
+export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
+  setOrbitPhase(0);
+  const cfg = config.arcade;
+  if (!cfg) throw new Error("initArcadeWorld: config.arcade is required");
+  const teams = activeTeams(config);
+  const playerId = 1;
+  const [player, s1] = rollShip(
+    seed0,
+    playerId,
+    0,
+    0,
+    1,
+    cfg.playerTeam,
+    cfg.playerArchetype,
+    teams,
+  );
+  const base = baseByName.get(cfg.playerTeam);
+  const placed = base ? { ...player, x: base.x, y: base.y } : player;
+  const [rocks, s2] = rollMany(NUM_ASTEROIDS, s1, (s, i) =>
+    rollAsteroid(s, i + 1),
+  );
+  const [bubbles, seed] = rollMany(NUM_PICKUPS, s2, (s, i) =>
+    rollPickup(s, i + 1),
+  );
+  return {
+    ships: { items: [placed], nextId: playerId + 1 },
+    bursts: empty(),
+    asteroids: { items: rocks, nextId: NUM_ASTEROIDS + 1 },
+    pickups: { items: bubbles, nextId: NUM_PICKUPS + 1 },
+    projectiles: empty(),
+    mines: empty(),
+    bullets: empty(),
+    missiles: empty(),
+    seed,
+    score: zeroScores(),
+    baseHp: fullBaseHp(config),
+    rally: null,
+    age: 0,
+    winner: null,
+    config,
+    arcade: {
+      lives: cfg.defeat.kind === "lives" ? cfg.defeat.count : ARCADE_LIVES,
+      wave: 1,
+      waveRemaining: 0,
+      phase: "fight",
+      intermissionGens: 0,
+      kills: 0,
+      startAge: 0,
+      over: false,
+    },
+    controlledShipId: playerId,
+    controlKeys: { ...NO_KEYS },
   };
 }
 

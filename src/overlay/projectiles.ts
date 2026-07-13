@@ -11,6 +11,7 @@ import {
 } from "../sprites";
 import {
   BURST_ARC,
+  BURST_COUNTER,
   BURST_DETONATION,
   BURST_EMP,
   BURST_IMPACT,
@@ -140,6 +141,23 @@ interface BurstStyle {
 // color. Mine detonations reuse a small explosion clip tinted electric-blue —
 // no projectile art here.
 export function burstStyle(burst: Burst): BurstStyle {
+  if (burst.kind === BURST_COUNTER) {
+    // Super-effective (counter-web) pierce hit: a hot gold-white spark, bigger
+    // and brighter than a normal impact so the rock-paper-scissors reads at a
+    // glance. Tinted toward white regardless of team so it always pops.
+    const c = burst.rgb ?? [1, 1, 1];
+    return {
+      clip: CLIP.vulcan,
+      bsize: 8,
+      shape: SHAPE.fxsprite,
+      tint: [
+        Math.min(1, c[0] * 0.4 + 0.9),
+        Math.min(1, c[1] * 0.4 + 0.8),
+        Math.min(1, c[2] * 0.4 + 0.4),
+        1.0,
+      ],
+    };
+  }
   if (burst.kind === BURST_DETONATION) {
     return {
       clip: explosionClip(2),

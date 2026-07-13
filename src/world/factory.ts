@@ -14,9 +14,9 @@ import { ASTEROID_VARIANTS } from "../sprites";
 import { applyHit, distSq, wrap } from "./math";
 import {
   asteroidHp,
-  BULLET_DAMAGE,
   BULLET_RICOCHETS,
   BULLET_SPEED,
+  bulletDamageFor,
   bulletLifeFor,
   COORDINATE_MIN_LEVEL,
   cruiseFor,
@@ -375,8 +375,8 @@ export function spawnBullet(
     team: s.colorName,
     rgb: s.color,
     angle: angleTo([ax, ay]),
-    damage: BULLET_DAMAGE,
-    life: bulletLifeFor(s.level),
+    damage: bulletDamageFor(s.level),
+    life: bulletLifeFor(s.level, s.archetype),
     owner: s.id,
     bounces: BULLET_RICOCHETS,
     kind: boltKindFor(s.archetype),
@@ -401,13 +401,6 @@ export function rollPickup(seed: Seed, id: number): [Pickup, Seed] {
     bob,
   };
   return [pickup, s6];
-}
-
-/** Random grid position for a fresh spawn; returns next seed. */
-export function rollPosition(seed: Seed): [number, number, Seed] {
-  const [rx, s1] = nextRange(seed, 60, 420);
-  const [ry, s2] = nextRange(s1, 50, 220);
-  return [Math.floor(rx), Math.floor(ry), s2];
 }
 
 /**

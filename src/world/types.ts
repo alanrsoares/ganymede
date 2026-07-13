@@ -7,11 +7,11 @@ import type { Seed } from "../engine/rng";
 
 export const DEFAULT_GRID_W = 480;
 export const DEFAULT_GRID_H = 270;
-export const ARENA: { w: number; h: number } = (globalThis as any).ARENA || {
+export const ARENA: { w: number; h: number } = globalThis.ARENA ?? {
   w: DEFAULT_GRID_W,
   h: DEFAULT_GRID_H,
 };
-(globalThis as any).ARENA = ARENA;
+globalThis.ARENA = ARENA;
 
 export function setGridBounds(w: number, h: number) {
   ARENA.w = w;
@@ -42,7 +42,55 @@ export interface MatchConfig {
   readonly reinforceRate: number; // reinforcement spawns per window
   readonly tempo: number; // sim generations per second
   readonly reinforceGens: number; // length of the reinforcement window
-  readonly format: "standard" | "endless"; // endless never decides a winner
+  // "standard" last-team-wins, "endless" never decides, "arcade" pilot-first
+  // wave survival (see ArcadeConfig / World.arcade). Only "standard" decides a winner.
+  readonly format: "standard" | "endless" | "arcade";
+  readonly arcade?: ArcadeConfig; // present iff format === "arcade"
+}
+
+// --- Arcade mode: fly one ship, survive escalating waves, chase a score. ------
+// The player role is Pilot in v1; the union is here so Commander/Hybrid slot in
+// later without reshaping MatchConfig (see docs/arcade-mode-plan.md).
+export type PlayerRole = "pilot" | "commander" | "hybrid";
+export type ArcadeDifficulty = "easy" | "normal" | "hard" | "endless";
+
+export type VictoryRule =
+  | { readonly kind: "none" } // arcade score attack (v1)
+  | { readonly kind: "lastTeam" } // autobattle standard
+  | { readonly kind: "scoreTarget"; readonly points: number }; // future Commander
+
+export type DefeatRule =
+  | { readonly kind: "lives"; readonly count: number } // arcade pilot (v1)
+  | { readonly kind: "baseDestroyed" }; // future Commander
+
+// How each wave escalates: `spawn(wave)` yields the enemy count + level cap.
+export interface WaveConfig {
+  readonly intermissionMinGens: number; // breather between waves (~3s × tempo)
+  readonly spawn: (wave: number) => { count: number; maxLevel: number };
+}
+
+export interface ArcadeConfig {
+  readonly playerRole: PlayerRole;
+  readonly difficulty: ArcadeDifficulty; // tier: sets lives + wave curve
+  readonly playerTeam: string; // "cyan"
+  readonly playerArchetype: Archetype;
+  readonly victory: VictoryRule;
+  readonly defeat: DefeatRule;
+  readonly waves: WaveConfig;
+  readonly enemyTeams: readonly string[]; // ["orange", "emerald"]
+}
+
+// Live arcade run state on the World (null in autobattle). `winner` stays null
+// in arcade; the run ends when `over` latches (lives exhausted, ship gone).
+export interface ArcadeState {
+  readonly lives: number;
+  readonly wave: number;
+  readonly waveRemaining: number; // enemies left to kill this wave
+  readonly phase: "fight" | "intermission";
+  readonly intermissionGens: number; // gens elapsed in the current intermission
+  readonly kills: number; // enemies destroyed this run (run stat)
+  readonly startAge: number; // world.age when the run began (for elapsed time)
+  readonly over: boolean; // latched once lives hit 0 → game over
 }
 
 // Ship class archetypes. Each is a distinct hull silhouette + stat path + weapon
@@ -132,6 +180,7 @@ export const BURST_IMPACT = 3;
 export const BURST_EMP = 4;
 export const BURST_SHIELD = 5; // base shield deflection: expanding ring + flash
 export const BURST_ARC = 6; // chain-lightning bolt drawn from (x,y)→(x2,y2)
+export const BURST_COUNTER = 7; // super-effective hit: bright spark on a counter-web pierce hit
 
 export interface Burst extends Entity {
   readonly x: number;
@@ -373,6 +422,7 @@ export interface World {
   readonly age: number; // generations elapsed; drives deterministic wander
   readonly winner: string | null; // team name once the match is decided (else null)
   readonly config: MatchConfig; // match setup (team count, length, format)
+  readonly arcade: ArcadeState | null; // arcade run state (null in autobattle)
   readonly controlledShipId: number | null;
   readonly controlKeys: {
     readonly up: boolean;
@@ -399,6 +449,7 @@ export type Msg =
       readonly right: boolean;
       readonly space: boolean;
     }
-  | { readonly kind: "action"; readonly actionId: number };
+  | { readonly kind: "action"; readonly actionId: number }
+  | { readonly kind: "arcadeSkipIntermission" };
 
 export type { Mutable } from "../engine/entities";

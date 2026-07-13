@@ -1,4 +1,5 @@
 import type { World } from "../types";
+import { arcadeStep } from "./arcade";
 import { createTickCtx } from "./context";
 import { finalizeTick } from "./finalize";
 import {
@@ -32,5 +33,7 @@ export const tick = (world: World, steps: number, now: number): World => {
   resolveProjectiles(ctx, motion, hazards, projectiles);
   eliminateBaselessTeams(ctx);
 
-  return finalizeTick(ctx, motion, hazards, interactions, projectiles);
+  const next = finalizeTick(ctx, motion, hazards, interactions, projectiles);
+  // Arcade rules run on the committed world (no-op in autobattle).
+  return arcadeStep(next);
 };

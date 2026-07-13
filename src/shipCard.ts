@@ -5,6 +5,7 @@
 // and feeds it here; this module only renders.
 
 import van from "vanjs-core";
+import { clamp01 } from "./engine/physics";
 import {
   ARCHETYPE_INFO,
   type ArchetypeInfo,
@@ -38,7 +39,7 @@ const svg = van.tags("http://www.w3.org/2000/svg");
 // The chunky ticks give it a cockpit-instrument feel rather than a web bar.
 const SEGMENTS = 7;
 const meter = (label: string, frac: number, tint: string, value: string) => {
-  const on = Math.round(Math.max(0, Math.min(1, frac)) * SEGMENTS);
+  const on = Math.round(clamp01(frac) * SEGMENTS);
   return div(
     { class: "flex items-center gap-2" },
     span(

@@ -9,6 +9,7 @@
 
 import van from "vanjs-core";
 import { trapTab } from "./a11y";
+import { clamp01, lerp } from "./engine/physics";
 import { CAMERA_IDENTITY, type CameraView } from "./gpu";
 
 const CYAN = "#3fd8ff";
@@ -18,20 +19,22 @@ const PIXEL = `"Press Start 2P", ui-monospace, monospace`;
 const MONO = `ui-monospace,'SF Mono',Menlo,monospace`;
 const { div, h1, p, span, button } = van.tags;
 
+// Which entry path the player chose from the title screen.
+export type WelcomeMode = "arcade" | "autobattle";
+
 export interface Welcome {
   // Mutated in place every frame; the render loop reads it and feeds the
   // composite camera. Holds identity once the splash is dismissed.
   readonly camera: CameraView;
-  // Resolves when the player launches — the moment to reveal the setup screen.
-  readonly begun: Promise<void>;
+  // Resolves with the chosen mode when the player launches — the moment to
+  // reveal the arcade lobby (arcade) or the autobattle setup screen.
+  readonly begun: Promise<WelcomeMode>;
 }
 
 const reduceMotion = () =>
   typeof matchMedia === "function" &&
   matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
-const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const easeOutCubic = (k: number) => 1 - (1 - k) ** 3;
 const easeInCubic = (k: number) => k * k * k;
 
@@ -100,24 +103,54 @@ const liveBadge = () =>
     "live simulation",
   );
 
-const ctaButton = (onBegin: () => void): HTMLButtonElement =>
-  button(
+// One mode CTA. The primary (arcade) is filled brighter; the secondary
+// (autobattle) reads as a quieter alternative beside it.
+const ctaButton = (
+  text: string,
+  onBegin: () => void,
+  primary: boolean,
+): HTMLButtonElement => {
+  const rest = primary ? `${CYAN}22` : `${CYAN}10`;
+  const hover = primary ? `${CYAN}3a` : `${CYAN}22`;
+  return button(
     {
       type: "button",
-      onclick: onBegin,
+      onclick: (e: Event) => {
+        e.stopPropagation();
+        onBegin();
+      },
       style:
-        `margin-top:6px;cursor:pointer;border:1px solid ${CYAN}88;background:${CYAN}1f;` +
-        `color:${MINT};padding:13px 34px;border-radius:12px;font-size:13px;font-weight:700;` +
-        `letter-spacing:.22em;text-transform:uppercase;font-family:${MONO};transition:background .18s;`,
+        `cursor:pointer;border:1px solid ${CYAN}${primary ? "aa" : "55"};background:${rest};` +
+        `color:${MINT};padding:13px 30px;border-radius:12px;font-size:13px;font-weight:700;` +
+        `letter-spacing:.2em;text-transform:uppercase;font-family:${MONO};transition:background .18s;` +
+        (primary ? "" : "opacity:.85;"),
       onmouseenter: (e: Event) => {
-        (e.target as HTMLElement).style.background = `${CYAN}33`;
+        (e.target as HTMLElement).style.background = hover;
       },
       onmouseleave: (e: Event) => {
-        (e.target as HTMLElement).style.background = `${CYAN}1f`;
+        (e.target as HTMLElement).style.background = rest;
       },
     },
-    "Launch battle",
+    text,
   ) as HTMLButtonElement;
+};
+
+// The two entry paths side by side: Arcade (primary) and Autobattle.
+const ctaRow = (
+  onBegin: (mode: WelcomeMode) => void,
+): { row: HTMLElement; buttons: HTMLElement[] } => {
+  const arcade = ctaButton("Arcade", () => onBegin("arcade"), true);
+  const auto = ctaButton("Autobattle", () => onBegin("autobattle"), false);
+  const row = div(
+    {
+      style:
+        "margin-top:6px;display:flex;gap:14px;align-items:center;justify-content:center;flex-wrap:wrap;",
+    },
+    arcade,
+    auto,
+  );
+  return { row, buttons: [arcade, auto] };
+};
 
 const label = (text: string, extra: string) =>
   p({ style: `margin:0;font-family:${MONO};${extra}` }, text);
@@ -128,9 +161,9 @@ const label = (text: string, extra: string) =>
 const CORE_GAP = "clamp(96px,16vh,168px)";
 
 // Build the full overlay tree; returns the nodes the animator needs to drive.
-const buildOverlay = (onBegin: () => void) => {
+const buildOverlay = (onBegin: (mode: WelcomeMode) => void) => {
   const { el: mark, letters } = wordmark();
-  const cta = ctaButton(onBegin);
+  const { row: cta, buttons } = ctaRow(onBegin);
 
   // Title block: kicker + wordmark, anchored so its base rests above the core.
   const topGroup = div(
@@ -159,12 +192,12 @@ const buildOverlay = (onBegin: () => void) => {
     },
     hairline(),
     label(
-      "Swarm the core. Raid the bases. Last colour flying wins.",
+      "Arcade — fly one ship, survive the waves. Autobattle — watch the war.",
       "font-size:clamp(11px,1.6vw,14px);letter-spacing:.14em;color:#a7d9cb;",
     ),
     cta,
     label(
-      "press enter to launch",
+      "choose your mode",
       "margin-top:2px;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:#5f9e8f;",
     ),
   );
@@ -194,7 +227,7 @@ const buildOverlay = (onBegin: () => void) => {
     bottomGroup,
   ) as HTMLElement;
 
-  return { root, letters, cta };
+  return { root, letters, cta, buttons };
 };
 
 // --- Entrance animation (WAAPI, skipped under reduced motion) -----------------
@@ -371,23 +404,22 @@ export const mountWelcome = (): Welcome => {
   const reduce = reduceMotion();
   const director = createCameraDirector(reduce);
 
-  let resolveBegun: () => void = () => {};
-  const begun = new Promise<void>((res) => {
+  let resolveBegun: (mode: WelcomeMode) => void = () => {};
+  const begun = new Promise<WelcomeMode>((res) => {
     resolveBegun = res;
   });
 
   let dismissed = false;
-  const finish = () => {
+  const finish = (mode: WelcomeMode) => {
     director.stop();
     root.remove();
-    resolveBegun();
+    resolveBegun(mode);
   };
-  const begin = () => {
+  const begin = (mode: WelcomeMode) => {
     if (dismissed) return;
     dismissed = true;
-    window.removeEventListener("keydown", onKey);
     director.begin();
-    if (reduce) return finish();
+    if (reduce) return finish(mode);
     // Fade + scale the chrome out while the camera dives in; reveal on finish.
     const anim = root.animate(
       [
@@ -400,21 +432,15 @@ export const mountWelcome = (): Welcome => {
         fill: "forwards",
       },
     );
-    anim.onfinish = finish;
-    anim.oncancel = finish;
+    anim.onfinish = () => finish(mode);
+    anim.oncancel = () => finish(mode);
   };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      begin();
-    }
-  };
-  window.addEventListener("keydown", onKey);
 
-  const { root, letters, cta } = buildOverlay(begin);
-  root.addEventListener("click", begin); // click anywhere to launch
+  const { root, letters, cta, buttons } = buildOverlay(begin);
   van.add(document.body, root);
-  queueMicrotask(() => cta.focus());
+  // Land focus on the primary (Arcade) button; Enter/Space then activate it
+  // natively, so no global key hijack is needed.
+  queueMicrotask(() => buttons[0].focus());
   playEntrance(letters, cta);
 
   return { camera: director.camera, begun };

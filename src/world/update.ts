@@ -15,7 +15,7 @@ import {
   weaponFor,
   wrap,
 } from "./factory";
-import { initWorld, spawnShip } from "./init";
+import { initArcadeWorld, initWorld, spawnShip } from "./init";
 import { tick } from "./tick";
 import {
   ARENA,
@@ -376,8 +376,12 @@ export function update(msg: Msg, world: World): World {
       return spawnShip(world, msg.x, msg.y);
     case "rally":
       return rallyTeam(world, msg.x, msg.y);
-    case "reset":
-      return initWorld(nextInt(world.seed, 2 ** 31)[0], world.config);
+    case "reset": {
+      const [seed] = nextInt(world.seed, 2 ** 31);
+      return world.config.format === "arcade"
+        ? initArcadeWorld(seed, world.config)
+        : initWorld(seed, world.config);
+    }
     case "replenish":
       return reinforceUnderdog(world);
     case "control":
@@ -405,6 +409,10 @@ export function update(msg: Msg, world: World): World {
       };
     case "action":
       return handleUserAction(world, msg.actionId);
+    case "arcadeSkipIntermission":
+      return world.arcade && world.arcade.phase === "intermission"
+        ? { ...world, arcade: { ...world.arcade, phase: "fight" } }
+        : world;
     default:
       return assertNever(msg);
   }

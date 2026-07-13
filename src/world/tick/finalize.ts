@@ -71,7 +71,7 @@ const decideWinner = (
   ships: readonly LightCycle[],
   config: MatchConfig,
 ): string | null => {
-  if (config.format === "endless") return null;
+  if (config.format !== "standard") return null; // endless/arcade never decide
   if (current !== null || nextAge < config.reinforceGens) return current;
   const teams = new Set(ships.map((s) => s.colorName));
   return teams.size <= 1 ? ([...teams][0] ?? "draw") : null;
@@ -159,6 +159,7 @@ export const finalizeTick = (
     age: nextAge,
     winner: decideWinner(world.winner, nextAge, ships.items, world.config),
     config: world.config,
+    arcade: world.arcade,
     controlledShipId: world.controlledShipId,
     controlKeys: world.controlKeys,
   };

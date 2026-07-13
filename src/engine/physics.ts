@@ -4,6 +4,13 @@
 
 export type Vec2 = readonly [number, number];
 
+/** Clamp a scalar to [0, 1] — the common fill-fraction / alpha guard. */
+export const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
+
+/** Linear interpolate from `a` to `b` by `k` (unclamped). */
+export const lerp = (a: number, b: number, k: number): number =>
+  a + (b - a) * k;
+
 /** Signed shortest delta from `a` to `b` on a wrapped axis, in [-limit/2, limit/2]. */
 export const wrapDelta = (a: number, b: number, limit: number): number => {
   let dv = b - a;

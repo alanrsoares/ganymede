@@ -1,6 +1,7 @@
 // view: ship rendering — shadow, exhaust, smoke, shield, body, status FX,
 // beam and HP bar. Pure — reads world, animation is derived from `now`.
 
+import { clamp01 } from "../engine/physics";
 import { MAX_SHIELDS, SHIELD_LAYOUT } from "../gpu";
 import { bankLayer, SHAPE, shipSprite } from "../sprites";
 import type { LightCycle, World } from "../world";
@@ -52,7 +53,7 @@ export function computeShipVisual(
 
   // Distress ramp: 0 above 30% HP → 1 near death. Drives smoke + a reddening
   // hull so a dying ship reads at a glance. Render-only (no sim state).
-  const hpFrac = Math.max(0, Math.min(1, cycle.hp / cycle.maxHp));
+  const hpFrac = clamp01(cycle.hp / cycle.maxHp);
   const distress = hpFrac < 0.3 ? 1 - hpFrac / 0.3 : 0;
 
   return {
@@ -205,9 +206,7 @@ function drawShipShield(
   if (!(cycle.shield > 0 || forceField) || shieldCount >= MAX_SHIELDS) {
     return shieldCount;
   }
-  const frac = cycle.maxShield
-    ? Math.max(0, Math.min(1, cycle.shield / cycle.maxShield))
-    : 0;
+  const frac = cycle.maxShield ? clamp01(cycle.shield / cycle.maxShield) : 0;
   const o = shieldCount * SHIELD_LAYOUT.floats;
   const S = SHIELD_LAYOUT.idx;
   shieldInstances[o + S.cx] = v.scx;
@@ -381,7 +380,7 @@ function drawShipShieldSubBar(
   cellPy: number,
 ): number {
   if (cycle.maxShield <= 0) return stackY;
-  const sfrac = Math.max(0, Math.min(1, cycle.shield / cycle.maxShield));
+  const sfrac = clamp01(cycle.shield / cycle.maxShield);
   const y = stackY + subH / 2 + 0.5 * cellPy;
   push(scx, y, barW / 2, subH / 2, 0, SHAPE.rect, [0.04, 0.06, 0.1, 0.7]);
   const shFillW = barW * sfrac;
@@ -407,7 +406,7 @@ function drawShipFuelSubBar(
   subH: number,
   cellPy: number,
 ) {
-  const ffrac = Math.max(0, Math.min(1, cycle.fuel / cycle.maxFuel));
+  const ffrac = clamp01(cycle.fuel / cycle.maxFuel);
   const y = stackY + subH / 2 + 0.5 * cellPy;
   push(scx, y, barW / 2, subH / 2, 0, SHAPE.rect, [0.08, 0.06, 0.03, 0.7]);
   const fFillW = barW * ffrac;

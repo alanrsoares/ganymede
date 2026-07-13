@@ -174,8 +174,3 @@ export function eliminateBaselessTeams(ctx: TickCtx) {
     }
   }
 }
-
-export const survivingShips = (ctx: TickCtx): LightCycle[] =>
-  ctx.moved.filter((s) => !ctx.removed.has(s.id));
-
-export type MutableShip = Mutable<LightCycle>;

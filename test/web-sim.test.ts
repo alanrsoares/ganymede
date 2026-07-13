@@ -1,6 +1,6 @@
-// Characterization tests for the pure sim (world.ts `update`). The tick is a
-// 666-line monolith; these lock its observable behavior (determinism +
-// invariants) so it can be refactored into per-system functions safely later.
+// Characterization tests for the pure sim (`update` in src/world). They lock the
+// tick's observable behavior — determinism + invariants — so the per-system tick
+// phases (src/world/tick/*) can be refactored safely.
 import { expect, test } from "bun:test";
 import type { LightCycle } from "~/world";
 import {
@@ -8,14 +8,19 @@ import {
   type Archetype,
   baseByName,
   CENTER_PAD,
+  initArcadeWorld,
   initWorld,
   MAX_LEVEL,
+  type MatchConfig,
   TEAM_BASES,
   TEAMS,
   update,
   type World,
 } from "~/world";
 import {
+  ARCADE_INTERMISSION_GENS,
+  ARCADE_LIVES,
+  arcadeWaveSpawn,
   BULLET_SPEED,
   baseHitsRequired,
   cruiseFor,
@@ -482,4 +487,83 @@ test("a bolt ricochets off a surviving asteroid", () => {
   expect(b?.bounces).toBe(0); // used its one bounce
   // The rock took a chip but held.
   expect(w1.asteroids.items[0]?.hp).toBe(99);
+});
+
+// --- arcade mode -------------------------------------------------------------
+const arcadeConfig = (archetype: Archetype = "fighter"): MatchConfig => ({
+  teams: 3,
+  initialShips: 0,
+  reinforceRate: 0,
+  tempo: 52,
+  reinforceGens: 0,
+  format: "arcade",
+  arcade: {
+    playerRole: "pilot",
+    difficulty: "normal",
+    playerTeam: "cyan",
+    playerArchetype: archetype,
+    victory: { kind: "none" },
+    defeat: { kind: "lives", count: ARCADE_LIVES },
+    waves: {
+      intermissionMinGens: ARCADE_INTERMISSION_GENS,
+      spawn: arcadeWaveSpawn,
+    },
+    enemyTeams: ["orange", "emerald"],
+  },
+});
+
+test("initArcadeWorld musters one controlled player at the cyan base", () => {
+  const w = initArcadeWorld(7, arcadeConfig("heavy"));
+  expect(w.ships.items).toHaveLength(1);
+  const player = w.ships.items[0];
+  expect(player.colorName).toBe("cyan");
+  expect(player.archetype).toBe("heavy");
+  expect(w.controlledShipId).toBe(player.id);
+  expect(w.arcade).not.toBeNull();
+  expect(w.arcade?.lives).toBe(ARCADE_LIVES);
+  expect(w.arcade?.wave).toBe(1);
+  expect(w.arcade?.over).toBe(false);
+  expect(w.winner).toBeNull();
+});
+
+test("arcade musters wave 1 on the first tick and never decides a winner", () => {
+  let w = initArcadeWorld(11, arcadeConfig());
+  w = update({ kind: "tick", steps: 1, now: 0 }, w);
+  const { count } = arcadeWaveSpawn(1);
+  const enemies = w.ships.items.filter((s) => s.colorName !== "cyan");
+  expect(enemies).toHaveLength(count);
+  // every enemy is on an enemy team, capped at the wave's max level
+  const { maxLevel } = arcadeWaveSpawn(1);
+  for (const e of enemies) {
+    expect(["orange", "emerald"]).toContain(e.colorName);
+    expect(e.level).toBeLessThanOrEqual(maxLevel);
+  }
+  expect(w.arcade?.waveRemaining).toBe(count);
+  expect(w.winner).toBeNull();
+});
+
+test("losing the pilot burns a life and respawns; zero lives ends the run", () => {
+  const config = arcadeConfig();
+  let w = initArcadeWorld(3, config);
+  // Yank the controlled ship off the field before any enemies muster.
+  const drop = (world: World): World => ({
+    ...world,
+    ships: {
+      items: world.ships.items.filter((s) => s.id !== world.controlledShipId),
+      nextId: world.ships.nextId,
+    },
+  });
+
+  w = update({ kind: "tick", steps: 1, now: 0 }, drop(w));
+  expect(w.arcade?.lives).toBe(ARCADE_LIVES - 1);
+  expect(w.arcade?.over).toBe(false);
+  // a fresh pilot is back under control
+  expect(w.ships.items.some((s) => s.id === w.controlledShipId)).toBe(true);
+
+  // Burn the rest of the lives.
+  for (let i = 0; i < ARCADE_LIVES - 1; i++) {
+    w = update({ kind: "tick", steps: 1, now: 0 }, drop(w));
+  }
+  expect(w.arcade?.lives).toBe(0);
+  expect(w.arcade?.over).toBe(true);
 });

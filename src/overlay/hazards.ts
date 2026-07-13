@@ -1,6 +1,7 @@
 // view: field hazards + pickups — asteroids, mines, shrapnel and power-up
 // orbs. Pure — reads world, animation is derived from `now`.
 
+import { clamp01 } from "../engine/physics";
 import { MAX_ORBS, MAX_ROCKS, ROCK_LAYOUT, SHIELD_LAYOUT } from "../gpu";
 import { CLIP, clipLayer, SHAPE } from "../sprites";
 import type { World } from "../world";
@@ -33,7 +34,7 @@ export function drawRocks(
   let rockCount = 0;
   for (const rock of world.asteroids.items) {
     if (rockCount >= MAX_ROCKS) break;
-    const frac = Math.max(0, Math.min(1, rock.hp / Math.max(1, rock.maxHp)));
+    const frac = clamp01(rock.hp / Math.max(1, rock.maxHp));
     const o = rockCount * ROCK_LAYOUT.floats;
     const R = ROCK_LAYOUT.idx;
     rockInstances[o + R.cx] = (rock.x + 0.5) * cellPx;
@@ -99,7 +100,7 @@ export function drawShrapnel(
     rockInstances[o + R.rz] = f.spin;
 
     // Shrapnel is hot when born (glowing orange) and cools down to grey rock color
-    const ageFrac = Math.max(0, Math.min(1, f.life / SHRAPNEL_LIFE)); // 1 fresh, 0 dying
+    const ageFrac = clamp01(f.life / SHRAPNEL_LIFE); // 1 fresh, 0 dying
     const rVal = 0.52 + ageFrac * 0.28; // starts at 0.8 (hot), cools to 0.52 (grey)
     const gVal = 0.53 - ageFrac * 0.08; // starts at 0.45, cools to 0.53
     const bVal = 0.6 - ageFrac * 0.18; // starts at 0.42, cools to 0.60

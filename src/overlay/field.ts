@@ -1,6 +1,7 @@
 // view: background furniture — bases, portals, heal pads, the center pad and
 // the rally beacon. Pure — reads world, animation is derived from `now`.
 
+import { clamp01 } from "../engine/physics";
 import { MAX_BASES, ROCK_LAYOUT } from "../gpu";
 import { SHAPE } from "../sprites";
 import {
@@ -208,24 +209,21 @@ export function drawBases(
   return baseCount;
 }
 
-// Portals (background). A procedural shader vortex spirals into a dark event
-// horizon, framed by a bright ring contour. The two gates counter-rotate
-// (layer = spin sign) so the pair reads as an in/out throat.
+// Portals (background). Lime-green procedural vortex (portal-gun swirl) framed
+// by a bright ring. Both gates share the same tint; counter-rotation (layer =
+// spin sign) distinguishes the pair.
+const PORTAL_LIME: Rgba = [0.25, 1.0, 0.18, 0.95];
+
 export function drawPortals(
   push: PushFn,
   cellPx: number,
   cellPy: number,
   now: number,
 ) {
-  const portalTints: readonly Rgba[] = [
-    [0.55, 0.8, 1.0, 0.95], // cyan gate
-    [1.0, 0.6, 0.95, 0.95], // magenta gate
-  ];
   PORTALS.forEach((gate, i) => {
     const px = (gate.x + 0.5) * cellPx;
     const py = (gate.y + 0.5) * cellPy;
     const dir = i === 0 ? 1 : -1;
-    // Shader vortex, sitting just inside the ring contour.
     push(
       px,
       py,
@@ -233,18 +231,17 @@ export function drawPortals(
       gate.r * 1.15 * cellPy,
       0,
       SHAPE.vortex,
-      portalTints[i],
+      PORTAL_LIME,
       dir,
     );
-    // Procedural ring as the contour/frame around it.
     push(
       px,
       py,
       gate.r * 1.3 * cellPx,
       gate.r * 1.3 * cellPy,
-      (now / 1400) * dir,
+      (now / 900) * dir,
       SHAPE.ring,
-      portalTints[i],
+      PORTAL_LIME,
     );
   });
 }
@@ -316,7 +313,7 @@ export function drawRallyBeacon(
   const rgb = team?.rgb ?? [0.8, 0.9, 1.0];
   const px = (world.rally.x + 0.5) * cellPx;
   const py = (world.rally.y + 0.5) * cellPy;
-  const fade = Math.max(0, Math.min(1, world.rally.ttl / 360));
+  const fade = clamp01(world.rally.ttl / 360);
   const pulse = 0.5 + 0.5 * Math.sin(now / 140);
   const radius = (13 + pulse * 5) * cellPx;
   push(px, py, radius, radius, now / 650, SHAPE.ring, [

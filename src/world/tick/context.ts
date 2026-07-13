@@ -7,6 +7,7 @@ import {
   hurtShip,
   isRammer,
   killXp,
+  levelUpScale,
   maxHpFor,
   minesFor,
   PIERCE_COUNTER_MULT,
@@ -21,6 +22,7 @@ import {
 } from "../factory";
 import {
   ARENA,
+  BURST_COUNTER,
   BURST_EMP,
   BURST_EXPLOSION,
   baseByName,
@@ -49,6 +51,7 @@ export interface TickCtx {
   readonly now: number;
   readonly world: World;
   readonly suddenDeath: boolean;
+  readonly levelScale: number; // XP-requirement multiplier (age ramp; 1 in arcade)
 
   moved: Mutable<LightCycle>[];
   seed: Seed;
@@ -69,6 +72,7 @@ export const createTickCtx = (
   now,
   world,
   suddenDeath: world.age >= world.config.reinforceGens,
+  levelScale: levelUpScale(world.age, world.config.format),
   moved: [],
   seed: world.seed,
   nextId: world.ships.nextId,
@@ -154,7 +158,17 @@ export function hit(
     );
     if (shooter) {
       const mods = ARCHETYPE_MODS[shooter.archetype];
-      if (mods.counters === s.archetype) dealt *= PIERCE_COUNTER_MULT;
+      if (mods.counters === s.archetype) {
+        dealt *= PIERCE_COUNTER_MULT;
+        // Surface the counter-web: a bright spark tells the player this was a
+        // super-effective (rock-paper-scissors) hit, which is otherwise invisible.
+        ctx.burstAt.push({
+          x: Math.floor(s.x),
+          y: Math.floor(s.y),
+          kind: BURST_COUNTER,
+          rgb: shooter.color,
+        });
+      }
       armor *= 1 - mods.pierceShred;
     }
   }
@@ -273,8 +287,11 @@ export const awardXp = (
   const s = ctx.moved.find((m) => m.id === ownerId && !ctx.removed.has(m.id));
   if (!s || s.level >= cap) return;
   s.xp += amount;
-  while (s.level < cap && s.xp >= xpForLevel(s.level)) {
-    s.xp -= xpForLevel(s.level);
+  // Later in an autobattle match, each level costs more XP (ctx.levelScale ≥ 1).
+  let need = xpForLevel(s.level) * ctx.levelScale;
+  while (s.level < cap && s.xp >= need) {
+    s.xp -= need;
     promote(ctx, s, { heal: false });
+    need = xpForLevel(s.level) * ctx.levelScale;
   }
 };

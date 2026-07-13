@@ -26,6 +26,34 @@ struct VSOut {
     @location(3) layer: f32,
 }
 
+// 2D value noise — warps portal spirals so arms read organic, not geometric.
+fn hash21(p: vec2f) -> f32 {
+    return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453123);
+}
+
+fn valueNoise2(p: vec2f) -> f32 {
+    let i = floor(p);
+    let f = fract(p);
+    let u = f * f * (3.0 - 2.0 * f);
+    let a = hash21(i);
+    let b = hash21(i + vec2f(1.0, 0.0));
+    let c = hash21(i + vec2f(0.0, 1.0));
+    let d = hash21(i + vec2f(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+fn fbm2(p: vec2f) -> f32 {
+    var v = 0.0;
+    var a = 0.5;
+    var pp = p;
+    for (var i = 0; i < 3; i++) {
+        v += a * valueNoise2(pp);
+        pp = pp * 2.03 + vec2f(1.7, 9.2);
+        a *= 0.5;
+    }
+    return v;
+}
+
 @vertex
 fn vs(in: VSIn) -> VSOut {
     var corners = array<vec2f, 6>(
@@ -68,23 +96,33 @@ fn fs(in: VSOut) -> @location(0) vec4f {
         if texColor.a < 0.15 { discard; }
         return vec4f(in.color.rgb * 1.25, texColor.a * in.color.a);
     } else if in.shape > 8.5 {
-        // Spiraling accretion vortex (portals). A dark event horizon in the
-        // middle, logarithmic-spiral arms winding into it and heating to white,
-        // fading out inside the circular contour. in.layer carries the spin sign
-        // so a linked gate pair counter-rotates; the whole disc turns with time.
+        // Lime portal vortex (portals). Acid-green log-spiral ribbons, noise-warped
+        // so arms ooze irregularly into a dark green void. in.layer = spin sign.
         if d > 1.0 { discard; }
         let spin = select(-1.0, 1.0, in.layer >= 0.0);
         let theta = atan2(in.local.y, in.local.x);
-        let t = u.time * 1.2 * spin;
-        // Constant phase along log-radius curves ⇒ true logarithmic spiral arms.
-        let swirl = sin(3.0 * theta + 6.0 * log(d + 0.05) - t);
-        let arms = smoothstep(0.25, 1.0, swirl);
-        let hole = smoothstep(0.0, 0.55, d);          // 0 in the horizon → 1 mid
-        let rim = 1.0 - smoothstep(0.82, 1.0, d);     // fade inside the contour
-        let heat = 1.0 - smoothstep(0.15, 0.7, d);    // white-hot near the horizon
-        let base = mix(vec3f(0.02, 0.02, 0.06), in.color.rgb * 0.5, hole);
-        let armCol = mix(in.color.rgb, vec3f(1.0), heat);
-        let rgb = base + armCol * arms * (0.3 + 0.7 * hole);
+        let t = u.time * 2.0 * spin;
+        // Polar unwrap + scrolling fbm breaks the perfect log-spiral symmetry.
+        let polar = vec2f(theta * 0.9, log(d + 0.04) * 2.2);
+        let scroll = vec2f(t * 0.11, -t * 0.07);
+        let n1 = fbm2(polar * 2.8 + scroll);
+        let n2 = fbm2(polar * 5.5 - scroll * 1.4 + vec2f(3.1, 7.4)) * 0.45;
+        let warp = (n1 + n2) * 2.0 - 1.0;
+        let warpedTheta = theta + warp * 0.55 * (0.35 + d * 0.65);
+        let logR = 9.0 * log(d + 0.04) + warp * 0.75;
+        let phase1 = 5.0 * warpedTheta + logR - t + warp * 1.1;
+        let phase2 = phase1 + 2.1 + warp * 0.6;
+        let swirl1 = sin(phase1);
+        let swirl2 = sin(phase2);
+        let thick = 0.12 + 0.18 * fbm2(polar * 4.0 + scroll * 0.5);
+        let arms = smoothstep(0.05 - thick, 0.85 + thick * 0.5, swirl1) * 0.7
+                + smoothstep(0.1 - thick * 0.5, 0.9 + thick, swirl2) * 0.5;
+        let hole = smoothstep(0.0, 0.48 + warp * 0.06, d);
+        let rim = 1.0 - smoothstep(0.82, 1.0, d);
+        let base = mix(vec3f(0.02, 0.06, 0.02), in.color.rgb * 0.35, hole);
+        let highlight = mix(in.color.rgb, vec3f(0.55, 1.0, 0.25),
+                            1.0 - smoothstep(0.2, 0.65, d));
+        let rgb = base + highlight * arms * (0.4 + 0.6 * hole);
         let a = rim * in.color.a;
         if a < 0.02 { discard; }
         return vec4f(rgb, clamp(a, 0.0, 1.0));

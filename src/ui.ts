@@ -24,11 +24,15 @@ export interface Ui {
   hpOn: State<boolean>;
   banner: State<string>; // center win/draw banner ("" = hidden)
   activeTeamCount: State<number>; // scoreboard shows only the first N teams
+  hudTitle: State<string>; // HUD heading — "Autobattle" / "Arcade"
   showError: (message: string) => void;
   controlledShip: State<LightCycle | null>;
   // Hide/show the persistent chrome (HUD, scoreboard, controls) — used to keep
   // the welcome splash clean. Errors stay visible regardless.
   setChromeHidden: (hidden: boolean) => void;
+  // Hide the sim-tuning knobs (tempo/reinforce). In arcade these are fixed by
+  // the wave phase, so the player doesn't get to tune them.
+  setSimKnobsHidden: (hidden: boolean) => void;
 }
 
 const HUD_LIVE = "mt-1 text-[12px] text-[#a9e8d6]";
@@ -154,7 +158,7 @@ const injectScorePopStyle = () => {
   document.head.appendChild(popStyle);
 };
 
-const buildHud = (status: State<string>) =>
+const buildHud = (title: State<string>, status: State<string>) =>
   div(
     {
       class:
@@ -165,20 +169,21 @@ const buildHud = (status: State<string>) =>
         class:
           "text-[14px] font-semibold uppercase tracking-[0.08em] text-[#d3f5e9]",
       },
-      "Autobattle",
+      () => title.val,
     ),
     p({ class: HUD_LIVE }, () => status.val),
   );
 
+const GRID = "grid grid-cols-[auto_1fr_auto] items-center gap-x-2.5 gap-y-1.5";
+
 const buildControls = (cfg: UiConfig, hpOn: State<boolean>) => {
   const controlsOpen = van.state(true);
+  // Sim-tuning knobs (tempo/reinforce). Hidden in arcade — there the stage/wave
+  // sets tempo and spawns, so the player never tunes them.
+  const simKnobsHidden = van.state(false);
 
-  const controlsBody = div(
-    {
-      id: "controls-body",
-      class: () =>
-        `${controlsOpen.val ? "grid" : "hidden"} grid-cols-[auto_1fr_auto] items-center gap-x-2.5 gap-y-1.5`,
-    },
+  const simKnobs = div(
+    { class: () => `${simKnobsHidden.val ? "hidden" : GRID}` },
     knob(
       "k-tempo",
       "tempo",
@@ -195,10 +200,18 @@ const buildControls = (cfg: UiConfig, hpOn: State<boolean>) => {
       (v) => (v === 0 ? "off" : `${v}/rate`),
       CYAN,
     ),
-    ...toggle("k-hp", "hp bars", hpOn, CYAN),
   );
 
-  return div(
+  const controlsBody = div(
+    {
+      id: "controls-body",
+      class: () => `${controlsOpen.val ? "flex flex-col gap-y-1.5" : "hidden"}`,
+    },
+    simKnobs,
+    div({ class: GRID }, ...toggle("k-hp", "hp bars", hpOn, CYAN)),
+  );
+
+  const el = div(
     {
       class:
         "absolute bottom-4 left-4 rounded-lg border border-[#3fd8ff]/25 bg-[#040a0e]/75 px-3.5 py-3 font-mono text-[11px] text-[#8fe6ff] [touch-action:manipulation] backdrop-blur-[4px]",
@@ -231,6 +244,7 @@ const buildControls = (cfg: UiConfig, hpOn: State<boolean>) => {
     ),
     controlsBody,
   );
+  return { el, simKnobsHidden };
 };
 
 const buildErrorBox = (error: State<string>) =>
@@ -569,39 +583,23 @@ export const mountUi = (cfg: UiConfig): Ui => {
   const banner = van.state("");
   const counts = van.state<Readonly<Record<string, number>>>({});
   const activeTeamCount = van.state(cfg.teams.length);
+  const hudTitle = van.state("Autobattle");
   const controlledShip = van.state<LightCycle | null>(null);
 
-  const bump = useScoreBump(score, cfg.teams);
   injectScorePopStyle();
-
-  const hud = buildHud(status);
+  const bump = useScoreBump(score, cfg.teams);
   const controls = buildControls(cfg, hpOn);
-  const errorBox = buildErrorBox(error);
-  const scoreBox = buildScoreBox(cfg, score, bump, counts, activeTeamCount);
-  const bannerBox = buildBanner(banner);
-  const manualPanel = buildManualPanel(controlledShip);
-  const guidePanel = buildControlsInfoPanel();
-
-  van.add(
-    document.body,
-    hud,
-    controls,
-    scoreBox,
-    bannerBox,
-    errorBox,
-    manualPanel,
-    guidePanel,
-  );
-
-  // Everything except the error box; hidden as one while the splash is up.
+  // Persistent chrome, back to front. The error box overlays but isn't chrome
+  // (it shows regardless of the splash), so it's added separately.
   const chrome = [
-    hud,
-    controls,
-    scoreBox,
-    bannerBox,
-    manualPanel,
-    guidePanel,
+    buildHud(hudTitle, status),
+    controls.el,
+    buildScoreBox(cfg, score, bump, counts, activeTeamCount),
+    buildBanner(banner),
+    buildManualPanel(controlledShip),
+    buildControlsInfoPanel(),
   ] as HTMLElement[];
+  van.add(document.body, ...chrome, buildErrorBox(error));
 
   return {
     status,
@@ -610,12 +608,16 @@ export const mountUi = (cfg: UiConfig): Ui => {
     hpOn,
     banner,
     activeTeamCount,
+    hudTitle,
     controlledShip,
     showError: (message) => {
       error.val = message;
     },
     setChromeHidden: (hidden) => {
       for (const el of chrome) el.style.display = hidden ? "none" : "";
+    },
+    setSimKnobsHidden: (hidden) => {
+      controls.simKnobsHidden.val = hidden;
     },
   };
 };

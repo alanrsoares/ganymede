@@ -1,6 +1,7 @@
 // view: reusable field effects shared across overlay draws (center pad, bases,
 // ship abilities). Pure — animation is derived from `now`.
 
+import { lerp } from "../engine/physics";
 import { SHAPE } from "../sprites";
 import type { PushFn } from "./push";
 
@@ -55,7 +56,7 @@ export function drawForceField(
     // Travel across the span: core→rim when out, rim→core when in.
     const travel = inward ? 1 - p : p;
     const eased = 1 - (1 - travel) * (1 - travel); // fast-out, gentle settle
-    const rad = radius * (rMin + (rMax - rMin) * eased);
+    const rad = radius * lerp(rMin, rMax, eased);
     // Two superposed rings per wave, counter-rotating, so their angular
     // features beat against each other into a shimmering moiré.
     const alpha = Math.sin(p * Math.PI) * peak * 0.75; // fade in/out; halved-ish
