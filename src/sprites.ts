@@ -3,7 +3,9 @@
 // texture loader (gpu.ts) and the pure view (overlay.ts) import from here so the
 // loader and the renderer can never disagree about layer indices or timings.
 
-const ROOT = "/assets/SpaceRage";
+// Relative (no leading slash) so texture URLs resolve against the document base
+// — works at the dev-server root and under a GitHub Pages project subpath alike.
+const ROOT = "assets/SpaceRage";
 const pad2 = (n: number): string => n.toString().padStart(2, "0");
 const frames = (count: number, url: (n: number) => string): string[] =>
   Array.from({ length: count }, (_, i) => url(i + 1));

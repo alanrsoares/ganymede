@@ -11,3 +11,5 @@ bun-cache
 .env.development
 .env.test
 .env.production
+# pending `workflow` OAuth scope before this can be pushed
+.github/workflows/deploy.yml

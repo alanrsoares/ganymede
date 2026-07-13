@@ -17,6 +17,7 @@
   },
   "scripts": {
     "web": "bun --hot src/server.ts",
+    "build": "bun run scripts/build.ts",
     "test": "bun test",
     "check": "bun run lint && bun run typecheck",
     "lint": "bun x @biomejs/biome check .",
