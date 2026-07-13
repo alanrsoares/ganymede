@@ -2,6 +2,13 @@ import { normalize, wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
 import {
+  ARC_CHAIN_FALLOFF,
+  ARC_CHAIN_RANGE,
+  ARC_DAMAGE,
+  ARC_FIRE_CHANCE,
+  ARC_MAX_LINKS,
+  ARC_MIN_LEVEL,
+  ARC_RANGE,
   acquireTarget,
   BASE_HEAL_RATE,
   BASE_HORIZON,
@@ -14,7 +21,10 @@ import {
   CARRIER_LEECH_LEVEL,
   CARRIER_LEECH_RADIUS,
   CARRIER_LEECH_RATE,
+  CENTER_HORIZON,
+  CENTER_PULL,
   CLOAK_DURATION,
+  carriesArc,
   carriesMissiles,
   centerPadPhase,
   EMP_MISSILE_LOCK,
@@ -59,20 +69,20 @@ import {
   spawnBullet,
   spawnEmpMissile,
   spawnMissile,
-  toroidalDist,
   type WeaponProfile,
   weaponFor,
   wrap,
 } from "../factory";
+import { distSq, within } from "../math";
 import {
+  ARENA,
   type Asteroid,
+  BURST_ARC,
   BURST_DETONATION,
   BURST_MUZZLE,
   type Bullet,
   baseByName,
   CENTER_PAD,
-  GRID_H,
-  GRID_W,
   HEAL_PADS,
   type LightCycle,
   MAX_LEVEL,
@@ -109,9 +119,7 @@ const nearestEnemyBaseAim = (
   let ty: number | null = null;
   for (const base of TEAM_BASES) {
     if (base.name === s.colorName || ctx.baseHp[base.name] <= 0) continue;
-    const dx = toroidalDist(s.x, base.x, GRID_W);
-    const dy = toroidalDist(s.y, base.y, GRID_H);
-    const d2 = dx * dx + dy * dy;
+    const d2 = distSq(s.x, s.y, base.x, base.y);
     if (d2 >= best) continue;
     best = d2;
     tx = base.x;
@@ -128,8 +136,8 @@ const muzzleFlash = (
 ): void => {
   const muzzle = shipRadius(s.level) + 1;
   ctx.burstAt.push({
-    x: Math.floor(wrap(s.x + Math.sin(angle) * muzzle, GRID_W)),
-    y: Math.floor(wrap(s.y + Math.cos(angle) * muzzle, GRID_H)),
+    x: Math.floor(wrap(s.x + Math.sin(angle) * muzzle, ARENA.w)),
+    y: Math.floor(wrap(s.y + Math.cos(angle) * muzzle, ARENA.h)),
     kind: BURST_MUZZLE,
     rgb: s.color,
     rot: angle,
@@ -189,6 +197,16 @@ const fireWeapon = (
   bullets: Mutable<Bullet>[],
   bulletId: number,
 ): number => {
+  if (s.id === ctx.world.controlledShipId) {
+    if (ctx.world.controlKeys.space && s.fuel > 0 && s.fireCooldown <= 0) {
+      const aim = { x: s.x + s.dx * 100, y: s.y + s.dy * 100 };
+      const wp = weaponFor(s.archetype, s.level);
+      const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp);
+      s.fireCooldown = applyFireCadence(s, wp);
+      return nextId;
+    }
+    return bulletId;
+  }
   const { moved, removed } = ctx;
   if (!(s.fuel > 0 && s.fireCooldown <= 0)) return bulletId;
 
@@ -214,6 +232,7 @@ const fireMissile = (
   missileId: number,
   seed: Seed,
 ): [number, Seed] => {
+  if (s.id === ctx.world.controlledShipId) return [missileId, seed];
   const { moved, removed, steps } = ctx;
   if (
     !(
@@ -234,6 +253,108 @@ const fireMissile = (
   const launch = s.level >= MAX_LEVEL ? spawnEmpMissile : spawnMissile;
   missiles.push(launch(missileId, s, tgt.ship));
   return [missileId + 1, nextSeed];
+};
+
+// Apply one chain-lightning node strike: pierce damage, credit + clean up a kill.
+const arcStrike = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  victim: Mutable<LightCycle>,
+  dmg: number,
+) => {
+  hit(ctx, victim, dmg, "pierce", s.id);
+  if (victim.hp <= 0) {
+    ctx.score[s.colorName] += SCORE_KILL;
+    killShip(ctx, victim);
+  }
+};
+
+// Paint one lightning link (from → to) as a team-tinted BURST_ARC.
+const paintArc = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  fx: number,
+  fy: number,
+  to: Mutable<LightCycle>,
+) => {
+  ctx.burstAt.push({
+    x: fx,
+    y: fy,
+    x2: to.x,
+    y2: to.y,
+    kind: BURST_ARC,
+    rgb: s.color,
+  });
+};
+
+// Nearest live enemy of `s` to point (px,py) within `range`, skipping ids in
+// `skip` — used to fork the arc to a second target near the first.
+const nearestEnemyTo = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  px: number,
+  py: number,
+  range: number,
+  skip: Set<number>,
+): Mutable<LightCycle> | null => {
+  let best: Mutable<LightCycle> | null = null;
+  let bestD2 = range * range;
+  for (const e of ctx.moved) {
+    if (ctx.removed.has(e.id) || e.colorName === s.colorName || skip.has(e.id))
+      continue;
+    const dx = e.x - px;
+    const dy = e.y - py;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = e;
+    }
+  }
+  return best;
+};
+
+// Walk the lightning from node to node: each link jumps to the nearest unstruck
+// enemy within ARC_CHAIN_RANGE of the last node, up to ARC_MAX_LINKS nodes, and
+// deals pierce damage that decays ARC_CHAIN_FALLOFF× per hop. Deterministic —
+// no RNG inside (nearest-by-distance over the fixed ship order).
+const chainArc = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  first: Mutable<LightCycle>,
+) => {
+  const struck = new Set<number>([s.id]);
+  let fx = s.x;
+  let fy = s.y;
+  let node: Mutable<LightCycle> | null = first;
+  let dmg = ARC_DAMAGE;
+  for (let link = 0; node && link < ARC_MAX_LINKS; link++) {
+    paintArc(ctx, s, fx, fy, node);
+    arcStrike(ctx, s, node, dmg);
+    struck.add(node.id);
+    fx = node.x;
+    fy = node.y;
+    dmg *= ARC_CHAIN_FALLOFF;
+    node = nearestEnemyTo(ctx, s, fx, fy, ARC_CHAIN_RANGE, struck);
+  }
+};
+
+/**
+ * Chain-lightning capstone (arc classes at ARC_MIN_LEVEL): a seeded per-gen proc
+ * hitscans the nearest enemy in ARC_RANGE, then arcs from node to node (see
+ * chainArc) — a tesla bolt that walks a cluster, fading with each hop.
+ */
+const fireArc = (ctx: TickCtx, s: Mutable<LightCycle>, seed: Seed): Seed => {
+  if (s.id === ctx.world.controlledShipId) return seed;
+  if (!(s.fuel > 0 && carriesArc(s.archetype) && s.level >= ARC_MIN_LEVEL)) {
+    return seed;
+  }
+  const [roll, next] = nextFloat(seed);
+  if (roll >= ARC_FIRE_CHANCE * ctx.steps) return next;
+
+  const primary = acquireTarget(s, ctx.moved, ARC_RANGE, ctx.removed);
+  if (!primary || primary.dist > ARC_RANGE) return next;
+  chainArc(ctx, s, primary.ship);
+  return next;
 };
 
 /**
@@ -263,11 +384,7 @@ const harvestFuelCell = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
   for (const a of ctx.moved) {
     if (a.id === s.id || ctx.removed.has(a.id)) continue;
     if (a.colorName !== s.colorName || a.fuel >= a.maxFuel) continue;
-    const dx = toroidalDist(s.x, a.x, GRID_W);
-    const dy = toroidalDist(s.y, a.y, GRID_H);
-    if (dx * dx + dy * dy >= FUEL_CELL_PUMP_RADIUS * FUEL_CELL_PUMP_RADIUS) {
-      continue;
-    }
+    if (!within(s.x, s.y, a.x, a.y, FUEL_CELL_PUMP_RADIUS)) continue;
     a.fuel = Math.min(a.maxFuel, a.fuel + FUEL_CELL_YIELD);
   }
 };
@@ -329,9 +446,7 @@ const collectPickups = (
     // Fuel cells are a carrier-only resource — non-carriers coast through and
     // leave them floating for a carrier to harvest.
     if (p.kind === FUEL_CELL_KIND && !isCarrier(s.archetype)) continue;
-    const dx = toroidalDist(s.x, p.x, GRID_W);
-    const dy = toroidalDist(s.y, p.y, GRID_H);
-    if (dx * dx + dy * dy >= PICKUP_RADIUS * PICKUP_RADIUS) continue;
+    if (!within(s.x, s.y, p.x, p.y, PICKUP_RADIUS)) continue;
     takenPickups.add(p.id);
     ctx.score[s.colorName] += SCORE_PICKUP;
     nextMissileId = applyPickup(ctx, s, p.kind, missiles, nextMissileId);
@@ -343,9 +458,7 @@ const collectPickups = (
 const healAtPad = (s: Mutable<LightCycle>, steps: number): void => {
   if (s.hp >= s.maxHp) return;
   for (const pad of HEAL_PADS) {
-    const dx = toroidalDist(s.x, pad.x, GRID_W);
-    const dy = toroidalDist(s.y, pad.y, GRID_H);
-    if (dx * dx + dy * dy < pad.r * pad.r) {
+    if (within(s.x, s.y, pad.x, pad.y, pad.r)) {
       s.hp = Math.min(s.maxHp, s.hp + PAD_HEAL * steps);
       break;
     }
@@ -358,8 +471,8 @@ const pullTowardPortalHorizon = (
   steps: number,
 ): void => {
   for (const g of PORTALS) {
-    const gx = wrapDelta(s.x, g.x, GRID_W);
-    const gy = wrapDelta(s.y, g.y, GRID_H);
+    const gx = wrapDelta(s.x, g.x, ARENA.w);
+    const gy = wrapDelta(s.y, g.y, ARENA.h);
     const d2 = gx * gx + gy * gy;
     const horizon = g.r * PORTAL_HORIZON;
     if (d2 >= horizon * horizon || d2 < 1e-3) continue;
@@ -384,8 +497,8 @@ const applyBaseGravity = (
   for (const b of TEAM_BASES) {
     const frac = ctx.baseHp[b.name] / BASE_MAX_HP;
     if (frac <= 0) continue; // dead base has no field
-    const gx = wrapDelta(s.x, b.x, GRID_W);
-    const gy = wrapDelta(s.y, b.y, GRID_H);
+    const gx = wrapDelta(s.x, b.x, ARENA.w);
+    const gy = wrapDelta(s.y, b.y, ARENA.h);
     const d2 = gx * gx + gy * gy;
     const horizon = BASE_RADIUS * BASE_HORIZON;
     if (d2 >= horizon * horizon || d2 < 1e-3) continue;
@@ -399,17 +512,33 @@ const applyBaseGravity = (
   }
 };
 
+/**
+ * Star gravity: the centre pad is a little gravity well that draws every ship
+ * gently inward (neutral — no team owns it). The pull eases to zero out at the
+ * orbit-ring radius and firms up toward the core, where the pad's hard centre
+ * deflects hulls — so ships swing past in arcs rather than collapsing in.
+ */
+const applyStarGravity = (s: Mutable<LightCycle>, steps: number): void => {
+  const gx = wrapDelta(s.x, CENTER_PAD.x, ARENA.w);
+  const gy = wrapDelta(s.y, CENTER_PAD.y, ARENA.h);
+  const d2 = gx * gx + gy * gy;
+  const horizon = CENTER_PAD.r * CENTER_HORIZON;
+  if (d2 >= horizon * horizon || d2 < 1e-3) return;
+  const d = Math.sqrt(d2);
+  const pull = CENTER_PULL * (1 - d / horizon) * steps;
+  s.vx += (gx / d) * pull;
+  s.vy += (gy / d) * pull;
+};
+
 /** Step through a portal mouth to the other one, if standing in it and off cooldown. */
 const teleportThroughPortal = (s: Mutable<LightCycle>): void => {
   if (s.portalCooldown > 0) return;
   for (let g = 0; g < 2; g++) {
     const from = PORTALS[g];
-    const dx = toroidalDist(s.x, from.x, GRID_W);
-    const dy = toroidalDist(s.y, from.y, GRID_H);
-    if (dx * dx + dy * dy < from.r * from.r) {
+    if (within(s.x, s.y, from.x, from.y, from.r)) {
       const to = PORTALS[1 - g];
-      s.x = wrap(to.x + s.dx * (to.r + 2), GRID_W);
-      s.y = wrap(to.y + s.dy * (to.r + 2), GRID_H);
+      s.x = wrap(to.x + s.dx * (to.r + 2), ARENA.w);
+      s.y = wrap(to.y + s.dy * (to.r + 2), ARENA.h);
       s.portalCooldown = PORTAL_COOLDOWN;
       break;
     }
@@ -425,6 +554,7 @@ const dropMine = (
   seed: Seed,
   steps: number,
 ): [number, Seed] => {
+  if (s.id === _ctx.world.controlledShipId) return [mineId, seed];
   if (!(s.fuel > 0 && s.mines > 0)) return [mineId, seed];
   const [roll, nextSeed] = nextFloat(seed);
   if (roll >= MINE_DROP_CHANCE * steps) return [mineId, nextSeed];
@@ -433,8 +563,8 @@ const dropMine = (
   const back = shipRadius(s.level) + 3;
   mines.push({
     id: mineId,
-    x: wrap(s.x - s.dx * back, GRID_W),
-    y: wrap(s.y - s.dy * back, GRID_H),
+    x: wrap(s.x - s.dx * back, ARENA.w),
+    y: wrap(s.y - s.dy * back, ARENA.h),
     team: s.colorName,
     rgb: s.color,
     arm: MINE_ARM,
@@ -453,9 +583,7 @@ const dockAtHomeBase = (
 ): void => {
   const home = baseByName.get(s.colorName);
   if (!home) return;
-  const dx = toroidalDist(s.x, home.x, GRID_W);
-  const dy = toroidalDist(s.y, home.y, GRID_H);
-  if (dx * dx + dy * dy >= HOME_RADIUS * HOME_RADIUS) return;
+  if (!within(s.x, s.y, home.x, home.y, HOME_RADIUS)) return;
 
   s.shield = Math.min(
     s.maxShield,
@@ -463,7 +591,9 @@ const dockAtHomeBase = (
   );
   s.mines = s.maxMines;
   s.fuel = Math.min(s.maxFuel, s.fuel + FUEL_REFILL * steps);
-  if (!ctx.suddenDeath) {
+  // Docking repairs a damaged home base, but never revives a razed one (hp 0):
+  // a destroyed base stays destroyed and its team is eliminated.
+  if (!ctx.suddenDeath && ctx.baseHp[s.colorName] > 0) {
     ctx.baseHp[s.colorName] = Math.min(
       BASE_MAX_HP,
       ctx.baseHp[s.colorName] + BASE_HEAL_RATE * steps,
@@ -482,9 +612,7 @@ const finishAtCenterPad = (
   s: Mutable<LightCycle>,
   steps: number,
 ): void => {
-  const dx = toroidalDist(s.x, CENTER_PAD.x, GRID_W);
-  const dy = toroidalDist(s.y, CENTER_PAD.y, GRID_H);
-  if (dx * dx + dy * dy >= CENTER_PAD.r * CENTER_PAD.r) return;
+  if (!within(s.x, s.y, CENTER_PAD.x, CENTER_PAD.y, CENTER_PAD.r)) return;
   // Neutral central depot, but it only dispenses one resource at a time — the
   // active phase cycles hp → fuel → shield so holding it is worth different
   // things at different moments (see centerPadPhase).
@@ -514,8 +642,8 @@ const forceFieldStrike = (
   if (e.id === s.id || ctx.removed.has(e.id) || e.colorName === s.colorName) {
     return;
   }
-  const dx = wrapDelta(s.x, e.x, GRID_W);
-  const dy = wrapDelta(s.y, e.y, GRID_H);
+  const dx = wrapDelta(s.x, e.x, ARENA.w);
+  const dy = wrapDelta(s.y, e.y, ARENA.h);
   const d2 = dx * dx + dy * dy;
   if (d2 >= FORCEFIELD_RADIUS * FORCEFIELD_RADIUS || d2 < 1e-3) return;
   const d = Math.sqrt(d2);
@@ -550,9 +678,7 @@ const shareFuelWith = (
 ): void => {
   if (a.id === s.id || removed.has(a.id) || a.colorName !== s.colorName) return;
   if (a.fuel >= a.maxFuel) return;
-  const dx = toroidalDist(s.x, a.x, GRID_W);
-  const dy = toroidalDist(s.y, a.y, GRID_H);
-  if (dx * dx + dy * dy >= FUEL_SHARE_RADIUS * FUEL_SHARE_RADIUS) return;
+  if (!within(s.x, s.y, a.x, a.y, FUEL_SHARE_RADIUS)) return;
   const give = Math.min(
     FUEL_SHARE_RATE * steps,
     s.fuel - reserve,
@@ -585,9 +711,7 @@ const leechFuelFrom = (
 ): void => {
   if (removed.has(e.id) || e.colorName === s.colorName) return;
   if (e.fuel <= 0) return;
-  const dx = toroidalDist(s.x, e.x, GRID_W);
-  const dy = toroidalDist(s.y, e.y, GRID_H);
-  if (dx * dx + dy * dy >= CARRIER_LEECH_RADIUS * CARRIER_LEECH_RADIUS) return;
+  if (!within(s.x, s.y, e.x, e.y, CARRIER_LEECH_RADIUS)) return;
   const drain = Math.min(
     CARRIER_LEECH_RATE * steps,
     e.fuel,
@@ -647,12 +771,10 @@ const shareReconWith = (
 ): void => {
   if (ally.id === scout.id || removed.has(ally.id)) return;
   if (ally.colorName !== scout.colorName || ally.level >= MAX_LEVEL) return;
-  const dx = toroidalDist(scout.x, ally.x, GRID_W);
-  const dy = toroidalDist(scout.y, ally.y, GRID_H);
   // L5 capstone: an ace scout broadcasts raid intel map-wide (Infinity reach),
   // so a whole team can inherit its finished raids from anywhere.
   const reach = scout.level >= MAX_LEVEL ? Infinity : RECON_SHARE_RADIUS;
-  if (dx * dx + dy * dy >= reach * reach) return;
+  if (!within(scout.x, scout.y, ally.x, ally.y, reach)) return;
   const merged = mergedRaidCredit(scout, ally);
   if (merged) ally.baseHits = merged;
 };
@@ -682,6 +804,7 @@ export const resolveInteractions = (
     if (removed.has(s.id)) continue;
     bulletId = fireWeapon(ctx, s, bullets, bulletId);
     [missileId, seed] = fireMissile(ctx, s, missiles, missileId, seed);
+    seed = fireArc(ctx, s, seed);
     missileId = collectPickups(
       ctx,
       s,
@@ -694,6 +817,7 @@ export const resolveInteractions = (
     finishAtCenterPad(ctx, s, steps);
     pullTowardPortalHorizon(s, steps);
     applyBaseGravity(ctx, s, steps);
+    applyStarGravity(s, steps);
     teleportThroughPortal(s);
     [mineId, seed] = dropMine(ctx, s, mines, mineId, seed, steps);
     dockAtHomeBase(ctx, s, steps);
@@ -719,13 +843,11 @@ const hopAsteroidsThroughPortals = (
     if (removedRocks.has(r.id) || r.portalCooldown > 0) continue;
     for (let g = 0; g < 2; g++) {
       const from = PORTALS[g];
-      const dx = toroidalDist(r.x, from.x, GRID_W);
-      const dy = toroidalDist(r.y, from.y, GRID_H);
-      if (dx * dx + dy * dy < from.r * from.r) {
+      if (within(r.x, r.y, from.x, from.y, from.r)) {
         const to = PORTALS[1 - g];
         const [ux, uy] = normalize([r.vx, r.vy]);
-        r.x = wrap(to.x + ux * (to.r + r.size + 2), GRID_W);
-        r.y = wrap(to.y + uy * (to.r + r.size + 2), GRID_H);
+        r.x = wrap(to.x + ux * (to.r + r.size + 2), ARENA.w);
+        r.y = wrap(to.y + uy * (to.r + r.size + 2), ARENA.h);
         r.portalCooldown = PORTAL_COOLDOWN;
         break;
       }
@@ -741,9 +863,7 @@ const detonateOnContact = (
   removedMines: Set<number>,
 ): boolean => {
   if (ctx.removed.has(s.id) || s.colorName === m.team) return false;
-  const dx = toroidalDist(s.x, m.x, GRID_W);
-  const dy = toroidalDist(s.y, m.y, GRID_H);
-  if (dx * dx + dy * dy >= MINE_RADIUS * MINE_RADIUS) return false;
+  if (!within(s.x, s.y, m.x, m.y, MINE_RADIUS)) return false;
   removedMines.add(m.id);
   ctx.burstAt.push({
     x: Math.floor(m.x),

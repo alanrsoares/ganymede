@@ -11,10 +11,11 @@ import {
 } from "../engine/physics";
 import { nextInt, nextRange, pick, rollMany, type Seed } from "../engine/rng";
 import { ASTEROID_VARIANTS } from "../sprites";
-import { applyHit, wrap } from "./math";
+import { applyHit, distSq, wrap } from "./math";
 import {
   asteroidHp,
   BULLET_DAMAGE,
+  BULLET_RICOCHETS,
   BULLET_SPEED,
   bulletLifeFor,
   COORDINATE_MIN_LEVEL,
@@ -36,11 +37,10 @@ import {
 } from "./tuning";
 import {
   ARCHETYPES,
+  ARENA,
   type Archetype,
   type Asteroid,
   type Bullet,
-  GRID_H,
-  GRID_W,
   type LightCycle,
   type Missile,
   PICKUP_KINDS,
@@ -187,44 +187,42 @@ export const hurtShip = (
  * Nearest enemy-team ship to `self`, or null if none. Toroidal distance;
  * `skip` excludes ships already removed this tick. O(ships) — ≤12 ships.
  */
-export const nearestEnemy = (
+export function nearestEnemy(
   self: LightCycle,
   ships: readonly LightCycle[],
   skip: ReadonlySet<number>,
-): { ship: LightCycle; dist: number } | null => {
+): { ship: LightCycle; dist: number } | null {
   let best: LightCycle | null = null;
   let bestD2 = Infinity;
   for (const o of ships) {
     if (o.id === self.id || o.colorName === self.colorName || skip.has(o.id))
       continue;
-    const dx = wrapDelta(o.x, self.x, GRID_W);
-    const dy = wrapDelta(o.y, self.y, GRID_H);
-    const d2 = dx * dx + dy * dy;
+    const d2 = distSq(o.x, o.y, self.x, self.y);
     if (d2 < bestD2) {
       bestD2 = d2;
       best = o;
     }
   }
   return best ? { ship: best, dist: Math.sqrt(bestD2) } : null;
-};
+}
 
 // --- Seeking missiles (L4+ heavy volley) ------------------------------------
 
 /** A missile fired from `s`, locked onto `target`. */
-export const spawnMissile = (
+export function spawnMissile(
   id: number,
   s: LightCycle,
   target: LightCycle,
-): Missile => {
+): Missile {
   const [ax, ay] = normalize(
-    [wrapDelta(s.x, target.x, GRID_W), wrapDelta(s.y, target.y, GRID_H)],
+    [wrapDelta(s.x, target.x, ARENA.w), wrapDelta(s.y, target.y, ARENA.h)],
     [s.dx, s.dy],
   );
   const nose = shipRadius(s.level) + 1;
   return {
     id,
-    x: wrap(s.x + ax * nose, GRID_W),
-    y: wrap(s.y + ay * nose, GRID_H),
+    x: wrap(s.x + ax * nose, ARENA.w),
+    y: wrap(s.y + ay * nose, ARENA.h),
     vx: ax * MISSILE_SPEED,
     vy: ay * MISSILE_SPEED,
     team: s.colorName,
@@ -235,7 +233,7 @@ export const spawnMissile = (
     life: MISSILE_LIFE,
     owner: s.id,
   };
-};
+}
 
 /**
  * An EMP missile fired from `s`, locked onto `target`: homes like a normal
@@ -265,7 +263,7 @@ export const advanceMissile = (
   if (target) {
     const desired = angleTo(
       normalize(
-        [wrapDelta(m.x, target.x, GRID_W), wrapDelta(m.y, target.y, GRID_H)],
+        [wrapDelta(m.x, target.x, ARENA.w), wrapDelta(m.y, target.y, ARENA.h)],
         [Math.sin(m.angle), Math.cos(m.angle)],
       ),
     );
@@ -278,8 +276,8 @@ export const advanceMissile = (
     angle,
     vx: ax * MISSILE_SPEED,
     vy: ay * MISSILE_SPEED,
-    x: wrap(m.x + ax * MISSILE_SPEED * steps, GRID_W),
-    y: wrap(m.y + ay * MISSILE_SPEED * steps, GRID_H),
+    x: wrap(m.x + ax * MISSILE_SPEED * steps, ARENA.w),
+    y: wrap(m.y + ay * MISSILE_SPEED * steps, ARENA.h),
     life: m.life - steps,
   };
 };
@@ -321,9 +319,7 @@ export const focusEnemy = (
   let bestD2 = Number.POSITIVE_INFINITY;
   for (const o of ships) {
     if (!isFocusCandidate(self, o, skip)) continue;
-    const dx = wrapDelta(self.x, o.x, GRID_W);
-    const dy = wrapDelta(self.y, o.y, GRID_H);
-    const d2 = dx * dx + dy * dy;
+    const d2 = distSq(self.x, self.y, o.x, o.y);
     if (d2 > r2) continue;
     const p = targetPriority(o);
     if (isBetterFocusTarget(p, d2, bestP, bestD2)) {
@@ -352,15 +348,18 @@ export const acquireTarget = (
  * mounted parallel barrels: the bolts fly abreast on the same heading. Range
  * (bolt lifetime) scales with the shooter's rank via `bulletLifeFor`.
  */
-export const spawnBullet = (
+export function spawnBullet(
   id: number,
   s: LightCycle,
   tx: number,
   ty: number,
   lateral = 0,
-): Bullet => {
+): Bullet {
+  // Aim FROM the ship TO the target: wrapDelta(self, target) = target - self
+  // (self first, matching every other "toward target" caller). Swapping these
+  // fires the bolt out the ship's tail.
   const [ax, ay] = normalize(
-    [wrapDelta(tx, s.x, GRID_W), wrapDelta(ty, s.y, GRID_H)],
+    [wrapDelta(s.x, tx, ARENA.w), wrapDelta(s.y, ty, ARENA.h)],
     [s.dx, s.dy],
   );
   const nose = shipRadius(s.level) + 1;
@@ -368,8 +367,8 @@ export const spawnBullet = (
   const py = ax;
   return {
     id,
-    x: wrap(s.x + ax * nose + px * lateral, GRID_W),
-    y: wrap(s.y + ay * nose + py * lateral, GRID_H),
+    x: wrap(s.x + ax * nose + px * lateral, ARENA.w),
+    y: wrap(s.y + ay * nose + py * lateral, ARENA.h),
     vx: ax * BULLET_SPEED,
     vy: ay * BULLET_SPEED,
     team: s.colorName,
@@ -378,13 +377,14 @@ export const spawnBullet = (
     damage: BULLET_DAMAGE,
     life: bulletLifeFor(s.level),
     owner: s.id,
+    bounces: BULLET_RICOCHETS,
   };
-};
+}
 
 /** Build a drifting power-up bubble with a random kind + trajectory. */
-export const rollPickup = (seed: Seed, id: number): [Pickup, Seed] => {
-  const [x, s1] = nextRange(seed, 30, GRID_W - 30);
-  const [y, s2] = nextRange(s1, 30, GRID_H - 30);
+export function rollPickup(seed: Seed, id: number): [Pickup, Seed] {
+  const [x, s1] = nextRange(seed, 30, ARENA.w - 30);
+  const [y, s2] = nextRange(s1, 30, ARENA.h - 30);
   const [ang, s3] = nextRange(s2, 0, Math.PI * 2);
   const [spd, s4] = nextRange(s3, 0.05, 0.18);
   const [k, s5] = nextInt(s4, PICKUP_KINDS);
@@ -399,21 +399,21 @@ export const rollPickup = (seed: Seed, id: number): [Pickup, Seed] => {
     bob,
   };
   return [pickup, s6];
-};
+}
 
 /** Random grid position for a fresh spawn; returns next seed. */
-export const rollPosition = (seed: Seed): [number, number, Seed] => {
+export function rollPosition(seed: Seed): [number, number, Seed] {
   const [rx, s1] = nextRange(seed, 60, 420);
   const [ry, s2] = nextRange(s1, 50, 220);
   return [Math.floor(rx), Math.floor(ry), s2];
-};
+}
 
 /**
  * Build a drifting asteroid. It always enters from a field edge heading inward
  * (never pops into existence mid-world) with a little angular spread; returns the
  * next seed. Heading uses the sim's atan2(x, y) convention → (sin, cos).
  */
-export const rollAsteroid = (seed: Seed, id: number): [Asteroid, Seed] => {
+export function rollAsteroid(seed: Seed, id: number): [Asteroid, Seed] {
   const [edge, s1] = nextInt(seed, 4); // 0 top, 1 bottom, 2 left, 3 right
   const [along, s2] = nextRange(s1, 0, 1); // fraction along the edge
   const [spd, s3] = nextRange(s2, 0.14, 0.4);
@@ -428,18 +428,18 @@ export const rollAsteroid = (seed: Seed, id: number): [Asteroid, Seed] => {
   let y = 0;
   let baseAng = 0;
   if (edge === 0) {
-    x = along * GRID_W;
+    x = along * ARENA.w;
     baseAng = 0; // top → down
   } else if (edge === 1) {
-    x = along * GRID_W;
-    y = GRID_H;
+    x = along * ARENA.w;
+    y = ARENA.h;
     baseAng = Math.PI; // bottom → up
   } else if (edge === 2) {
-    y = along * GRID_H;
+    y = along * ARENA.h;
     baseAng = Math.PI / 2; // left → right
   } else {
-    x = GRID_W;
-    y = along * GRID_H;
+    x = ARENA.w;
+    y = along * ARENA.h;
     baseAng = -Math.PI / 2; // right → left
   }
   const ang = baseAng + spread;
@@ -459,14 +459,14 @@ export const rollAsteroid = (seed: Seed, id: number): [Asteroid, Seed] => {
     maxHp: hp,
   };
   return [asteroid, s8];
-};
+}
 
 /** Burst of shrapnel fragments flung radially from a shattered asteroid. */
-export const spawnShrapnel = (
+export function spawnShrapnel(
   seed: Seed,
   id0: number,
   rock: Asteroid,
-): [Projectile[], Seed, number] => {
+): [Projectile[], Seed, number] {
   const [countF, s1] = nextRange(seed, 3, 3 + rock.size / 2);
   const count = Math.round(countF);
   let s = s1;
@@ -493,18 +493,18 @@ export const spawnShrapnel = (
     id += 1;
   }
   return [out, s, id];
-};
+}
 
 /** Drift + swirl one asteroid forward by `steps` gens (pure, wraps toroidally). */
-export const advanceAsteroid = (a: Asteroid, steps: number): Asteroid => {
+export function advanceAsteroid(a: Asteroid, steps: number): Asteroid {
   const [vx, vy] = rotate([a.vx, a.vy], a.curl * steps);
   return {
     ...a,
     vx,
     vy,
-    x: wrap(a.x + vx * steps, GRID_W),
-    y: wrap(a.y + vy * steps, GRID_H),
+    x: wrap(a.x + vx * steps, ARENA.w),
+    y: wrap(a.y + vy * steps, ARENA.h),
     spin: a.spin + a.spinRate * steps,
     portalCooldown: Math.max(0, a.portalCooldown - steps),
   };
-};
+}

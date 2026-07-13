@@ -22,6 +22,16 @@ fn vs(@builtin(vertex_index) i: u32) -> VSOut {
 @group(0) @binding(1) var tex0: texture_2d<f32>;
 @group(0) @binding(2) var tex1: texture_2d<f32>;
 
+// Cinematic camera for the composite only: push-in / drift / rotate the whole
+// frame in image space. Identity is {focus:(0.5,0.5), zoom:1, rot:0} — the game
+// passes that and the frame is untouched; the welcome scene animates it.
+struct Camera {
+    focus: vec2f, // point held fixed, in [0,1] uv
+    zoom: f32,    // >1 magnifies (push in)
+    rot: f32,     // radians
+}
+@group(0) @binding(3) var<uniform> cam: Camera;
+
 fn luma(c: vec3f) -> f32 {
     return dot(c, vec3f(0.2126, 0.7152, 0.0722));
 }
@@ -60,10 +70,29 @@ fn fs_blur_v(in: VSOut) -> @location(0) vec4f {
     return vec4f(blur(in.uv, vec2f(0.0, 1.0)), 1.0);
 }
 
-// Scene (tex0) + blurred brights (tex1), additive with a soft strength.
+// Apply the cinematic camera to a sample coordinate: rotate + zoom about the
+// focus point, aspect-corrected so rotation stays square on any viewport. With
+// zoom >= 1 and focus near centre the result stays inside [0,1]; the sampler is
+// clamp-to-edge, so any slop just smears the border rather than wrapping.
+fn cameraUv(uv: vec2f) -> vec2f {
+    let dims = vec2f(textureDimensions(tex0));
+    let aspect = dims.x / max(dims.y, 1.0);
+    var d = uv - cam.focus;
+    d.x *= aspect;                 // into square space
+    let c = cos(cam.rot);
+    let s = sin(cam.rot);
+    d = vec2f(c * d.x - s * d.y, s * d.x + c * d.y);
+    d /= max(cam.zoom, 1e-3);      // zoom>1 pulls samples toward focus (push in)
+    d.x /= aspect;                 // back to uv space
+    return cam.focus + d;
+}
+
+// Scene (tex0) + blurred brights (tex1), additive with a soft strength. The
+// camera transform is applied to both so the frame moves as one image.
 @fragment
 fn fs_composite(in: VSOut) -> @location(0) vec4f {
-    let scene = textureSample(tex0, samp, in.uv).rgb;
-    let bloom = textureSample(tex1, samp, in.uv).rgb;
+    let uv = cameraUv(in.uv);
+    let scene = textureSample(tex0, samp, uv).rgb;
+    let bloom = textureSample(tex1, samp, uv).rgb;
     return vec4f(scene + bloom * 1.15, 1.0);
 }

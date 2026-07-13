@@ -10,7 +10,7 @@ import {
   rollMany,
   rollPickup,
 } from "../factory";
-import type { Burst, Cmd, LightCycle, MatchConfig, World } from "../types";
+import type { Burst, LightCycle, MatchConfig, World } from "../types";
 import type { BurstSpec, TickCtx } from "./context";
 import type { HazardState } from "./hazard-collisions";
 import type { InteractionState } from "./interactions";
@@ -38,6 +38,8 @@ const commitBursts = (
       kind: b.kind,
       rgb: b.rgb,
       rot: b.rot,
+      x2: b.x2,
+      y2: b.y2,
     }));
   }
   return [retain(bursts, (b) => now - b.start < EXPLOSION_DURATION), s];
@@ -115,7 +117,7 @@ export const finalizeTick = (
   hazards: HazardState,
   interactions: InteractionState,
   projectiles: ProjectileState,
-): [World, Cmd[]] => {
+): World => {
   const { world, steps, now, spawned } = ctx;
   const survivors = ctx.moved.filter((s) => !ctx.removed.has(s.id));
   const ships = cap(
@@ -144,21 +146,20 @@ export const finalizeTick = (
   );
   const nextAge = world.age + steps;
 
-  return [
-    {
-      ships,
-      bursts,
-      asteroids,
-      pickups,
-      ...retainPools(motion, hazards, interactions, projectiles),
-      seed,
-      score: ctx.score,
-      baseHp: ctx.baseHp,
-      rally: decayRally(world, steps),
-      age: nextAge,
-      winner: decideWinner(world.winner, nextAge, ships.items, world.config),
-      config: world.config,
-    },
-    [],
-  ];
+  return {
+    ships,
+    bursts,
+    asteroids,
+    pickups,
+    ...retainPools(motion, hazards, interactions, projectiles),
+    seed,
+    score: ctx.score,
+    baseHp: ctx.baseHp,
+    rally: decayRally(world, steps),
+    age: nextAge,
+    winner: decideWinner(world.winner, nextAge, ships.items, world.config),
+    config: world.config,
+    controlledShipId: world.controlledShipId,
+    controlKeys: world.controlKeys,
+  };
 };

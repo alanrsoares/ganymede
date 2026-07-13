@@ -85,6 +85,24 @@ const Instance = d.struct({
 });
 const InstanceArray = d.arrayOf(Instance, MAX_INSTANCES);
 
+// Cinematic camera for the composite pass: a whole-frame push-in / drift /
+// rotate in image space (see bloom.wgsl `Camera`). `fx,fy` is the focus point
+// in [0,1] uv held fixed under zoom. Identity = centred, no zoom, no rotation:
+// the game renders with it and the frame is untouched; the welcome scene eases
+// these to frame the swarm.
+export interface CameraView {
+  fx: number;
+  fy: number;
+  zoom: number;
+  rot: number;
+}
+export const CAMERA_IDENTITY: CameraView = {
+  fx: 0.5,
+  fy: 0.5,
+  zoom: 1,
+  rot: 0,
+};
+
 export interface Renderer {
   render(
     instances: Float32Array<ArrayBuffer>,
@@ -101,6 +119,7 @@ export interface Renderer {
     centerPadInstances: Float32Array<ArrayBuffer>,
     centerPadCount: number,
     time: number,
+    camera: CameraView,
   ): void;
   resize(): void;
 }
@@ -392,6 +411,28 @@ interface RenderTargets {
   compositeBG: GPUBindGroup;
 }
 
+// A post-process bind group: sampler at 0, sampled views at 1.., then any
+// uniform buffers after the views. Every bloom stage uses it; the composite
+// stage additionally binds the camera uniform at the trailing slot.
+const postBindGroup = (
+  device: GPUDevice,
+  sampler: GPUSampler,
+  pipe: GPURenderPipeline,
+  views: GPUTextureView[],
+  uniforms: GPUBuffer[] = [],
+): GPUBindGroup =>
+  device.createBindGroup({
+    layout: pipe.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: sampler },
+      ...views.map((v, i) => ({ binding: i + 1, resource: v })),
+      ...uniforms.map((buffer, i) => ({
+        binding: views.length + 1 + i,
+        resource: { buffer },
+      })),
+    ],
+  });
+
 // Offscreen targets: the scene renders to sceneTex (+depth for the rocks); the
 // bloom blur ping-pongs between two half-res textures. All recreated on resize,
 // and the post bind groups with them (they reference the views). `state` is
@@ -402,6 +443,7 @@ const createRenderTargets = (
   canvas: HTMLCanvasElement,
   format: GPUTextureFormat,
   bloom: BloomPipelines,
+  cameraBuffer: GPUBuffer,
 ): RenderTargets => {
   let sceneTex: GPUTexture | null = null;
   let depthTexture: GPUTexture | null = null;
@@ -415,14 +457,11 @@ const createRenderTargets = (
       usage:
         GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
     });
-  const bind = (pipe: GPURenderPipeline, views: GPUTextureView[]) =>
-    device.createBindGroup({
-      layout: pipe.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: bloom.postSampler },
-        ...views.map((v, i) => ({ binding: i + 1, resource: v })),
-      ],
-    });
+  const bind = (
+    pipe: GPURenderPipeline,
+    views: GPUTextureView[],
+    uniforms: GPUBuffer[] = [],
+  ) => postBindGroup(device, bloom.postSampler, pipe, views, uniforms);
 
   const state = {} as RenderTargets;
 
@@ -448,10 +487,11 @@ const createRenderTargets = (
     state.brightBG = bind(bloom.brightPipeline, [state.sceneView]);
     state.blurHBG = bind(bloom.blurHPipeline, [state.bloomAView]);
     state.blurVBG = bind(bloom.blurVPipeline, [state.bloomBView]);
-    state.compositeBG = bind(bloom.compositePipeline, [
-      state.sceneView,
-      state.bloomAView,
-    ]);
+    state.compositeBG = bind(
+      bloom.compositePipeline,
+      [state.sceneView, state.bloomAView],
+      [cameraBuffer], // camera uniform lands at binding 3 (after the two views)
+    );
   };
 
   state.resize = () => {
@@ -615,6 +655,7 @@ interface RenderFnDeps {
   canvas: HTMLCanvasElement;
   uniformBuffer: GPUBuffer;
   instanceBuffer: GPUBuffer;
+  cameraBuffer: GPUBuffer;
   bgPipeline: GPURenderPipeline;
   bgBindGroup: GPUBindGroup;
   rockPass: MeshPass;
@@ -648,6 +689,7 @@ const createRenderFn =
     centerPadInstances,
     centerPadCount,
     time,
+    camera,
   ) => {
     const { device, context, canvas, uniformBuffer, instanceBuffer } = deps;
     writeFrameUniforms(
@@ -658,6 +700,12 @@ const createRenderFn =
       time,
       instances,
       instanceCount,
+    );
+    // Camera uniform for the composite pass (focus.xy, zoom, rot).
+    device.queue.writeBuffer(
+      deps.cameraBuffer,
+      0,
+      new Float32Array([camera.fx, camera.fy, camera.zoom, camera.rot]),
     );
     const encoder = device.createCommandEncoder();
     encodeScenePass(encoder, deps.targets, {
@@ -709,7 +757,19 @@ export const createRenderer = (
   const { rockPass, shieldPass, orbPass, basePass, centerPadPass } =
     createMeshPasses(device, format, uniformBuffer);
   const bloom = createBloomPipelines(device, format);
-  const targets = createRenderTargets(device, canvas, format, bloom);
+  // Cinematic camera uniform, consumed only by the composite pass. One vec4:
+  // [focus.x, focus.y, zoom, rot]. Recreated bind groups (on resize) reference it.
+  const cameraBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+  });
+  const targets = createRenderTargets(
+    device,
+    canvas,
+    format,
+    bloom,
+    cameraBuffer,
+  );
 
   return {
     resize: targets.resize,
@@ -719,6 +779,7 @@ export const createRenderer = (
       canvas,
       uniformBuffer,
       instanceBuffer,
+      cameraBuffer,
       bgPipeline,
       bgBindGroup,
       rockPass,

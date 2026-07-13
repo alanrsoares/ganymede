@@ -20,4 +20,4 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Circuit visualizer running at ${server.url}`);
+console.log(`Ganymede running at ${server.url}`);

@@ -5,14 +5,25 @@
 // and feeds it here; this module only renders.
 
 import van from "vanjs-core";
-import { type Archetype, type LightCycle, MAX_LEVEL } from "./world";
 import {
+  ARCHETYPE_INFO,
+  type ArchetypeInfo,
+  PEAK,
+  rgbCss,
+  TIERS,
+  type Tier,
+} from "./shipInfo";
+import { type LightCycle, MAX_LEVEL } from "./world";
+import {
+  ARC_MIN_LEVEL,
   ARCHETYPE_MODS,
+  carriesArc,
   carriesMissiles,
   cruiseFor,
   fireCooldownFor,
   isCarrier,
   isRecon,
+  MISSILE_MIN_LEVEL,
   maxFuelFor,
   maxHpFor,
   minesFor,
@@ -21,99 +32,38 @@ import {
 const { div, span } = van.tags;
 const svg = van.tags("http://www.w3.org/2000/svg");
 
-// --- Static per-class flavor -----------------------------------------------
-interface ArchetypeInfo {
-  label: string; // display name
-  tagline: string; // one-line role hook
-  blurb: string; // longer archetypal description
-  badge: string; // SVG path drawing the hull silhouette (24×24 viewbox)
-}
-
-const ARCHETYPE_INFO: Record<Archetype, ArchetypeInfo> = {
-  scout: {
-    label: "Recon Dart",
-    tagline: "fast · fragile · recon",
-    blurb:
-      "Thin-hulled sprinter. Fastest cruise of any class, smallest tank, no heavy ordnance. Shares its enemy-base raid progress with nearby allies, so the whole squad tracks the level-up goal.",
-    badge: "M12 2 L18 20 L12 16 L6 20 Z",
-  },
-  fighter: {
-    label: "Line Fighter",
-    tagline: "balanced · gunner · backbone",
-    blurb:
-      "The all-rounder. Tightest fire cadence of the base classes, average speed and hull. No gimmick — just reliable trigger time. The spine of a squad.",
-    badge: "M12 2 L20 18 L12 14 L4 18 Z M12 14 L12 22",
-  },
-  heavy: {
-    label: "Carrier",
-    tagline: "tank · mines · refuels allies",
-    blurb:
-      "Slow armored hauler. 1.5× hull and a huge tank. Seeds proximity mines from L3, and tops up thirsty allies mid-flight. Anchors the push, feeds the fleet.",
-    badge: "M12 3 L19 8 L19 16 L12 21 L5 16 L5 8 Z",
-  },
-  interceptor: {
-    label: "Interceptor",
-    tagline: "nimble · seeking missiles",
-    blurb:
-      "Hit-and-run hunter. Above-average speed; from L4 it locks seeking missiles onto enemy aces. Orbits at gun range and peppers instead of ramming.",
-    badge: "M12 2 L15 12 L22 20 L12 16 L2 20 L9 12 Z",
-  },
-};
-
-// --- Evolution tree ---------------------------------------------------------
-// One row per rank. `note` is the universal unlock; `gated`, when present,
-// only lights up for the matching archetype (the class weapon tree).
-interface Tier {
-  level: number;
-  title: string;
-  note: string;
-  gated?: { archetype: Archetype; note: string };
-}
-
-const TIERS: readonly Tier[] = [
-  { level: 1, title: "Rookie", note: "brawls solo — no flock sense" },
-  { level: 2, title: "Regular", note: "raid all bases + cross center → rank" },
-  {
-    level: 3,
-    title: "Veteran",
-    note: "squad focus-fire",
-    gated: { archetype: "heavy", note: "proximity mines online" },
-  },
-  {
-    level: 4,
-    title: "Elite",
-    note: "kites at standoff range",
-    gated: { archetype: "interceptor", note: "seeking missiles online" },
-  },
-  { level: 5, title: "Ace", note: "peak coordination + cadence" },
-];
-
 // --- Stat bars --------------------------------------------------------------
-// A 0..1 meter. Widths are relative to the strongest class on that axis so the
-// bars read as a comparison, not an absolute.
-const rgbCss = (c: LightCycle["color"], a = 1) =>
-  `rgba(${c.map((v) => Math.round(v * 255)).join(",")},${a})`;
-
-const meter = (label: string, frac: number, tint: string, value: string) =>
-  div(
+// A segmented telemetry gauge. `frac` (0..1) is relative to the strongest
+// class on that axis, so the lit segments read as a comparison, not absolute.
+// The chunky ticks give it a cockpit-instrument feel rather than a web bar.
+const SEGMENTS = 7;
+const meter = (label: string, frac: number, tint: string, value: string) => {
+  const on = Math.round(Math.max(0, Math.min(1, frac)) * SEGMENTS);
+  return div(
     { class: "flex items-center gap-2" },
-    span({ class: "w-11 shrink-0 text-right opacity-60" }, label),
-    div(
-      { class: "h-1.5 flex-1 overflow-hidden rounded-full bg-white/10" },
-      div({
-        class: "h-full rounded-full",
-        style: `width:${Math.max(4, Math.min(100, frac * 100))}%;background:${tint};box-shadow:0 0 6px ${tint}`,
-      }),
+    span(
+      {
+        class: "w-9 shrink-0 text-[9px] uppercase tracking-[0.12em] opacity-55",
+      },
+      label,
     ),
-    span({ class: "w-12 shrink-0 tabular-nums opacity-70" }, value),
+    div(
+      { class: "flex flex-1 gap-[2px]" },
+      ...Array.from({ length: SEGMENTS }, (_, i) =>
+        div({
+          class: "h-2 flex-1 rounded-[1px]",
+          style:
+            i < on
+              ? `background:${tint};box-shadow:0 0 5px ${tint}80`
+              : "background:rgba(255,255,255,0.07)",
+        }),
+      ),
+    ),
+    span(
+      { class: "w-12 shrink-0 text-right text-[10px] tabular-nums opacity-75" },
+      value,
+    ),
   );
-
-// Peak multiplier on each axis across all classes, so bars normalize sensibly.
-const PEAK = {
-  speed: Math.max(...Object.values(ARCHETYPE_MODS).map((m) => m.speed)),
-  hp: Math.max(...Object.values(ARCHETYPE_MODS).map((m) => m.hp)),
-  fuel: Math.max(...Object.values(ARCHETYPE_MODS).map((m) => m.fuel)),
-  fire: Math.max(...Object.values(ARCHETYPE_MODS).map((m) => 1 / m.fire)),
 };
 
 const buildStatBars = (ship: LightCycle, tint: string) => {
@@ -122,8 +72,8 @@ const buildStatBars = (ship: LightCycle, tint: string) => {
   const mod = ARCHETYPE_MODS[a];
   return div(
     { class: "flex flex-col gap-1" },
-    meter("hull", mod.hp / PEAK.hp, tint, `${maxHpFor(a, lvl)} hp`),
-    meter("speed", mod.speed / PEAK.speed, tint, cruiseFor(a, lvl).toFixed(2)),
+    meter("hull", mod.hp / PEAK.hp, tint, `${maxHpFor(a, lvl)}`),
+    meter("spd", mod.speed / PEAK.speed, tint, cruiseFor(a, lvl).toFixed(2)),
     // Faster fire = shorter cooldown; invert so a fuller bar means quicker.
     meter(
       "fire",
@@ -140,136 +90,224 @@ const chip = (text: string) =>
   span(
     {
       class:
-        "rounded border border-white/15 bg-white/5 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] opacity-80",
+        "flex items-center gap-1 rounded-sm border border-white/[0.12] bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.08em] opacity-85",
     },
+    span({ class: "text-[6px] opacity-50" }, "◆"),
     text,
   );
 
 const buildTraits = (ship: LightCycle) => {
   const a = ship.archetype;
-  const traits: string[] = [];
-  const mines = minesFor(a, ship.level);
-  if (mines > 0) traits.push(`${mines} mines`);
-  else if (ARCHETYPE_MODS[a].mines) traits.push("mines @ L3");
-  if (carriesMissiles(a))
-    traits.push(ship.level >= 4 ? "missiles" : "missiles @ L4");
-  if (isCarrier(a)) traits.push("refuels allies");
-  if (isRecon(a)) traits.push("shares raid intel");
-  if (ship.maxShield > 0) traits.push(`${ship.maxShield} shield`);
+  const lvl = ship.level;
+  const mines = minesFor(a, lvl);
+  const at = (unlocked: boolean, label: string, level: number) =>
+    unlocked ? label : `${label} @ L${level}`;
+  // [predicate, label] pairs — filtered to what applies, so this reads as data
+  // rather than a branch pile (keeps cognitive complexity in check).
+  const candidates: readonly [boolean, string][] = [
+    [mines > 0, `${mines} mines`],
+    [mines === 0 && ARCHETYPE_MODS[a].mines, "mines @ L3"],
+    [
+      carriesMissiles(a),
+      at(lvl >= MISSILE_MIN_LEVEL, "missiles", MISSILE_MIN_LEVEL),
+    ],
+    [carriesArc(a), at(lvl >= ARC_MIN_LEVEL, "chain arc", ARC_MIN_LEVEL)],
+    [isCarrier(a), "refuels allies"],
+    [isRecon(a), "shares raid intel"],
+    [ship.maxShield > 0, `${ship.maxShield} shield`],
+  ];
+  const traits = candidates.filter(([on]) => on).map(([, label]) => label);
   if (traits.length === 0) traits.push("gun only");
   return div({ class: "flex flex-wrap gap-1" }, ...traits.map(chip));
 };
 
-// --- Evolution tree DOM -----------------------------------------------------
-// A rank is one of three phases relative to the ship's current level. Keyed by
-// Math.sign(level - t.level) + 1 → future | here | past (no branching).
-type Phase = "future" | "here" | "past";
-const PHASE = ["future", "here", "past"] as const;
-const TITLE_OPACITY: Record<Phase, string> = {
-  future: "opacity-45",
-  here: "",
-  past: "opacity-55",
-};
-
-// One rank row: dim if unreached, tinted if current/past, with the class-gated
-// unlock appended in the team color when it applies to this ship's archetype.
-const buildTierRow = (t: Tier, ship: LightCycle, tint: string) => {
-  const phase: Phase = PHASE[Math.sign(ship.level - t.level) + 1];
-  const here = phase === "here";
-  const reached = phase !== "future";
-  const gated = t.gated?.archetype === ship.archetype ? t.gated.note : null;
-  return div(
+// --- Rank track -------------------------------------------------------------
+// A horizontal L1→L5 ladder: one pip per rank, connected by links that light
+// up as far as the ship has climbed, current rank filled solid. Compact enough
+// to sit at the foot of the hover card, with a one-line caption for the rank
+// the ship is at (plus its class-gated unlock, when it applies here).
+const rankPip = (t: Tier, level: number, tint: string) => {
+  const here = t.level === level;
+  const reached = t.level <= level;
+  const style = here
+    ? `border-color:${tint};background:${tint};color:#04070a`
+    : reached
+      ? `border-color:${tint};color:${tint}`
+      : "border-color:rgba(255,255,255,0.2);color:rgba(255,255,255,0.35)";
+  return span(
     {
-      class: `flex items-baseline gap-1.5 rounded px-1 py-[1px] ${here ? "bg-white/10" : ""}`,
-      style: here ? `box-shadow:inset 0 0 0 1px ${tint}55` : "",
+      class:
+        "grid h-4 w-4 shrink-0 place-items-center rounded-full border text-[8px] font-bold tabular-nums",
+      style,
     },
-    span(
-      {
-        class: "w-4 shrink-0 text-center tabular-nums font-bold",
-        style: reached ? `color:${tint}` : "opacity:0.35",
-      },
-      here ? "▸" : String(t.level),
-    ),
-    span(
-      { class: `text-[10px] font-semibold ${TITLE_OPACITY[phase]}` },
-      t.title,
-    ),
-    span({ class: "text-[9px] opacity-55" }, gated ? `${t.note} · ` : t.note),
-    gated
-      ? span(
-          { class: "text-[9px] font-semibold", style: `color:${tint}` },
-          gated,
-        )
-      : null,
+    String(t.level),
   );
 };
 
-const buildEvolution = (ship: LightCycle, tint: string) =>
-  div(
-    { class: "flex flex-col gap-0.5" },
-    span(
-      { class: "text-[8px] uppercase tracking-[0.28em] opacity-45" },
-      "evolution",
-    ),
-    ...TIERS.map((t) => buildTierRow(t, ship, tint)),
-  );
+const rankLink = (reached: boolean, tint: string) =>
+  div({
+    class: "h-[2px] flex-1",
+    style: reached
+      ? `background:${tint}99`
+      : "background:rgba(255,255,255,0.12)",
+  });
 
-// --- Badge ------------------------------------------------------------------
-const buildBadge = (ship: LightCycle, tint: string) =>
-  svg.svg(
-    {
-      viewBox: "0 0 24 24",
-      class: "h-9 w-9 shrink-0",
-      fill: "none",
-      stroke: tint,
-      "stroke-width": "1.6",
-      "stroke-linejoin": "round",
-    },
-    svg.path({
-      d: ARCHETYPE_INFO[ship.archetype].badge,
-      fill: `${tint}22`,
-    }),
+const buildRankTrack = (ship: LightCycle, tint: string) => {
+  const cur = TIERS.find((t) => t.level === ship.level) ?? TIERS[0];
+  const gated =
+    cur.gated?.find((g) => g.archetype === ship.archetype)?.note ?? null;
+  const track = TIERS.flatMap((t, i) =>
+    i === 0
+      ? [rankPip(t, ship.level, tint)]
+      : [
+          rankLink(ship.level > TIERS[i - 1].level, tint),
+          rankPip(t, ship.level, tint),
+        ],
   );
-
-// --- Card body --------------------------------------------------------------
-const buildCardBody = (ship: LightCycle) => {
-  const info = ARCHETYPE_INFO[ship.archetype];
-  const tint = rgbCss(ship.color);
   return div(
-    { class: "flex flex-col gap-2" },
-    // Header: badge + name + team/level.
+    { class: "flex flex-col gap-1.5" },
     div(
-      { class: "flex items-center gap-2.5" },
-      buildBadge(ship, tint),
-      div(
-        { class: "flex flex-col" },
-        span(
-          {
-            class: "text-[13px] font-bold leading-tight",
-            style: `color:${tint}`,
-          },
-          info.label,
-        ),
-        span(
-          { class: "text-[9px] uppercase tracking-[0.1em] opacity-60" },
-          info.tagline,
-        ),
-        span(
-          { class: "text-[9px] opacity-50" },
-          `${ship.colorName} · L${ship.level}/${MAX_LEVEL} · ${ship.archetype}`,
-        ),
+      { class: "flex items-center justify-between" },
+      span(
+        { class: "text-[8px] uppercase tracking-[0.28em] opacity-45" },
+        "rank",
+      ),
+      span(
+        {
+          class: "text-[9px] uppercase tracking-[0.1em]",
+          style: `color:${tint}`,
+        },
+        cur.title,
       ),
     ),
-    p(info.blurb),
-    buildStatBars(ship, tint),
-    buildTraits(ship),
-    buildEvolution(ship, tint),
+    div({ class: "flex items-center" }, ...track),
+    span(
+      { class: "text-[9px] leading-snug opacity-55" },
+      cur.note,
+      gated ? span({ style: `color:${tint}` }, ` · ${gated}`) : null,
+    ),
   );
 };
+
+// --- Badge ------------------------------------------------------------------
+// The blueprint glyph inside a reticle box: four corner ticks framing a
+// filled hull + lighter detail strokes, all in the team tint — the moment the
+// targeting readout "boxes" the contact.
+const corner = (edges: string, tint: string) =>
+  span({ class: `absolute h-2 w-2 ${edges}`, style: `border-color:${tint}` });
+
+const buildBadge = (ship: LightCycle, tint: string) => {
+  const g = ARCHETYPE_INFO[ship.archetype].glyph;
+  return div(
+    {
+      class:
+        "relative grid h-12 w-12 shrink-0 place-items-center rounded bg-white/[0.03]",
+    },
+    corner("left-0 top-0 border-l border-t", tint),
+    corner("right-0 top-0 border-r border-t", tint),
+    corner("bottom-0 left-0 border-b border-l", tint),
+    corner("bottom-0 right-0 border-b border-r", tint),
+    svg.svg(
+      {
+        viewBox: "0 0 24 24",
+        class: "h-8 w-8",
+        fill: "none",
+        "stroke-linejoin": "round",
+        "stroke-linecap": "round",
+      },
+      svg.path({
+        d: g.hull,
+        fill: `${tint}26`,
+        stroke: tint,
+        "stroke-width": "1.4",
+      }),
+      svg.path({
+        d: g.detail,
+        stroke: tint,
+        "stroke-width": "1",
+        opacity: "0.65",
+      }),
+    ),
+  );
+};
+
+// A hairline divider that fades from the tint — a scanner sweep line at rest.
+const hairline = (tint: string) =>
+  div({
+    class: "h-px",
+    style: `background:linear-gradient(90deg,${tint}55,transparent)`,
+  });
+
+// One-shot scanline that sweeps down when a fresh contact is acquired. Keyed
+// off body re-creation (see mount: body rebuilds only on a new ship id).
+const scanline = (tint: string) =>
+  div({
+    class: "card-scan pointer-events-none absolute inset-x-0 top-0 h-px",
+    style: `background:linear-gradient(90deg,transparent,${tint},transparent)`,
+  });
 
 // Small paragraph helper (blurb copy).
 const p = (text: string) =>
   span({ class: "text-[10px] leading-snug opacity-75" }, text);
+
+// --- Card body --------------------------------------------------------------
+const buildHeader = (ship: LightCycle, info: ArchetypeInfo, tint: string) =>
+  div(
+    { class: "flex items-start gap-3" },
+    buildBadge(ship, tint),
+    div(
+      { class: "flex min-w-0 flex-1 flex-col gap-0.5" },
+      div(
+        { class: "flex items-center justify-between gap-2" },
+        span(
+          {
+            class: "text-[8px] font-semibold uppercase tracking-[0.3em]",
+            style: `color:${tint}`,
+          },
+          "◈ contact",
+        ),
+        span(
+          { class: "text-[9px] tabular-nums opacity-55" },
+          `L${ship.level}/${MAX_LEVEL}`,
+        ),
+      ),
+      span(
+        {
+          class:
+            "truncate text-[14px] font-bold uppercase leading-tight tracking-[0.06em]",
+          style: `color:${tint}`,
+        },
+        info.label,
+      ),
+      span(
+        { class: "text-[9px] uppercase tracking-[0.14em] opacity-55" },
+        info.tagline,
+      ),
+    ),
+  );
+
+const buildCardBody = (ship: LightCycle) => {
+  const info = ARCHETYPE_INFO[ship.archetype];
+  const tint = rgbCss(ship.color);
+  return div(
+    { class: "relative flex flex-col gap-2.5 overflow-hidden" },
+    scanline(tint),
+    buildHeader(ship, info, tint),
+    div(
+      {
+        class:
+          "flex items-center justify-between text-[8px] uppercase tracking-[0.2em] opacity-40",
+      },
+      span({}, ship.colorName),
+      span({}, ship.archetype),
+    ),
+    hairline(tint),
+    p(info.blurb),
+    buildStatBars(ship, tint),
+    buildTraits(ship),
+    buildRankTrack(ship, tint),
+  );
+};
 
 // --- Mount ------------------------------------------------------------------
 export interface ShipCard {
@@ -277,38 +315,45 @@ export interface ShipCard {
   render(ship: LightCycle | null, px: number, py: number): void;
 }
 
-const CARD_W = 268; // px, for edge-flip math
+const CARD_W = 272; // px, for edge-flip math
 
 export const mountShipCard = (): ShipCard => {
-  const sel = van.state<{
-    ship: LightCycle;
-    px: number;
-    py: number;
-  } | null>(null);
+  // `target` drives the body; `pos` drives placement. Splitting them means the
+  // body only rebuilds when the contact changes (not every cursor move), so the
+  // acquire scanline plays once per target instead of strobing as you hover.
+  const target = van.state<LightCycle | null>(null);
+  const pos = van.state<{ px: number; py: number } | null>(null);
 
   const root = div(
     {
       class: () =>
-        `pointer-events-none fixed z-50 w-[268px] rounded-lg border bg-[#050b0f]/92 p-3 font-mono text-[#cfeee2] backdrop-blur-[6px] transition-opacity duration-100 ${sel.val ? "opacity-100" : "opacity-0"}`,
+        `pointer-events-none fixed z-50 w-[272px] origin-top rounded-lg border bg-[#050b0f]/92 p-3 font-mono text-[#cfeee2] backdrop-blur-[6px] transition-[opacity,transform] duration-150 ${target.val ? "scale-100 opacity-100" : "scale-[0.97] opacity-0"}`,
       style: () => {
-        const s = sel.val;
-        if (!s) return "left:-9999px;top:0";
+        const s = pos.val;
+        const t = target.val;
+        if (!s || !t) return "left:-9999px;top:0";
         // Flip to the cursor's left near the right edge; clamp within viewport.
         const flip = s.px + 18 + CARD_W > window.innerWidth;
         const left = flip ? s.px - 18 - CARD_W : s.px + 18;
-        const top = Math.max(8, Math.min(window.innerHeight - 320, s.py - 20));
-        const tint = rgbCss(s.ship.color, 0.35);
-        return `left:${Math.max(8, left)}px;top:${top}px;border-color:${tint};box-shadow:0 8px 30px -8px ${rgbCss(s.ship.color, 0.4)}`;
+        const top = Math.max(8, Math.min(window.innerHeight - 360, s.py - 20));
+        const edge = rgbCss(t.color, 0.35);
+        return `left:${Math.max(8, left)}px;top:${top}px;border-color:${edge};box-shadow:0 8px 30px -8px ${rgbCss(t.color, 0.4)}`;
       },
     },
-    () => (sel.val ? buildCardBody(sel.val.ship) : div()),
+    () => (target.val ? buildCardBody(target.val) : div()),
   );
 
   van.add(document.body, root);
 
   return {
     render: (ship, px, py) => {
-      sel.val = ship ? { ship, px, py } : null;
+      pos.val = ship ? { px, py } : null;
+      const cur = target.val;
+      if (!ship) {
+        if (cur) target.val = null;
+      } else if (!cur || cur.id !== ship.id) {
+        target.val = ship;
+      }
     },
   };
 };

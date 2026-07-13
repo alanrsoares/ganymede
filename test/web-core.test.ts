@@ -12,6 +12,7 @@ import {
 import { nextFloat } from "~/engine/rng";
 import { makeAsteroidMesh, makeSphereMesh } from "~/mesh";
 import { instanceLayout } from "~/mesh-pass";
+import { shipSize } from "~/overlay/ships";
 import {
   ASTEROID_VARIANTS,
   asteroidLayer,
@@ -21,6 +22,17 @@ import {
   SPRITE_URLS,
 } from "~/sprites";
 import {
+  ARENA,
+  CENTER_PAD,
+  DEFAULT_GRID_H,
+  DEFAULT_GRID_W,
+  HEAL_PADS,
+  PORTALS,
+  setGridBounds,
+  setOrbitPhase,
+  TEAM_BASES,
+} from "~/world";
+import {
   acquireTarget,
   applyHit,
   fireCooldownForLevel,
@@ -29,6 +41,7 @@ import {
   maxHpForLevel,
   nearestEnemy,
   rollShip,
+  shipRadius,
   toroidalDist,
   wrap,
 } from "~/world/factory";
@@ -190,4 +203,64 @@ test("every atlas layer index is in range", () => {
   const a = clipLayer(CLIP.mine, 0, 0);
   const b = clipLayer(CLIP.mine, 0, CLIP.mine.frameMs * CLIP.mine.frames);
   expect(a).toBe(b); // wrapped a full cycle
+});
+
+// --- dynamic aspect ratio / grid bounds --------------------------------------
+test("dynamic grid bounds resizing", () => {
+  try {
+    setOrbitPhase(0); // pin the ring to zero rotation (shared module global)
+    // Check default values
+    expect(ARENA.w).toBe(480);
+    expect(ARENA.h).toBe(270);
+
+    // Check center pad is at center
+    expect(CENTER_PAD.x).toBe(240);
+    expect(CENTER_PAD.y).toBe(135);
+
+    // Set new bounds (e.g. 21:9 ultrawide with locked height of 270)
+    setGridBounds(630, 270);
+
+    expect(ARENA.w).toBe(630);
+    expect(ARENA.h).toBe(270);
+
+    // Check center pad dynamically shifted to the new center
+    expect(CENTER_PAD.x).toBe(315);
+    expect(CENTER_PAD.y).toBe(135);
+
+    // Harmonic ring: every body (bases, portals, heal pads) is ~the same radius
+    // from the star, capped by the short axis and re-centred on resize. The
+    // organic micro-drift (radial breathing + centre wander, a few px) means
+    // "near", not exact — DRIFT_ENVELOPE bounds the total deviation.
+    const R = Math.min(630, 270) / 2 - 22; // 113
+    const DRIFT_ENVELOPE = 8; // px: radius breathing (~2%) + centre wander (3px)
+    const distFromStar = (b: { x: number; y: number }) =>
+      Math.hypot(b.x - CENTER_PAD.x, b.y - CENTER_PAD.y);
+    for (const body of [...PORTALS, ...HEAL_PADS, ...TEAM_BASES]) {
+      expect(Math.abs(distFromStar(body) - R)).toBeLessThanOrEqual(
+        DRIFT_ENVELOPE,
+      );
+    }
+    // Portals sit on the E/W poles — near the star's row, mirrored across it.
+    expect(Math.abs(PORTALS[0].y - 135)).toBeLessThanOrEqual(DRIFT_ENVELOPE);
+    expect(Math.abs(PORTALS[1].y - 135)).toBeLessThanOrEqual(DRIFT_ENVELOPE);
+    expect(PORTALS[0].x).toBeLessThan(315);
+    expect(PORTALS[1].x).toBeGreaterThan(315);
+  } finally {
+    // Reset back to defaults so later tests have clean environment
+    setGridBounds(DEFAULT_GRID_W, DEFAULT_GRID_H);
+  }
+  expect(ARENA.w).toBe(480);
+});
+
+test("ship sizes: biggest ship is not more than 3x the smallest ship size", () => {
+  const levels = [1, 2, 3, 4, 5];
+  const radiusSizes = levels.map(shipRadius);
+  const minRadius = Math.min(...radiusSizes);
+  const maxRadius = Math.max(...radiusSizes);
+  expect(maxRadius).toBeLessThanOrEqual(3 * minRadius);
+
+  const visualSizes = levels.map(shipSize);
+  const minVisual = Math.min(...visualSizes);
+  const maxVisual = Math.max(...visualSizes);
+  expect(maxVisual).toBeLessThanOrEqual(3 * minVisual);
 });

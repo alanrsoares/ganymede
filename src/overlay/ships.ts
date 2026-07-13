@@ -7,7 +7,7 @@ import type { LightCycle, World } from "../world";
 import { hasRaidedAllEnemyBases, SHIELD_FLASH } from "../world/factory";
 import type { PushFn, Rgba } from "./push";
 
-const SHIP_LEVEL_SIZES = [5.5, 8.0, 9.5, 11.0, 12.5];
+const SHIP_LEVEL_SIZES = [4.5, 6.5, 7.8, 9.0, 10.2];
 
 export const shipSize = (level: number): number => SHIP_LEVEL_SIZES[level - 1];
 
@@ -419,7 +419,7 @@ function drawShipFuelSubBar(
   ]);
 }
 
-// Team indicator: a filled dot in the team color, left of the HP bar.
+// Team indicator: a filled ship silhouette in the team color, left of the HP bar.
 function drawShipTeamDot(
   push: PushFn,
   cycle: LightCycle,
@@ -429,11 +429,19 @@ function drawShipTeamDot(
   barY: number,
   cellPx: number,
 ) {
-  const dotR = barH * 1.15;
-  push(scx - barW / 2 - dotR - 2.2 * cellPx, barY, dotR, dotR, 0, SHAPE.solid, [
-    ...cycle.color,
-    1.0,
-  ] as unknown as Rgba);
+  const dotR = barH * 1.45;
+  const sprite = shipSprite(cycle.archetype);
+  const midLayer = sprite.layer0 + Math.floor(sprite.frameCount / 2);
+  push(
+    scx - barW / 2 - dotR - 2.2 * cellPx,
+    barY,
+    dotR,
+    dotR,
+    sprite.angleOffset + Math.PI,
+    SHAPE.silhouette,
+    [...cycle.color, 0.95] as unknown as Rgba,
+    midLayer,
+  );
 }
 
 // Rank insignia: one gold pip (diamond) per level, like military rank, in a
@@ -509,6 +517,29 @@ function drawShipHpBar(
   drawShipRankPips(push, cycle, v.scx, barY, cellPy);
 }
 
+// Controlled ship indicator: a pulsing cyan selection ring around the ship.
+function drawShipControlledRing(
+  push: PushFn,
+  _cycle: LightCycle,
+  v: ShipVisual,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+  isControlled: boolean,
+) {
+  if (!isControlled) return;
+  const pulse = 0.5 + 0.5 * Math.sin(now / 150);
+  push(
+    v.scx,
+    v.scy,
+    v.size * (1.6 + pulse * 0.25) * cellPx,
+    v.size * (1.6 + pulse * 0.25) * cellPy,
+    now / 200,
+    SHAPE.ring,
+    [0.2, 0.85, 1.0, 0.4 + 0.4 * pulse],
+  );
+}
+
 // Renders one ship (shadow, exhaust, smoke, shield, body, beam, HP bar) and
 // returns the shield instance count after this ship's contribution.
 function drawShip(
@@ -522,6 +553,7 @@ function drawShip(
   now: number,
   showHp: boolean,
   exhaustL: number,
+  isControlled: boolean,
 ): number {
   const v = computeShipVisual(cycle, cellPx, cellPy, now);
   drawShipShadow(push, v, cellPx, cellPy);
@@ -535,6 +567,7 @@ function drawShip(
     v,
     cellPx,
   );
+  drawShipControlledRing(push, cycle, v, cellPx, cellPy, now, isControlled);
   drawShipPrimed(push, cycle, v, baseHp, cellPx, cellPy, now);
   drawShipBody(push, cycle, v, cellPx, cellPy, now);
   drawShipStatusEffects(push, cycle, v, cellPx, cellPy, now);
@@ -566,6 +599,7 @@ export function drawShips(
       now,
       showHp,
       exhaustL,
+      cycle.id === world.controlledShipId,
     );
   }
   return shieldCount;

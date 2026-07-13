@@ -4,6 +4,7 @@
 // blurred live preview), so this module only owns the menu chrome.
 
 import van, { type State } from "vanjs-core";
+import { focusFirst, trapTab } from "./a11y";
 import { MAX_TEAMS, type MatchConfig } from "./world";
 import { DEFAULT_CONFIG } from "./world/factory";
 
@@ -11,9 +12,14 @@ const { div, h1, h2, label, input, span, button, p } = van.tags;
 
 const SIM_NOMINAL_FPS = 45; // gens/s used to show the match length in seconds.
 
+// Visible keyboard focus against the dark panel (shared by the buttons here).
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3fd8ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b0f]";
+
 export interface Setup {
   show: () => void;
   hide: () => void;
+  isOpen: () => boolean;
 }
 
 // Named starting points that fill every field at once.
@@ -87,8 +93,7 @@ const slider = (
       max,
       step,
       value: () => String(s.val),
-      class:
-        "w-[180px] cursor-pointer rounded-full outline-none [touch-action:manipulation]",
+      class: `w-[180px] cursor-pointer rounded-full outline-none [touch-action:manipulation] ${FOCUS_RING}`,
       style: `accent-color:${CYAN}`,
       oninput: (e: Event) => {
         s.val = Number((e.target as HTMLInputElement).value);
@@ -103,8 +108,7 @@ const presetButton = (preset: Preset, apply: (c: MatchConfig) => void) =>
   button(
     {
       type: "button",
-      class:
-        "flex flex-col items-start rounded-lg border border-[#3fd8ff]/25 bg-[#3fd8ff]/[0.04] px-3 py-2 text-left transition-colors hover:border-[#3fd8ff]/60 hover:bg-[#3fd8ff]/10",
+      class: `flex flex-col items-start rounded-lg border border-[#3fd8ff]/25 bg-[#3fd8ff]/[0.04] px-3 py-2 text-left transition-colors hover:border-[#3fd8ff]/60 hover:bg-[#3fd8ff]/10 ${FOCUS_RING}`,
       onclick: () => apply(preset.config),
     },
     span(
@@ -170,7 +174,7 @@ const formatToggle = (endless: State<boolean>) =>
       role: "switch",
       "aria-checked": () => String(endless.val),
       class: () =>
-        `rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors ${
+        `rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors ${FOCUS_RING} ${
           endless.val
             ? "border-[#3fd8ff] bg-[#3fd8ff] text-[#040a0e]"
             : "border-[#3fd8ff]/40 text-[#8fe6ff]"
@@ -202,6 +206,9 @@ const matchControls = (f: Fields) =>
 const panel = (f: Fields, start: () => void) =>
   div(
     {
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "Match setup",
       class:
         "w-full max-w-[440px] rounded-2xl border border-[#3fd8ff]/25 bg-[#050b0f]/90 p-5 shadow-[0_20px_60px_-20px_#000]",
     },
@@ -228,37 +235,49 @@ const panel = (f: Fields, start: () => void) =>
     button(
       {
         type: "button",
-        class:
-          "mt-5 w-full cursor-pointer rounded-xl border border-[#3fd8ff]/50 bg-[#3fd8ff]/15 py-2.5 text-[13px] font-bold uppercase tracking-[0.16em] text-[#d3f5e9] transition-colors hover:bg-[#3fd8ff]/25",
+        class: `mt-5 w-full cursor-pointer rounded-xl border border-[#3fd8ff]/50 bg-[#3fd8ff]/15 py-2.5 text-[13px] font-bold uppercase tracking-[0.16em] text-[#d3f5e9] transition-colors hover:bg-[#3fd8ff]/25 ${FOCUS_RING}`,
         onclick: start,
       },
       "Launch match",
     ),
   );
 
-export const mountSetup = (onStart: (config: MatchConfig) => void): Setup => {
-  const open = van.state(true);
+export const mountSetup = (
+  onStart: (config: MatchConfig) => void,
+  opts: { startHidden?: boolean } = {},
+): Setup => {
+  // When gated behind the welcome screen, start closed so the panel never shows
+  // through the splash; the welcome reveals it on hand-off via `show()`.
+  const open = van.state(!opts.startHidden);
   const fields = makeFields();
   const start = () => {
     open.val = false;
     onStart(readConfig(fields));
   };
 
+  const panelEl = panel(fields, start);
   const root = div(
     {
       class: () =>
         `absolute inset-0 z-40 place-items-center bg-[#040a0e]/70 p-6 font-mono text-[#cfeee2] backdrop-blur-[6px] ${open.val ? "grid" : "hidden"}`,
+      // Keep Tab within the setup dialog while it's up.
+      onkeydown: (e: KeyboardEvent) => trapTab(root, e),
     },
-    panel(fields, start),
+    panelEl,
   );
   van.add(document.body, root);
 
+  const show = () => {
+    open.val = true;
+    focusFirst(panelEl); // land focus on the first preset, not behind the modal
+  };
+  if (!opts.startHidden) show(); // boot straight into setup unless the welcome gates it
+
   return {
-    show: () => {
-      open.val = true;
-    },
+    show,
     hide: () => {
       open.val = false;
     },
+    isOpen: () => open.val,
   };
 };

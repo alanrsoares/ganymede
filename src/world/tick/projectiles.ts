@@ -1,3 +1,4 @@
+import { angleTo, normalize, wrapDelta } from "~/engine/physics";
 import {
   BASE_RADIUS,
   BULLET_RADIUS,
@@ -5,20 +6,21 @@ import {
   SCORE_KILL,
   shipRadius,
   spawnShrapnel,
-  toroidalDist,
+  wrap,
   XP_LEVEL_CAP,
   XP_PER_ROCK,
 } from "../factory";
+import { within } from "../math";
 import {
+  ARENA,
   type Asteroid,
   type Base,
   BURST_DETONATION,
   BURST_EXPLOSION,
   BURST_IMPACT,
-  GRID_H,
-  GRID_W,
   type LightCycle,
   type Mutable,
+  PORTALS,
   type Rgb,
   TEAM_BASES,
 } from "../types";
@@ -79,15 +81,14 @@ const bulletVsShip = (
 ): Step => {
   if (ctx.removed.has(s.id) || s.colorName === bt.team) return "next";
   const rad = BULLET_RADIUS + shipRadius(s.level);
-  const dx = toroidalDist(s.x, bt.x, GRID_W);
-  const dy = toroidalDist(s.y, bt.y, GRID_H);
-  if (dx * dx + dy * dy >= rad * rad) return "next";
+  if (!within(s.x, s.y, bt.x, bt.y, rad)) return "next";
   projectiles.removedBullets.add(bt.id);
   ctx.burstAt.push({
     x: Math.floor(bt.x),
     y: Math.floor(bt.y),
     kind: BURST_IMPACT,
     rgb: bt.rgb,
+    rot: bt.angle, // spray the flash along the bolt's travel direction
   });
   hit(ctx, s, bt.damage, "pierce", bt.owner);
   if (s.hp <= 0) {
@@ -95,6 +96,29 @@ const bulletVsShip = (
     killShip(ctx, s);
   }
   return "break";
+};
+
+// Deflect a bolt off a rock: reflect its velocity about the surface normal
+// (rock centre → bolt, toroidal), park it just outside the hit radius so it
+// can't immediately re-collide, and spend one bounce.
+const ricochetOffRock = (
+  bt: MotionState["bullets"][number],
+  r: Asteroid,
+  rad: number,
+): void => {
+  // Outward surface normal (rock centre → bolt) so the bolt is parked back on
+  // the side it arrived from; wrapDelta(r, bt) = bt - r.
+  const [nx, ny] = normalize(
+    [wrapDelta(r.x, bt.x, ARENA.w), wrapDelta(r.y, bt.y, ARENA.h)],
+    [-bt.vx, -bt.vy], // degenerate (dead-centre) hit: bounce straight back
+  );
+  const vdotn = bt.vx * nx + bt.vy * ny;
+  bt.vx -= 2 * vdotn * nx;
+  bt.vy -= 2 * vdotn * ny;
+  bt.x = wrap(r.x + nx * (rad + 1), ARENA.w);
+  bt.y = wrap(r.y + ny * (rad + 1), ARENA.h);
+  bt.angle = angleTo([bt.vx, bt.vy]);
+  bt.bounces -= 1;
 };
 
 const bulletVsRock = (
@@ -107,21 +131,24 @@ const bulletVsRock = (
 ): Step => {
   if (hazards.removedRocks.has(r.id)) return "next";
   const rad = BULLET_RADIUS + r.size;
-  const dx = toroidalDist(r.x, bt.x, GRID_W);
-  const dy = toroidalDist(r.y, bt.y, GRID_H);
-  if (dx * dx + dy * dy >= rad * rad) return "next";
-  projectiles.removedBullets.add(bt.id);
+  if (!within(r.x, r.y, bt.x, bt.y, rad)) return "next";
   ctx.burstAt.push({
     x: Math.floor(bt.x),
     y: Math.floor(bt.y),
     kind: BURST_IMPACT,
     rgb: bt.rgb,
+    rot: bt.angle, // spray the flash along the bolt's travel direction
   });
   r.hp -= bt.damage;
   if (r.hp <= 0) {
     hazards.removedRocks.add(r.id);
     shatterRock(ctx, motion, r);
     awardXp(ctx, bt.owner, XP_PER_ROCK, XP_LEVEL_CAP); // capped catch-up trickle
+    projectiles.removedBullets.add(bt.id); // a shattered rock absorbs the bolt
+  } else if (bt.bounces > 0) {
+    ricochetOffRock(bt, r, rad); // surviving rock deflects it
+  } else {
+    projectiles.removedBullets.add(bt.id); // no bounces left → spent
   }
   return "break";
 };
@@ -135,15 +162,14 @@ const munitionVsBase = (
   removedSet: Set<number>,
   kind: number,
   rgb?: Rgb,
+  rot?: number,
 ): Step => {
   if (base.name === team || ctx.baseHp[base.name] <= 0) return "next";
-  const dx = toroidalDist(base.x, m.x, GRID_W);
-  const dy = toroidalDist(base.y, m.y, GRID_H);
-  if (dx * dx + dy * dy >= BASE_RADIUS * BASE_RADIUS) return "next";
+  if (!within(base.x, base.y, m.x, m.y, BASE_RADIUS)) return "next";
   removedSet.add(m.id);
   ctx.baseHp[base.name] = Math.max(0, ctx.baseHp[base.name] - m.damage);
   creditBaseHit(ctx, m.owner, base.name);
-  ctx.burstAt.push({ x: Math.floor(m.x), y: Math.floor(m.y), kind, rgb });
+  ctx.burstAt.push({ x: Math.floor(m.x), y: Math.floor(m.y), kind, rgb, rot });
   return "break";
 };
 
@@ -155,9 +181,7 @@ const missileVsShip = (
 ): Step => {
   if (ctx.removed.has(s.id) || s.colorName === mi.team) return "next";
   const rad = MISSILE_RADIUS + shipRadius(s.level);
-  const dx = toroidalDist(s.x, mi.x, GRID_W);
-  const dy = toroidalDist(s.y, mi.y, GRID_H);
-  if (dx * dx + dy * dy >= rad * rad) return "next";
+  if (!within(s.x, s.y, mi.x, mi.y, rad)) return "next";
   projectiles.removedMissiles.add(mi.id);
   // AoE missile: contact is just the fuse — damage everything in the blast.
   if (mi.blast) {
@@ -221,6 +245,7 @@ const bulletsVsBases = (
         projectiles.removedBullets,
         BURST_IMPACT,
         bt.rgb,
+        bt.angle, // impact flash oriented along the bolt
       );
       if (step === "break") break;
     }
@@ -261,6 +286,30 @@ const missilesVsBases = (
   }
 };
 
+// A moving munition reappears at the linked gate when it enters a portal mouth,
+// keeping its heading — the same shortcut ships and asteroids take. Exit is
+// nudged just past the far gate along the velocity so it doesn't re-trigger.
+const PORTAL_EXIT_MARGIN = 3;
+const hopMunitionsThroughPortals = <
+  T extends { x: number; y: number; vx: number; vy: number; id: number },
+>(
+  items: T[],
+  removed: Set<number>,
+): void => {
+  for (const it of items) {
+    if (removed.has(it.id)) continue;
+    for (let g = 0; g < 2; g++) {
+      const from = PORTALS[g];
+      if (!within(it.x, it.y, from.x, from.y, from.r)) continue;
+      const to = PORTALS[1 - g];
+      const [ux, uy] = normalize([it.vx, it.vy]);
+      it.x = wrap(to.x + ux * (to.r + PORTAL_EXIT_MARGIN), ARENA.w);
+      it.y = wrap(to.y + uy * (to.r + PORTAL_EXIT_MARGIN), ARENA.h);
+      break;
+    }
+  }
+};
+
 /** Bullet and missile hits against ships, rocks, and enemy bases. */
 export const resolveProjectiles = (
   ctx: TickCtx,
@@ -268,6 +317,9 @@ export const resolveProjectiles = (
   hazards: HazardState,
   projectiles: ProjectileState,
 ) => {
+  // Portal hop first, so a bolt that jumps can still hit on the far side.
+  hopMunitionsThroughPortals(motion.bullets, projectiles.removedBullets);
+  hopMunitionsThroughPortals(motion.missiles, projectiles.removedMissiles);
   bulletsVsShips(ctx, motion, projectiles);
   bulletsVsRocks(ctx, motion, hazards, projectiles);
   bulletsVsBases(ctx, motion, projectiles);

@@ -63,7 +63,11 @@ fn fs(in: VSOut) -> @location(0) vec4f {
     let layer_idx = u32(clamp(round(in.layer), 0.0, LAYER_MAX));
     let texColor = textureSample(t_array, s_sampler, tex_coord, layer_idx);
 
-    if in.shape > 8.5 {
+    if in.shape > 9.5 {
+        // Sprite silhouette: alpha mask from texture, color purely from instance tint
+        if texColor.a < 0.15 { discard; }
+        return vec4f(in.color.rgb * 1.25, texColor.a * in.color.a);
+    } else if in.shape > 8.5 {
         // Spiraling accretion vortex (portals). A dark event horizon in the
         // middle, logarithmic-spiral arms winding into it and heating to white,
         // fading out inside the circular contour. in.layer carries the spin sign

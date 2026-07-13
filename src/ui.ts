@@ -4,6 +4,8 @@
 // the loop writes each frame — van updates just the bound text node.
 
 import van, { type State } from "vanjs-core";
+import type { LightCycle } from "./world";
+import { carriesMissiles } from "./world/factory";
 
 const { div, h1, label, input, p, span, button } = van.tags;
 
@@ -23,6 +25,10 @@ export interface Ui {
   banner: State<string>; // center win/draw banner ("" = hidden)
   activeTeamCount: State<number>; // scoreboard shows only the first N teams
   showError: (message: string) => void;
+  controlledShip: State<LightCycle | null>;
+  // Hide/show the persistent chrome (HUD, scoreboard, controls) — used to keep
+  // the welcome splash clean. Errors stay visible regardless.
+  setChromeHidden: (hidden: boolean) => void;
 }
 
 const HUD_LIVE = "mt-1 text-[12px] text-[#a9e8d6]";
@@ -372,6 +378,189 @@ const buildBanner = (banner: State<string>) =>
     ),
   );
 
+const buildManualHeader = (s: LightCycle) => {
+  const archetypeLabel = s.archetype.toUpperCase();
+  const levelLabel = `L${s.level}`;
+  return div(
+    {
+      class:
+        "flex justify-between items-center border-b border-[#ffb83f]/20 pb-1",
+    },
+    span(
+      { class: "font-bold text-[12px] uppercase text-[#ffc66d]" },
+      `🎮 CONTROL: ${archetypeLabel} ${levelLabel}`,
+    ),
+  );
+};
+
+const buildManualStats = (s: LightCycle) => {
+  const hpPercent = Math.round((s.hp / s.maxHp) * 100);
+  const shieldPercent =
+    s.maxShield > 0 ? Math.round((s.shield / s.maxShield) * 100) : 0;
+  const fuelPercent = Math.round((s.fuel / s.maxFuel) * 100);
+  const ammoMines = s.mines;
+  return div(
+    { class: "grid grid-cols-2 gap-x-2 gap-y-0.5 text-[10px] opacity-90" },
+    span({}, `HULL: ${s.hp.toFixed(1)}/${s.maxHp} (${hpPercent}%)`),
+    span(
+      {},
+      `SHIELD: ${s.shield.toFixed(1)}/${s.maxShield} (${shieldPercent}%)`,
+    ),
+    span({}, `FUEL: ${Math.round(s.fuel)}/${s.maxFuel} (${fuelPercent}%)`),
+    span({}, `MINES: ${ammoMines}/${s.maxMines}`),
+  );
+};
+
+const buildActionRow = (key: string, label: string, status: string) => {
+  return div(
+    { class: "flex justify-between items-center" },
+    span({ class: "text-[#ffd866]" }, `[${key}] ${label}`),
+    span({ class: "opacity-75" }, status),
+  );
+};
+
+const buildManualActions = (s: LightCycle) => {
+  const bulletStatus =
+    s.fireCooldown <= 0 ? "Ready" : `Reloading (${Math.ceil(s.fireCooldown)}g)`;
+  const mineStatus = s.mines > 0 ? `Ready (${s.mines})` : "No Ammo";
+  const missileStatus =
+    s.level >= 3 || carriesMissiles(s.archetype)
+      ? s.fuel > 150
+        ? "Ready (150 F)"
+        : "Low Fuel"
+      : "Requires L3";
+  const boostStatus = s.fuel > 200 ? "Ready (200 F)" : "Low Fuel";
+  const shieldStatus = s.fuel > 300 ? "Ready (300 F)" : "Low Fuel";
+  const cloakStatus = s.fuel > 400 ? "Ready (400 F)" : "Low Fuel";
+  const fieldStatus = s.fuel > 300 ? "Ready (300 F)" : "Low Fuel";
+
+  return div(
+    { class: "mt-1 flex flex-col gap-1 border-t border-[#ffb83f]/10 pt-1.5" },
+    div(
+      {
+        class:
+          "text-[9px] uppercase tracking-wider text-[#ffb83f]/60 font-semibold",
+      },
+      "quick actions",
+    ),
+    buildActionRow("Space", "Fire Blasters", bulletStatus),
+    buildActionRow("2", "Drop Mine", mineStatus),
+    buildActionRow("3", "Homing Missile", missileStatus),
+    buildActionRow("4", "Nitro Boost", boostStatus),
+    buildActionRow("5", "Shield Recharge", shieldStatus),
+    buildActionRow("6", "Cloak Device", cloakStatus),
+    buildActionRow("7", "Force Field", fieldStatus),
+    div(
+      { class: "text-[9px] italic opacity-60 text-center mt-1.5" },
+      "WASD/ARROWS to move. Click empty space to exit.",
+    ),
+  );
+};
+
+// Manual control HUD panel shown when a ship is under player control.
+const buildManualPanel = (controlledShip: State<LightCycle | null>) => {
+  return div(
+    {
+      class: () =>
+        `absolute bottom-4 right-4 rounded-lg border border-[#ffb83f]/20 bg-[#040a0e]/85 px-4 py-3 font-mono text-[11px] text-[#ffe08a] backdrop-blur-[4px] transition-opacity duration-200 ${controlledShip.val ? "opacity-100 block" : "opacity-0 hidden"}`,
+      style:
+        "width: 270px; box-shadow: 0 0 15px rgba(255, 184, 63, 0.15); pointer-events: none;",
+    },
+    () => {
+      const s = controlledShip.val;
+      if (!s) return div();
+      return div(
+        { class: "flex flex-col gap-1.5" },
+        buildManualHeader(s),
+        buildManualStats(s),
+        buildManualActions(s),
+      );
+    },
+  );
+};
+
+const buildHelpRow = (keys: string, action: string) => {
+  return div(
+    { class: "flex justify-between items-start gap-4 text-[10px]" },
+    span({ class: "text-[#8fe6ff]/80 font-bold whitespace-nowrap" }, keys),
+    span({ class: "text-[#d3f5e9]/70 text-right" }, action),
+  );
+};
+
+const buildHelpSection = (
+  title: string,
+  rows: { keys: string; action: string }[],
+) => {
+  return div(
+    { class: "flex flex-col gap-1" },
+    div(
+      {
+        class:
+          "text-[9px] uppercase tracking-wider text-[#3fd8ff]/60 font-semibold border-b border-[#3fd8ff]/10 pb-0.5 mb-0.5",
+      },
+      title,
+    ),
+    ...rows.map((r) => buildHelpRow(r.keys, r.action)),
+  );
+};
+
+const buildControlsInfoPanel = () => {
+  const open = van.state(false);
+
+  const body = div(
+    {
+      class: () =>
+        `${open.val ? "flex" : "hidden"} flex-col gap-3 mt-2 border-t border-[#3fd8ff]/20 pt-2`,
+      style: "width: 230px;",
+    },
+    buildHelpSection("Flight Controls", [
+      { keys: "WASD / Arrows", action: "Steer Ship" },
+      { keys: "Space", action: "Fire Blasters" },
+      { keys: "1 - 7", action: "Quick Actions" },
+    ]),
+    buildHelpSection("General Hotkeys", [
+      { keys: "C", action: "Toggle Codex" },
+      { keys: "H", action: "Toggle HP Bars" },
+      { keys: "Z / X", action: "Reinforcements" },
+    ]),
+    buildHelpSection("Mouse Actions", [
+      { keys: "Click Ship", action: "Manual Control" },
+      { keys: "Click Void", action: "Spawn / Exit" },
+      { keys: "Shift+Click", action: "Rally Beacon" },
+    ]),
+  );
+
+  return div(
+    {
+      class:
+        "absolute top-12 left-4 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/75 px-3 py-2 font-mono text-[11px] backdrop-blur-[4px]",
+      style: "box-shadow: 0 0 15px rgba(63, 216, 255, 0.1); z-index: 10;",
+    },
+    div(
+      { class: "flex items-center justify-between gap-4" },
+      span(
+        {
+          class:
+            "text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d3f5e9]",
+        },
+        "⌨️ GUIDE",
+      ),
+      button(
+        {
+          type: "button",
+          class:
+            "cursor-pointer rounded border border-[#3fd8ff]/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#8fe6ff] transition-colors hover:bg-[#3fd8ff]/10",
+          onclick: () => {
+            open.val = !open.val;
+          },
+        },
+        () => (open.val ? "▾" : "▸"),
+      ),
+    ),
+    body,
+  );
+};
+
 export const mountUi = (cfg: UiConfig): Ui => {
   const status = van.state("");
   const score = van.state<Readonly<Record<string, number>>>({});
@@ -380,6 +569,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
   const banner = van.state("");
   const counts = van.state<Readonly<Record<string, number>>>({});
   const activeTeamCount = van.state(cfg.teams.length);
+  const controlledShip = van.state<LightCycle | null>(null);
 
   const bump = useScoreBump(score, cfg.teams);
   injectScorePopStyle();
@@ -389,8 +579,29 @@ export const mountUi = (cfg: UiConfig): Ui => {
   const errorBox = buildErrorBox(error);
   const scoreBox = buildScoreBox(cfg, score, bump, counts, activeTeamCount);
   const bannerBox = buildBanner(banner);
+  const manualPanel = buildManualPanel(controlledShip);
+  const guidePanel = buildControlsInfoPanel();
 
-  van.add(document.body, hud, controls, scoreBox, bannerBox, errorBox);
+  van.add(
+    document.body,
+    hud,
+    controls,
+    scoreBox,
+    bannerBox,
+    errorBox,
+    manualPanel,
+    guidePanel,
+  );
+
+  // Everything except the error box; hidden as one while the splash is up.
+  const chrome = [
+    hud,
+    controls,
+    scoreBox,
+    bannerBox,
+    manualPanel,
+    guidePanel,
+  ] as HTMLElement[];
 
   return {
     status,
@@ -399,8 +610,12 @@ export const mountUi = (cfg: UiConfig): Ui => {
     hpOn,
     banner,
     activeTeamCount,
+    controlledShip,
     showError: (message) => {
       error.val = message;
+    },
+    setChromeHidden: (hidden) => {
+      for (const el of chrome) el.style.display = hidden ? "none" : "";
     },
   };
 };

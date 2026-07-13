@@ -66,10 +66,10 @@ const buildIcosahedron = (): {
 };
 
 // Split every triangle into four, projecting new midpoints back onto the sphere.
-const subdivide = (
+function subdivide(
   verts: V3[],
   faces: [number, number, number][],
-): { verts: V3[]; faces: [number, number, number][] } => {
+): { verts: V3[]; faces: [number, number, number][] } {
   const mid = new Map<number, number>();
   const midpoint = (a: number, b: number): number => {
     const key = a < b ? a * 100000 + b : b * 100000 + a;
@@ -95,7 +95,7 @@ const subdivide = (
     out.push([a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]);
   }
   return { verts, faces: out };
-};
+}
 
 // Deterministic lumpiness from a unit direction — a few out-of-phase sinusoids.
 const displace = ([x, y, z]: V3): number =>
@@ -106,7 +106,7 @@ const displace = ([x, y, z]: V3): number =>
   0.06 * Math.sin(x * 7.3 + z * 6.1);
 
 /** Build the faceted asteroid mesh (subdiv 2 → 320 faces → 960 verts). */
-export const makeAsteroidMesh = (subdiv = 2): Mesh => {
+export function makeAsteroidMesh(subdiv = 2): Mesh {
   let { verts, faces } = buildIcosahedron();
   for (let i = 0; i < subdiv; i++) ({ verts, faces } = subdivide(verts, faces));
 
@@ -143,13 +143,13 @@ export const makeAsteroidMesh = (subdiv = 2): Mesh => {
     }
   }
   return { data, vertexCount: faces.length * 3 };
-};
+}
 
 /**
  * Smooth unit sphere (no displacement), non-indexed with per-vertex smooth
  * normals (= the vertex direction). Used for the translucent ship shield bubble.
  */
-export const makeSphereMesh = (subdiv = 2): Mesh => {
+export function makeSphereMesh(subdiv = 2): Mesh {
   let { verts, faces } = buildIcosahedron();
   for (let i = 0; i < subdiv; i++) ({ verts, faces } = subdivide(verts, faces));
   const data = new Float32Array(faces.length * 3 * 6);
@@ -166,7 +166,7 @@ export const makeSphereMesh = (subdiv = 2): Mesh => {
     }
   }
   return { data, vertexCount: faces.length * 3 };
-};
+}
 
 // Iñigo Quílez cosine palette → a smooth iridescent spectrum from a scalar in
 // [0,1]; the three channels are phase-shifted so the sweep runs through the hues.
@@ -178,7 +178,7 @@ const iridescence = (t: number): V3 => [
 
 // The 100 triangle corners of the UV sphere as unit direction vectors: quads in
 // the middle bands, single triangles at the poles.
-const orbTris = (stacks: number, slices: number): [V3, V3, V3][] => {
+function orbTris(stacks: number, slices: number): [V3, V3, V3][] {
   const dir = (i: number, j: number): V3 => {
     const theta = (Math.PI * i) / stacks; // 0 = north pole, π = south
     const phi = (2 * Math.PI * j) / slices;
@@ -205,7 +205,7 @@ const orbTris = (stacks: number, slices: number): [V3, V3, V3][] => {
     }
   }
   return tris;
-};
+}
 
 /**
  * A faceted orb with exactly 100 triangular faces — a UV sphere at 6 stacks × 10
@@ -215,7 +215,7 @@ const orbTris = (stacks: number, slices: number): [V3, V3, V3][] => {
  * both bases and the center pad; the shader tints these vertex colours by the
  * team/phase hue (9 floats/vertex: pos, normal, rgb — see mesh-pass).
  */
-export const makeFacetedOrbMesh = (stacks = 6, slices = 10): Mesh => {
+export function makeFacetedOrbMesh(stacks = 6, slices = 10): Mesh {
   const tris = orbTris(stacks, slices);
   // On a unit sphere the face centroid already points outward → use it as the
   // flat normal. Vertex colour is the iridescent palette sampled by height.
@@ -241,4 +241,4 @@ export const makeFacetedOrbMesh = (stacks = 6, slices = 10): Mesh => {
     }
   }
   return { data, vertexCount: tris.length * 3, hasColor: true };
-};
+}

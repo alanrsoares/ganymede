@@ -9,6 +9,7 @@ import {
   SHAPE,
 } from "../sprites";
 import {
+  BURST_ARC,
   BURST_DETONATION,
   BURST_EMP,
   BURST_IMPACT,
@@ -235,9 +236,172 @@ function drawShieldDeflect(
   ]);
 }
 
-// Time-based vector bursts (EMP fire blast, base shield deflection) — drawn
-// procedurally over their life `t` rather than as a sprite clip. Returns true
-// when it owns `burst`, so the caller skips the clip path.
+// Chain-lightning arc, drawn as a proper bolt: a fractal-jagged path from
+// (x,y)→(x2,y2) that re-strikes a few times over its short life (crackle),
+// stroked as a wide soft halo under a bright white-hot core, with a couple of
+// forked side-branches and a flash at each struck node.
+const ARC_LIFE = 220; // ms the lightning flickers before it clears
+type Pt = readonly [number, number];
+
+// Deterministic 0..1 hash of one scalar (cheap sin-hash).
+const hash1 = (n: number) => {
+  const v = Math.sin(n) * 43758.5453;
+  return v - Math.floor(v);
+};
+
+// One bolt-shape segment between two points. Oriented with the game's (sin,cos)
+// heading convention (rot = atan2(dx,dy)) so the streak lies ALONG the path —
+// the length axis is the quad's local.y (see overlay.wgsl bolt branch).
+const boltSeg = (
+  push: PushFn,
+  a: Pt,
+  b: Pt,
+  halfW: number,
+  rgb: readonly [number, number, number],
+  alpha: number,
+) => {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy) || 1;
+  push(
+    (a[0] + b[0]) / 2,
+    (a[1] + b[1]) / 2,
+    halfW,
+    len / 2,
+    Math.atan2(dx, dy),
+    SHAPE.bolt,
+    [rgb[0], rgb[1], rgb[2], alpha],
+  );
+};
+
+const strokePath = (
+  push: PushFn,
+  pts: Pt[],
+  halfW: number,
+  rgb: readonly [number, number, number],
+  alpha: number,
+) => {
+  for (let i = 1; i < pts.length; i++)
+    boltSeg(push, pts[i - 1], pts[i], halfW, rgb, alpha);
+};
+
+// Fractal-jagged polyline from A→B: each interior vertex is pushed off the
+// straight line perpendicular by a tapered random amount (0 at the ends). `frame`
+// buckets time so the whole path re-randomizes a few times per second.
+const jaggedPath = (
+  a: Pt,
+  b: Pt,
+  seed: number,
+  frame: number,
+  seg: number,
+  amp: number,
+): Pt[] => {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const pts: Pt[] = [a];
+  for (let i = 1; i < seg; i++) {
+    const f = i / seg;
+    const taper = 1 - Math.abs(f - 0.5) * 2; // 0 at ends → 1 mid-span
+    const j =
+      (hash1(i * 12.9 + seed * 0.7 + frame) - 0.5) * amp * (taper + 0.2);
+    pts.push([a[0] + dx * f + nx * j, a[1] + dy * f + ny * j]);
+  }
+  pts.push(b);
+  return pts;
+};
+
+// A couple of short forked branches spitting off interior vertices, angled away
+// from the main run and fading fast — the tell-tale fractal look of lightning.
+const arcBranches = (
+  push: PushFn,
+  pts: Pt[],
+  seed: number,
+  frame: number,
+  rgb: readonly [number, number, number],
+  fade: number,
+  cellPx: number,
+) => {
+  const n = pts.length;
+  for (let k = 0; k < 2; k++) {
+    const i = 1 + Math.floor(hash1(seed + k * 7.3 + frame) * (n - 2));
+    const o = pts[i];
+    const p = pts[i - 1];
+    let dx = o[0] - p[0];
+    let dy = o[1] - p[1];
+    const l = Math.hypot(dx, dy) || 1;
+    dx /= l;
+    dy /= l;
+    const ang = k === 0 ? 0.85 : -0.85; // fork ~50° off the main heading
+    const fx = dx * Math.cos(ang) - dy * Math.sin(ang);
+    const fy = dx * Math.sin(ang) + dy * Math.cos(ang);
+    const bl = (5 + hash1(seed + k + frame) * 7) * cellPx;
+    boltSeg(
+      push,
+      o,
+      [o[0] + fx * bl, o[1] + fy * bl],
+      0.7 * cellPx,
+      rgb,
+      0.45 * fade,
+    );
+  }
+};
+
+// White-hot flash + colored spark halo at a struck node.
+const arcImpact = (
+  push: PushFn,
+  x: number,
+  y: number,
+  cellPx: number,
+  cellPy: number,
+  rgb: readonly [number, number, number],
+  fade: number,
+) => {
+  const r = (1.6 + 1.2 * fade) * cellPx;
+  push(x, y, r * 1.9, r * 1.9 * (cellPy / cellPx), 0, SHAPE.solid, [
+    rgb[0],
+    rgb[1],
+    rgb[2],
+    0.5 * fade,
+  ]);
+  push(x, y, r, r * (cellPy / cellPx), 0, SHAPE.solid, [1, 1, 1, fade]);
+};
+
+function drawArc(
+  push: PushFn,
+  burst: Burst,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+) {
+  const age = now - burst.start;
+  const t = age / ARC_LIFE;
+  if (t < 0 || t > 1) return;
+  // Crackle: brightness flickers and the path re-strikes ~30×/s over the life.
+  const frame = Math.floor(age / 32);
+  const flick = 0.6 + 0.4 * hash1(frame + burst.start);
+  const fade = (1 - t) * flick;
+  const rgb = burst.rgb ?? [0.6, 0.8, 1];
+  const a: Pt = [(burst.x + 0.5) * cellPx, (burst.y + 0.5) * cellPy];
+  const b: Pt = [
+    ((burst.x2 ?? burst.x) + 0.5) * cellPx,
+    ((burst.y2 ?? burst.y) + 0.5) * cellPy,
+  ];
+  const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const amp = Math.min(len * 0.16, 11 * cellPx);
+  const pts = jaggedPath(a, b, burst.start, frame, 9, amp);
+  strokePath(push, pts, 2.4 * cellPx, rgb, 0.26 * fade); // soft halo
+  strokePath(push, pts, 0.85 * cellPx, rgb, fade); // bright core (shader whitens spine)
+  arcBranches(push, pts, burst.start, frame, rgb, fade, cellPx);
+  arcImpact(push, a[0], a[1], cellPx, cellPy, rgb, fade * 0.85);
+  arcImpact(push, b[0], b[1], cellPx, cellPy, rgb, fade);
+}
+
+// Time-based vector bursts (EMP fire blast, base shield deflection, arcs) —
+// drawn procedurally over their life `t` rather than as a sprite clip. Returns
+// true when it owns `burst`, so the caller skips the clip path.
 function drawFieldBurst(
   push: PushFn,
   burst: Burst,
@@ -245,6 +409,10 @@ function drawFieldBurst(
   cellPy: number,
   now: number,
 ): boolean {
+  if (burst.kind === BURST_ARC) {
+    drawArc(push, burst, cellPx, cellPy, now);
+    return true;
+  }
   if (burst.kind !== BURST_EMP && burst.kind !== BURST_SHIELD) return false;
   const t = (now - burst.start) / EXPLOSION_DURATION;
   if (t >= 0 && t <= 1) {

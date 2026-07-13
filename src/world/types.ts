@@ -5,8 +5,18 @@
 import type { Entity, EntityList } from "../engine/entities";
 import type { Seed } from "../engine/rng";
 
-export const GRID_W = 480;
-export const GRID_H = 270;
+export const DEFAULT_GRID_W = 480;
+export const DEFAULT_GRID_H = 270;
+export const ARENA: { w: number; h: number } = (globalThis as any).ARENA || {
+  w: DEFAULT_GRID_W,
+  h: DEFAULT_GRID_H,
+};
+(globalThis as any).ARENA = ARENA;
+
+export function setGridBounds(w: number, h: number) {
+  ARENA.w = w;
+  ARENA.h = h;
+}
 export const MAX_LEVEL = 5;
 
 export type Rgb = readonly [number, number, number];
@@ -33,12 +43,6 @@ export interface MatchConfig {
   readonly tempo: number; // sim generations per second
   readonly reinforceGens: number; // length of the reinforcement window
   readonly format: "standard" | "endless"; // endless never decides a winner
-}
-
-// A cell written into the CA grid: [x, y, state]. State 1 = spark, 3 = debris.
-export type Cell = readonly [number, number, number];
-export interface Cmd {
-  readonly inject: readonly Cell[];
 }
 
 // Ship class archetypes. Each is a distinct hull silhouette + stat path + weapon
@@ -104,6 +108,7 @@ export interface Bullet extends Entity {
   readonly damage: number;
   readonly life: number; // gens remaining
   readonly owner: number; // shooter ship id (credits base-raid hits back to it)
+  readonly bounces: number; // ricochets left off asteroids (0 = spent on contact)
 }
 
 // FX blast kinds. Explosion = ship/rock death; detonation = mine proton flash;
@@ -115,6 +120,7 @@ export const BURST_MUZZLE = 2;
 export const BURST_IMPACT = 3;
 export const BURST_EMP = 4;
 export const BURST_SHIELD = 5; // base shield deflection: expanding ring + flash
+export const BURST_ARC = 6; // chain-lightning bolt drawn from (x,y)→(x2,y2)
 
 export interface Burst extends Entity {
   readonly x: number;
@@ -124,6 +130,8 @@ export interface Burst extends Entity {
   readonly kind: number; // BURST_* — selects the clip + look
   readonly rgb?: Rgb; // team tint for muzzle/impact (others ignore it)
   readonly rot?: number; // orientation for directional FX (muzzle flash)
+  readonly x2?: number; // far endpoint for arc bursts (BURST_ARC)
+  readonly y2?: number;
 }
 
 // A proximity mine dropped by an L3+ ship. Stationary; arms after a delay, then
@@ -211,17 +219,101 @@ export interface Pad {
   readonly y: number;
   readonly r: number;
 }
-export const HEAL_PADS: readonly Pad[] = [
-  { x: 120, y: 200, r: 18 },
-  { x: 360, y: 70, r: 18 },
+// The arena is one live orbit around the centre "star" (CENTER_PAD). Every piece
+// of field furniture sits on a single ring of radius `orbitRadius()`, spaced 45°
+// apart, so all eight bodies — 4 bases + 2 portals + 2 heal pads — are the same
+// distance from the star and from their neighbours (a harmonic ring). The whole
+// ring rotates rigidly about the star as the match ages, so the layout stays
+// perfectly symmetric (fair) while slowly turning. The radius is capped by the
+// shorter (vertical) half-axis so the N/S bodies stay clear of the edge;
+// ORBIT_MARGIN leaves room for their pad radius.
+const ORBIT_MARGIN = 22;
+// Angular velocity of the ring, radians per generation. ~0.0016 → one full
+// revolution every ~3930 gens (~90s at 44 gen/s): a slow, majestic drift.
+const ORBIT_OMEGA = 0.0016;
+// Organic micro-drift: tiny multi-frequency perturbations layered over the
+// perfect ring so it breathes and wanders like a real orbit instead of turning
+// like a rigid dial. Each body gets its own phase offset (from its angle), so
+// they drift independently; amplitudes are a few px, so the ring still reads as
+// harmonic and near-symmetric. Frequencies are deliberately incommensurate with
+// ORBIT_OMEGA so the wander never visibly repeats.
+const DRIFT_RADIUS = 0.02; // fraction of r: per-body radial breathing (~±2px)
+const DRIFT_ANGLE = 0.018; // rad: per-body tangential wobble (~±2px at the rim)
+const DRIFT_CENTER = 3; // px: slow wander of the whole ring's centre
+const OMEGA_RADIUS = 0.0007;
+const OMEGA_ANGLE = 0.0009;
+const OMEGA_CENTER = 0.00041;
+const orbitRadius = () =>
+  Math.round(Math.min(ARENA.w, ARENA.h) / 2 - ORBIT_MARGIN);
+// Live ring rotation, driven off the world's age. Set once per tick (and per
+// render) via setOrbitPhase so every furniture read within a frame is coherent;
+// derived purely from `age`, so the sim stays deterministic. Mirrors the ARENA
+// global convention — furniture is fixed data that the frame parameterises.
+// `t` keeps the raw age so the micro-drift can run at its own frequencies.
+export const ORBIT: { phase: number; t: number } = { phase: 0, t: 0 };
+export const setOrbitPhase = (age: number) => {
+  ORBIT.phase = age * ORBIT_OMEGA;
+  ORBIT.t = age;
+};
+// A point on the star's orbit ring at `deg` clockwise from north (screen up),
+// carrying the live rotation plus the organic micro-drift. Kept as sub-pixel
+// floats: the ring turns only ~0.18px/gen at the rim, so rounding to whole
+// world-pixels would make bodies hold still then hop a full pixel (≈4px on
+// screen) — visibly jumpy. The overlay scales these by the cell size, so floats
+// render as smooth motion.
+const orbitPoint = (deg: number): { x: number; y: number } => {
+  const base = (deg * Math.PI) / 180;
+  const t = ORBIT.t;
+  // Tangential wobble + radial breathing, offset per body by its slot angle.
+  const a =
+    base + ORBIT.phase + DRIFT_ANGLE * Math.sin(t * OMEGA_ANGLE + base * 2);
+  const r =
+    orbitRadius() * (1 + DRIFT_RADIUS * Math.sin(t * OMEGA_RADIUS + base * 3));
+  // The whole ring's centre bobs slowly on its own little epicycle near the star.
+  const cx = ARENA.w / 2 + DRIFT_CENTER * Math.sin(t * OMEGA_CENTER);
+  const cy = ARENA.h / 2 + DRIFT_CENTER * Math.cos(t * OMEGA_CENTER * 1.3);
+  return {
+    x: cx + r * Math.sin(a),
+    y: cy - r * Math.cos(a),
+  };
+};
+// A Pad locked to one ring slot (`deg` from north) with contact radius `r`.
+const orbitPad = (deg: number, r: number): Pad => ({
+  get x() {
+    return orbitPoint(deg).x;
+  },
+  get y() {
+    return orbitPoint(deg).y;
+  },
+  r,
+});
+
+// Contested heal pads at the ring's N and S poles (the star's vertical axis) —
+// one per hemisphere, symmetric so no team is favoured.
+export const HEAL_PADS: readonly [Pad, Pad] = [
+  orbitPad(0, 18),
+  orbitPad(180, 18),
 ];
-// Neutral center pad: heals/buffs any ship over it, and is the level-up finish
-// line — a ship that has raided every enemy base promotes when it crosses here.
-export const CENTER_PAD: Pad = { x: 240, y: 135, r: 20 };
-// Two linked gates; a ship entering one exits the other keeping its momentum.
+
+// Neutral centre pad — the "star" every body orbits: heals/buffs any ship over
+// it, and is the level-up finish line (a ship that has raided every enemy base
+// promotes when it crosses here). Equidistant from all eight ring bodies.
+export const CENTER_PAD: Pad = {
+  get x() {
+    return Math.round(ARENA.w / 2);
+  },
+  get y() {
+    return Math.round(ARENA.h / 2);
+  },
+  r: 20,
+};
+
+// Two linked gates at the ring's E and W poles — a ship entering one exits the
+// other keeping its momentum. Diametrically opposite and equidistant from the
+// two bases flanking each, so no team gets a private portal.
 export const PORTALS: readonly [Pad, Pad] = [
-  { x: 70, y: 60, r: 13 },
-  { x: 410, y: 210, r: 13 },
+  orbitPad(270, 11),
+  orbitPad(90, 11),
 ];
 
 // Each team's home dock — a color-tinted platform ships spawn/respawn onto.
@@ -231,17 +323,19 @@ export interface Base {
   readonly x: number;
   readonly y: number;
 }
-const BASE_POS: readonly (readonly [number, number])[] = [
-  [45, 135],
-  [435, 135],
-  [240, 32],
-  [240, 238],
-];
+// Four home docks on the ring's diagonal slots (45° between the pole pads/gates),
+// each the same radius from the star as every other body. Ordered so the first
+// two teams (2-player games) take the NW–SE main diagonal — maximum separation.
+const BASE_ANGLE = [315, 135, 45, 225]; // cyan NW, orange SE, emerald NE, pink SW
 export const TEAM_BASES: readonly Base[] = TEAMS.map((t, i) => ({
   name: t.name,
   rgb: t.rgb,
-  x: BASE_POS[i][0],
-  y: BASE_POS[i][1],
+  get x() {
+    return orbitPoint(BASE_ANGLE[i]).x;
+  },
+  get y() {
+    return orbitPoint(BASE_ANGLE[i]).y;
+  },
 }));
 export const baseByName = new Map(TEAM_BASES.map((b) => [b.name, b]));
 
@@ -268,6 +362,14 @@ export interface World {
   readonly age: number; // generations elapsed; drives deterministic wander
   readonly winner: string | null; // team name once the match is decided (else null)
   readonly config: MatchConfig; // match setup (team count, length, format)
+  readonly controlledShipId: number | null;
+  readonly controlKeys: {
+    readonly up: boolean;
+    readonly down: boolean;
+    readonly left: boolean;
+    readonly right: boolean;
+    readonly space: boolean;
+  };
 }
 
 export type Msg =
@@ -276,6 +378,16 @@ export type Msg =
   | { readonly kind: "drop"; readonly x: number; readonly y: number }
   | { readonly kind: "rally"; readonly x: number; readonly y: number }
   | { readonly kind: "replenish" }
-  | { readonly kind: "reset" };
+  | { readonly kind: "reset" }
+  | { readonly kind: "control"; readonly shipId: number | null }
+  | {
+      readonly kind: "controlKeys";
+      readonly up: boolean;
+      readonly down: boolean;
+      readonly left: boolean;
+      readonly right: boolean;
+      readonly space: boolean;
+    }
+  | { readonly kind: "action"; readonly actionId: number };
 
 export type { Mutable } from "../engine/entities";

@@ -1,4 +1,4 @@
-# conway-machine — Context
+# Ganymede — Context
 
 A deterministic **roguelike autobattler** rendered with raw WebGPU. The sim is a
 pure Elm-style state transition; the renderer is a hybrid 2D-sprite + 3D-mesh

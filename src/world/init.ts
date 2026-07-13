@@ -1,5 +1,5 @@
 import { empty } from "../engine/entities";
-import type { Seed } from "../engine/rng";
+import { nextRange, type Seed } from "../engine/rng";
 import {
   activeTeams,
   DEFAULT_CONFIG,
@@ -9,22 +9,41 @@ import {
   rollAsteroid,
   rollMany,
   rollPickup,
-  rollPosition,
   rollShip,
   zeroScores,
 } from "./factory";
-import type { LightCycle, MatchConfig, World } from "./types";
+import {
+  baseByName,
+  type LightCycle,
+  type MatchConfig,
+  setOrbitPhase,
+  type World,
+} from "./types";
 
-/** Initial world: `config.initialShips` scattered across the field from `seed0`. */
-export const initWorld = (
+// Half-width of the square each fresh ship spawns in, centred on its team base
+// (cells). Small enough to read as "docked at base", wide enough to not stack.
+const SPAWN_SPREAD = 9;
+
+/** Initial world: `config.initialShips` mustered at their team bases from `seed0`. */
+export function initWorld(
   seed0: Seed,
   config: MatchConfig = DEFAULT_CONFIG,
-): World => {
+): World {
+  // Fresh match: age 0, so the ring sits at its zero-phase orientation while we
+  // muster ships onto their bases (a "reset" mid-match would otherwise carry the
+  // old world's rotation into these base reads).
+  setOrbitPhase(0);
   const teams = activeTeams(config);
   const initialShips = config.initialShips;
+  // Roll each ship (its team is drawn from the seed), then plant it at that
+  // team's base with a small jitter so a fleet musters at home, not scattered.
   const [items, s1] = rollMany(initialShips, seed0, (s, i) => {
-    const [x, y, sp] = rollPosition(s);
-    return rollShip(sp, i + 1, x, y, 1, undefined, undefined, teams);
+    const [ship, s2] = rollShip(s, i + 1, 0, 0, 1, undefined, undefined, teams);
+    const base = baseByName.get(ship.colorName);
+    if (!base) return [ship, s2];
+    const [ox, s3] = nextRange(s2, -SPAWN_SPREAD, SPAWN_SPREAD);
+    const [oy, s4] = nextRange(s3, -SPAWN_SPREAD, SPAWN_SPREAD);
+    return [{ ...ship, x: base.x + ox, y: base.y + oy }, s4];
   });
   const [rocks, s2] = rollMany(NUM_ASTEROIDS, s1, (s, i) =>
     rollAsteroid(s, i + 1),
@@ -48,16 +67,24 @@ export const initWorld = (
     age: 0,
     winner: null,
     config,
+    controlledShipId: null,
+    controlKeys: {
+      up: false,
+      down: false,
+      left: false,
+      right: false,
+      space: false,
+    },
   };
-};
+}
 
-export const spawnShip = (
+export function spawnShip(
   world: World,
   x: number,
   y: number,
   forceColor?: string,
   override?: Partial<LightCycle>,
-): World => {
+): World {
   const [ship, seed] = rollShip(
     world.seed,
     world.ships.nextId,
@@ -77,4 +104,4 @@ export const spawnShip = (
     },
     seed,
   };
-};
+}

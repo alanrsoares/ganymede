@@ -1,6 +1,7 @@
 import type { Seed } from "~/engine/rng";
 import { nextInt } from "~/engine/rng";
 import {
+  ARCHETYPE_MODS,
   armorFor,
   BASE_RAID_XP,
   hurtShip,
@@ -8,6 +9,7 @@ import {
   killXp,
   maxHpFor,
   minesFor,
+  PIERCE_COUNTER_MULT,
   RAM_SHOCK_DAMAGE,
   RAM_SHOCK_RADIUS,
   rollShip,
@@ -18,12 +20,11 @@ import {
   xpForLevel,
 } from "../factory";
 import {
+  ARENA,
   BURST_EMP,
   BURST_EXPLOSION,
   baseByName,
   type DamageType,
-  GRID_H,
-  GRID_W,
   type LightCycle,
   MAX_LEVEL,
   type Mutable,
@@ -38,6 +39,8 @@ export type BurstSpec = {
   kind: number;
   rgb?: Rgb;
   rot?: number;
+  x2?: number; // arc far endpoint (BURST_ARC)
+  y2?: number;
 };
 
 /** Mutable scratch state for one simulation tick; phases read/write this in order. */
@@ -76,7 +79,7 @@ export const createTickCtx = (
   removed: new Set<number>(),
 });
 
-export const replace = (ctx: TickCtx) => {
+export function replace(ctx: TickCtx) {
   if (ctx.suddenDeath) return;
   const alive = TEAMS.filter((t) => ctx.baseHp[t.name] > 0);
   if (alive.length === 0) return;
@@ -87,9 +90,9 @@ export const replace = (ctx: TickCtx) => {
   ctx.spawned.push(base ? { ...ship, x: base.x, y: base.y } : ship);
   ctx.seed = s2;
   ctx.nextId += 1;
-};
+}
 
-export const killShip = (ctx: TickCtx, s: Mutable<LightCycle>) => {
+export function killShip(ctx: TickCtx, s: Mutable<LightCycle>) {
   ctx.burstAt.push({
     x: Math.floor(s.x),
     y: Math.floor(s.y),
@@ -97,7 +100,7 @@ export const killShip = (ctx: TickCtx, s: Mutable<LightCycle>) => {
   });
   ctx.removed.add(s.id);
   replace(ctx);
-};
+}
 
 /**
  * Combat XP for damage dealt: the attacker banks a slice of the victim's worth
@@ -107,12 +110,12 @@ export const killShip = (ctx: TickCtx, s: Mutable<LightCycle>) => {
  * when someone else lands the finish (partial-kill XP). Uncapped, so earned
  * combat ranks all the way to `MAX_LEVEL` (unlike the L3-capped rock trickle).
  */
-const awardCombatXp = (
+function awardCombatXp(
   ctx: TickCtx,
   attackerId: number,
   victim: Mutable<LightCycle>,
   effectiveDmg: number,
-): void => {
+): void {
   const k = ctx.moved.find(
     (m) => m.id === attackerId && !ctx.removed.has(m.id),
   );
@@ -124,7 +127,7 @@ const awardCombatXp = (
     attackerId,
     killXp(k.level, victim.level) * (effectiveDmg / pool),
   );
-};
+}
 
 // Central damage choke point: cloak makes a ship immune, otherwise the incoming
 // amount is reduced by the defender's armor for this damage type (melee vs
@@ -132,21 +135,36 @@ const awardCombatXp = (
 // the pierce/melee armor split lives in exactly one place. When `attackerId` is
 // given (a ship dealt it — bolt/missile/blast/ram/aura), the attacker banks
 // combat XP for the damage it landed (see awardCombatXp).
-export const hit = (
+export function hit(
   ctx: TickCtx,
   s: Mutable<LightCycle>,
   amt: number,
   type: DamageType = "pierce",
   attackerId?: number,
-) => {
+) {
   if (s.invulnTime > 0) return;
-  const effective = amt * (1 - armorFor(s.archetype, type));
+  // Counter-web for ranged hits (T1/T2): if the shooter is known and this is
+  // pierce damage, bolts/missiles hit harder against the class it counters, and
+  // armor-shredder classes (scout) skip a slice of the target's pierce armor.
+  let dealt = amt;
+  let armor = armorFor(s.archetype, type);
+  if (type === "pierce" && attackerId !== undefined) {
+    const shooter = ctx.moved.find(
+      (m) => m.id === attackerId && !ctx.removed.has(m.id),
+    );
+    if (shooter) {
+      const mods = ARCHETYPE_MODS[shooter.archetype];
+      if (mods.counters === s.archetype) dealt *= PIERCE_COUNTER_MULT;
+      armor *= 1 - mods.pierceShred;
+    }
+  }
+  const effective = dealt * (1 - armor);
   const before = Math.max(0, s.hp + s.shield);
   hurtShip(s, effective);
   if (attackerId !== undefined) {
     awardCombatXp(ctx, attackerId, s, Math.min(effective, before));
   }
-};
+}
 
 /**
  * Area blast at (bx, by): damage (and maybe kill) every enemy within `radius`,
@@ -154,7 +172,7 @@ export const hit = (
  * shockwave ring at the impact point. Shared by AoE missiles and the L5 heavy
  * ram shockwave.
  */
-export const detonateBlast = (
+export function detonateBlast(
   ctx: TickCtx,
   bx: number,
   by: number,
@@ -162,12 +180,12 @@ export const detonateBlast = (
   damage: number,
   radius: number,
   ownerId?: number,
-): void => {
+): void {
   ctx.burstAt.push({ x: Math.floor(bx), y: Math.floor(by), kind: BURST_EMP });
   for (const e of ctx.moved) {
     if (ctx.removed.has(e.id) || e.colorName === team) continue;
-    const ex = toroidalDist(e.x, bx, GRID_W);
-    const ey = toroidalDist(e.y, by, GRID_H);
+    const ex = toroidalDist(e.x, bx, ARENA.w);
+    const ey = toroidalDist(e.y, by, ARENA.h);
     if (ex * ex + ey * ey >= radius * radius) continue;
     hit(ctx, e, damage, "pierce", ownerId);
     if (e.hp <= 0) {
@@ -175,14 +193,14 @@ export const detonateBlast = (
       killShip(ctx, e);
     }
   }
-};
+}
 
 /**
  * L5 rammer capstone: an ace rammer's hull slam (ship or base) sets off an area
  * shockwave around it. No-op for non-rammers or below MAX_LEVEL, so it rides the
  * same HIT_COOLDOWN i-frames as the ram that triggered it.
  */
-export const maybeRamShock = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
+export function maybeRamShock(ctx: TickCtx, s: Mutable<LightCycle>): void {
   if (!isRammer(s.archetype) || s.level < MAX_LEVEL) return;
   detonateBlast(
     ctx,
@@ -193,7 +211,7 @@ export const maybeRamShock = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
     RAM_SHOCK_RADIUS,
     s.id,
   );
-};
+}
 
 /**
  * Credit a base-raid hit to the shooter (looked up by id). This only tallies
@@ -201,16 +219,12 @@ export const maybeRamShock = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
  * pad (see `finishAtCenterPad` in interactions.ts), so raiding + a center
  * flyover together earn the level.
  */
-export const creditBaseHit = (
-  ctx: TickCtx,
-  ownerId: number,
-  baseName: string,
-) => {
+export function creditBaseHit(ctx: TickCtx, ownerId: number, baseName: string) {
   const s = ctx.moved.find((m) => m.id === ownerId && !ctx.removed.has(m.id));
   if (!s || s.level >= MAX_LEVEL) return;
   s.baseHits = { ...s.baseHits, [baseName]: (s.baseHits[baseName] ?? 0) + 1 };
   awardXp(ctx, ownerId, BASE_RAID_XP); // raiding is the steadiest leveling stream
-};
+}
 
 /**
  * Rank a ship up: caps (`maxHp`/`maxShield`/`maxMines`) always grow. The
@@ -219,11 +233,11 @@ export const creditBaseHit = (
  * lucky grab), but rock-XP promotes with `heal: false` so farming can't double
  * as a free sustain button.
  */
-export const promote = (
+export function promote(
   ctx: TickCtx,
   s: Mutable<LightCycle>,
   { heal = true }: { heal?: boolean } = {},
-) => {
+) {
   if (s.level >= MAX_LEVEL) return;
   s.level += 1;
   s.maxHp = maxHpFor(s.archetype, s.level);
@@ -240,7 +254,7 @@ export const promote = (
     y: Math.floor(s.y),
     kind: BURST_EXPLOSION,
   });
-};
+}
 
 /**
  * Award combat XP to the ship `ownerId`, cashing in a promotion each time the

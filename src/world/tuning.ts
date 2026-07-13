@@ -49,6 +49,12 @@ export const FORCEFIELD_DAMAGE = 1; // melee damage to an enemy caught in it
 export const PORTAL_COOLDOWN = 40; // gens before a ship can re-enter a portal
 export const PORTAL_PULL = 0.02; // event-horizon accel toward a nearby gate
 export const PORTAL_HORIZON = 2.6; // pull reaches this × the gate radius
+// Star gravity: the centre pad is a gentle, neutral (all-team) well drawing ships
+// inward. Wide reach (~ the orbit-ring radius) with a soft falloff, so it's barely
+// felt at the rim and firmest near the core — where the pad's hard centre deflects
+// hulls, making ships swing past in arcs instead of piling in.
+export const CENTER_PULL = 0.009; // inward accel at the core, easing to 0 at the rim
+export const CENTER_HORIZON = 6; // pull reaches this × the centre pad radius (~120px)
 export const PAD_HEAL = 0.09; // HP/gen while sitting on a healing pad
 // Center pad cycles which resource it yields: it holds one phase for
 // CENTER_PAD_PHASE_GENS generations, then advances hp → fuel → shield → hp…
@@ -140,6 +146,10 @@ export const BULLET_SPEED = 3.4; // cells/gen
 export const BULLET_LIFE = 30; // gens; range ≈ SPEED * LIFE ≈ 100 cells
 export const BULLET_RADIUS = 3.5; // hit radius vs a ship (plus its own radius)
 export const BULLET_DAMAGE = 1;
+// Ricochet: a bolt deflects off a surviving asteroid this many times before it
+// is spent, turning rocks into cover that skips fire around the field. Chips
+// the rock on every bounce; a rock it shatters absorbs the bolt regardless.
+export const BULLET_RICOCHETS = 1;
 export const FIRE_RANGE = 95; // only fire when an enemy is within this
 // Fire cadence tightens with rank: aces spit bolts ~2.5× as fast as rookies.
 const FIRE_COOLDOWN_BY_LEVEL = [90, 74, 60, 48, 38]; // gens between shots
@@ -215,13 +225,15 @@ export const EXPLOSION_DURATION = Math.max(...EXPLOSION_CLIPS.map(durationOf));
 // --- Per-level stat tables (indexed by level-1) -----------------------------
 // Movement smarts unlock with rank: each rank dodges better, flocks tighter, and
 // regulates speed/heading more precisely; L5 is a coordinated ace.
-export const AVOID_GAIN = [0.03, 0.045, 0.07, 0.09, 0.11]; // separation from ships + rocks
-export const AVOID_RADIUS = [22, 28, 34, 40, 46];
+// Separation from ships + rocks. Omnidirectional for ships (see steerSeparation),
+// so these hold a personal-space bubble on every side, not just ahead.
+export const AVOID_GAIN = [0.036, 0.055, 0.085, 0.11, 0.13];
+export const AVOID_RADIUS = [26, 32, 38, 44, 50];
 // Alignment is the murmuration driver — tuned up so squads sweep as one. Every
 // rank flocks now (even rookies), with matching separation so they spread, not
 // blob. Heading-match is bounded, so it yields to pursuit when an enemy is near.
 export const ALIGN_GAIN = [0.07, 0.12, 0.16, 0.2, 0.24]; // match same-team heading
-export const COHERE_GAIN = [0.004, 0.008, 0.012, 0.016, 0.02]; // pull toward team center
+export const COHERE_GAIN = [0.003, 0.006, 0.009, 0.012, 0.015]; // pull toward team center (loosened so squads don't blob)
 export const FLOCK_RADIUS = [38, 50, 62, 74, 86]; // wide, so alignment waves propagate
 // Every rank meanders (murmuration lifeblood); higher ranks a touch livelier.
 export const WANDER_GAIN = [0.03, 0.032, 0.036, 0.04, 0.045];
@@ -321,7 +333,7 @@ export const SPEED_EASE_LVL = [0.05, 0.09, 0.14, 0.18, 0.22]; // cruise control
 export const REGEN_BY_LEVEL = [0.0015, 0.0045, 0.01, 0.016, 0.022];
 export const SHIELD_BY_LEVEL = [1, 2, 3, 4, 5]; // secondary shield capacity
 export const SPEED_BY_LEVEL = [0.65, 0.95, 1.35, 1.7, 2.0];
-export const RADIUS_BY_LEVEL = [5.5, 8, 9.5, 11, 12.5]; // matches overlay sprite sizes
+export const RADIUS_BY_LEVEL = [4.5, 6.5, 7.8, 9.0, 10.2]; // matches overlay sprite sizes
 export const MINES_BY_LEVEL = [0, 0, 2, 3, 4]; // only L3+ carry mines
 
 // --- Fuel: ships burn fuel to thrust, refuel at their home base -------------
@@ -366,6 +378,8 @@ export const ARCHETYPE_MODS: Record<
     rammer: boolean; // brawler: closes to contact + rams bases for extra damage
     meleeResist: number; // 0..1 melee armor — physical/ram damage soaked
     pierceArmor: number; // 0..1 pierce armor — ranged bolt/missile/blast soaked
+    pierceShred: number; // 0..1 fraction of the target's pierce armor this class's bolts ignore
+    arc: boolean; // fires chain-lightning at its rank capstone (ARC_MIN_LEVEL)
   }
 > = {
   // Counter loop (each beats the next): scout → interceptor → heavy → fighter →
@@ -373,7 +387,7 @@ export const ARCHETYPE_MODS: Record<
   // countered chips lightly and holds off (see meleeDamage + combatAggression).
   scout: {
     speed: 1.3,
-    hp: 0.75,
+    hp: 0.85, // T2: thin but no longer glass — a real skirmisher
     fire: 0.9,
     fuel: 0.8,
     mines: false,
@@ -385,6 +399,8 @@ export const ARCHETYPE_MODS: Record<
     rammer: false,
     meleeResist: 0, // paper hull — takes rams full in the teeth
     pierceArmor: 0, // …and full bolts too
+    pierceShred: 0.5, // T2: armor-shredder — its bolts skip half the target's plating
+    arc: false,
   },
   fighter: {
     speed: 1.0,
@@ -400,6 +416,8 @@ export const ARCHETYPE_MODS: Record<
     rammer: false,
     meleeResist: 0.1,
     pierceArmor: 0.15,
+    pierceShred: 0, // gunner leans on cadence, not armor-piercing
+    arc: true, // L5 capstone: the gunner's chain-lightning overload
   },
   heavy: {
     speed: 0.78,
@@ -415,6 +433,8 @@ export const ARCHETYPE_MODS: Record<
     rammer: true, // the melee ship: charges enemies, slams bases
     meleeResist: 0.5, // reinforced hull — shrugs off half of every ram
     pierceArmor: 0.45, // heavy plating — eats most incoming fire (the tank)
+    pierceShred: 0, // blunt slugs, not piercing rounds
+    arc: false,
   },
   interceptor: {
     speed: 1.12,
@@ -430,11 +450,17 @@ export const ARCHETYPE_MODS: Record<
     rammer: false,
     meleeResist: 0.05,
     pierceArmor: 0.1,
+    pierceShred: 0.15, // light discarding-sabot missiles nick the heavy's plating
+    arc: false,
   },
 };
 
 // --- Counter-web combat: melee damage + survival-balanced aggression ---------
 export const MELEE_COUNTER_MULT = 1.75; // ram bonus when attacker counters the target
+// T1: bolts/missiles hit harder against the class this shooter counters, so the
+// rock-paper-scissors web bites for gunners too (not just rammers). Applied in
+// the central `hit` choke point for pierce damage.
+export const PIERCE_COUNTER_MULT = 1.35;
 export const MELEE_LEVEL_SCALE = 0.12; // +12% ram damage per level above L1
 
 // Focus-fire priority (higher = more attractive target): a blend of "finish the
@@ -449,6 +475,28 @@ export const targetPriority = (ship: LightCycle): number =>
 
 /** Does this class actively ram — close to contact and slam bases? */
 export const isRammer = (a: Archetype): boolean => ARCHETYPE_MODS[a].rammer;
+
+/** Does this class fire chain-lightning at its capstone rank? */
+export const carriesArc = (a: Archetype): boolean => ARCHETYPE_MODS[a].arc;
+
+// Chain-lightning capstone weapon: a hitscan tesla arc that strikes the nearest
+// enemy in ARC_RANGE, then keeps forking — each link jumps to the nearest
+// unstruck enemy within ARC_CHAIN_RANGE of the last node, up to ARC_MAX_LINKS
+// nodes, with the bolt's damage decaying ARC_CHAIN_FALLOFF× per hop. Deterministic
+// per-gen proc (seeded), pierce damage per node. Rendered as jagged BURST_ARCs.
+// Design: a SHORT-range brawler weapon whose payoff is the chain, not the reach.
+// The primary strike only lands up close (ARC_RANGE ≪ FIRE_RANGE), but once it
+// connects the bolt forks across the swarm — each hop reaches ARC_CHAIN_RANGE
+// (≥ the primary reach) so a single close hit can sweep a whole cluster. Gated
+// to L2+ with a modest proc so it reads as a distinct close-in tesla, not a
+// sniper beam.
+export const ARC_MIN_LEVEL = 2; // shows up before the L5 capstone
+export const ARC_FIRE_CHANCE = 0.08; // proc chance per eligible gen
+export const ARC_RANGE = 34; // short primary reach — must close to strike
+export const ARC_CHAIN_RANGE = 44; // per-hop fork reach (≥ primary → chains outward)
+export const ARC_MAX_LINKS = 6; // total struck nodes (primary + up to 5 forks)
+export const ARC_CHAIN_FALLOFF = 0.8; // bolt damage × this each successive hop
+export const ARC_DAMAGE = 2; // pierce damage dealt at the primary node
 
 // Rammers hit bases harder on a hull slam; everyone else does the flat ram.
 export const BASE_RAM_MULT = 3; // rammer base-ram multiplier over BASE_RAM_DAMAGE
@@ -531,7 +579,7 @@ export const MISSILE_LIFE = 90; // gens before it fizzles
 export const MISSILE_RADIUS = 4; // hit radius vs a ship (plus its own radius)
 export const MISSILE_DAMAGE = 2;
 export const MISSILE_RANGE = 120; // lock-on distance
-export const MISSILE_MIN_LEVEL = 4; // only aces carry missiles
+export const MISSILE_MIN_LEVEL = 3; // T3: interceptor spikes at veteran, not ace
 export const MISSILE_FIRE_CHANCE = 0.02; // per-gen odds while a target is locked
 
 // Archetype-aware stats: base per-level value × the class modifier.

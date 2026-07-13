@@ -1,4 +1,4 @@
-import type { Cmd, World } from "../types";
+import type { World } from "../types";
 import { createTickCtx } from "./context";
 import { finalizeTick } from "./finalize";
 import {
@@ -17,12 +17,8 @@ import {
   resolveShipCollisions,
 } from "./ship-collisions";
 
-/** Advance the entity world by `steps` CA generations; returns [world, cmds]. */
-export const tick = (
-  world: World,
-  steps: number,
-  now: number,
-): [World, Cmd[]] => {
+/** Advance the entity world by `steps` generations; returns the next world. */
+export const tick = (world: World, steps: number, now: number): World => {
   const ctx = createTickCtx(world, steps, now);
   const motion = advanceMotion(ctx);
   const hazards = createHazardState();

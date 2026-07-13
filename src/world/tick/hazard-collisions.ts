@@ -13,17 +13,16 @@ import {
   SHRAPNEL_RADIUS,
   shipRadius,
   spawnShrapnel,
-  toroidalDist,
   wrap,
 } from "../factory";
+import { within } from "../math";
 import {
+  ARENA,
   type Asteroid,
   type Base,
   BURST_EXPLOSION,
   BURST_SHIELD,
   CENTER_PAD,
-  GRID_H,
-  GRID_W,
   type LightCycle,
   type Mutable,
   type Projectile,
@@ -89,8 +88,8 @@ const shipVsRock = (
   r: Rock,
 ): Step => {
   if (hazards.removedRocks.has(r.id)) return "next";
-  const nx = wrapDelta(s.x, r.x, GRID_W);
-  const ny = wrapDelta(s.y, r.y, GRID_H);
+  const nx = wrapDelta(s.x, r.x, ARENA.w);
+  const ny = wrapDelta(s.y, r.y, ARENA.h);
   const rad = r.size + shipRadius(s.level);
   const dist = Math.hypot(nx, ny);
   if (dist >= rad || dist < 1e-3) return "next";
@@ -111,8 +110,8 @@ const shipVsRock = (
   s.dy = hy;
   const ux = nx / dist;
   const uy = ny / dist;
-  s.x = wrap(s.x - ux * (rad - dist), GRID_W);
-  s.y = wrap(s.y - uy * (rad - dist), GRID_H);
+  s.x = wrap(s.x - ux * (rad - dist), ARENA.w);
+  s.y = wrap(s.y - uy * (rad - dist), ARENA.h);
 
   if (s.hitCooldown > 0) return "next";
   hit(ctx, s, 1, "melee");
@@ -148,7 +147,7 @@ const reflectOffBase = (
   base: Base,
   bodyRad: number,
 ): { dist: number; vdot: number } =>
-  reflectOffDisc(pos, base.x, base.y, BASE_RADIUS, bodyRad, GRID_W, GRID_H);
+  reflectOffDisc(pos, base.x, base.y, BASE_RADIUS, bodyRad, ARENA.w, ARENA.h);
 
 const shipVsBase = (ctx: TickCtx, s: Ship, base: Base): Step => {
   if (base.name === s.colorName || ctx.baseHp[base.name] <= 0) return "next";
@@ -225,8 +224,8 @@ const shipVsCenterPad = (ctx: TickCtx, s: Ship): void => {
     CENTER_PAD.y,
     CENTER_PAD_RADIUS,
     shipRadius(s.level),
-    GRID_W,
-    GRID_H,
+    ARENA.w,
+    ARENA.h,
   );
   if (dist >= rad || dist < 1e-3) return;
   if (vdot > 0) {
@@ -249,8 +248,8 @@ const rockVsCenterPad = (r: Rock): void => {
     CENTER_PAD.y,
     CENTER_PAD_RADIUS,
     r.size,
-    GRID_W,
-    GRID_H,
+    ARENA.w,
+    ARENA.h,
   );
 };
 
@@ -274,9 +273,7 @@ const shardVsShip = (
   s: Ship,
 ): Step => {
   const rad = SHRAPNEL_RADIUS + shipRadius(s.level);
-  const dx = toroidalDist(s.x, f.x, GRID_W);
-  const dy = toroidalDist(s.y, f.y, GRID_H);
-  if (dx * dx + dy * dy >= rad * rad) return "next";
+  if (!within(s.x, s.y, f.x, f.y, rad)) return "next";
   hazards.removedShards.add(f.id);
   if (s.hitCooldown <= 0) {
     hit(ctx, s, 1, "melee");

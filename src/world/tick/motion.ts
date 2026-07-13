@@ -19,10 +19,9 @@ import {
   wrap,
 } from "../factory";
 import {
+  ARENA,
   type Asteroid,
   type Bullet,
-  GRID_H,
-  GRID_W,
   type LightCycle,
   type Mine,
   type Missile,
@@ -54,25 +53,37 @@ const shipCruise = (s: LightCycle, empty: boolean): number =>
     ? FUEL_DRIFT_SPEED
     : cruiseFor(s.archetype, s.level) * (s.boostTime > 0 ? BOOST_MULT : 1);
 
+const getManualSteer = (keys: World["controlKeys"]): [number, number] => {
+  const ix = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+  const iy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+  if (ix === 0 && iy === 0) return [0, 0];
+  const len = Math.hypot(ix, iy);
+  const force = 3.5;
+  return [(ix / len) * force, (iy / len) * force];
+};
+
 /** Steering acceleration: none when out of fuel, else the flocking/AI steer. */
 const shipAccel = (
   s: LightCycle,
   empty: boolean,
   world: World,
   baseHp: BaseHp,
-): [number, number] =>
-  empty
-    ? [0, 0]
-    : flockSteer(
-      s,
-      world.ships.items,
-      world.asteroids.items,
-      world.pickups.items,
-      baseHp,
-      world.rally,
-      s.level,
-      world.age,
-    );
+): [number, number] => {
+  if (empty) return [0, 0];
+  if (world.controlledShipId === s.id) {
+    return getManualSteer(world.controlKeys);
+  }
+  return flockSteer(
+    s,
+    world.ships.items,
+    world.asteroids.items,
+    world.pickups.items,
+    baseHp,
+    world.rally,
+    s.level,
+    world.age,
+  );
+};
 
 /** Advance one ship `steps` gens: steer, cruise-regulate, move, decay timers. */
 const advanceShip = (
@@ -89,7 +100,10 @@ const advanceShip = (
   const bvx = s.vx + ax * steps;
   const bvy = s.vy + ay * steps;
   const speedEase = SPEED_EASE_LVL[s.level - 1] ?? 0.08;
-  const turnEase = TURN_EASE_LVL[s.level - 1] ?? 0.14;
+  const turnEase =
+    world.controlledShipId === s.id
+      ? 0.35
+      : (TURN_EASE_LVL[s.level - 1] ?? 0.14);
   const sp = Math.hypot(s.vx, s.vy) || cruise;
   const [hx, hy] = normalize([bvx, bvy], [s.dx, s.dy]);
   const nextSp = sp + (cruise - sp) * Math.min(1, speedEase * steps);
@@ -98,8 +112,8 @@ const advanceShip = (
   const beamTime = s.beamActive ? s.beamTime - steps : s.beamTime;
   return {
     ...s,
-    x: wrap(s.x + vx * steps, GRID_W),
-    y: wrap(s.y + vy * steps, GRID_H),
+    x: wrap(s.x + vx * steps, ARENA.w),
+    y: wrap(s.y + vy * steps, ARENA.h),
     vx,
     vy,
     dx: hx,
@@ -122,8 +136,8 @@ const advanceShip = (
 
 /** Resolve one overlapping rock pair: elastic bounce + positional separation. */
 const bounceRocks = (a: Mutable<Asteroid>, b: Mutable<Asteroid>): void => {
-  const nx = wrapDelta(a.x, b.x, GRID_W);
-  const ny = wrapDelta(a.y, b.y, GRID_H);
+  const nx = wrapDelta(a.x, b.x, ARENA.w);
+  const ny = wrapDelta(a.y, b.y, ARENA.h);
   const rad = a.size + b.size;
   const dist = Math.hypot(nx, ny);
   if (dist >= rad || dist < 1e-3) return;
@@ -139,10 +153,10 @@ const bounceRocks = (a: Mutable<Asteroid>, b: Mutable<Asteroid>): void => {
   const overlap = rad - dist;
   const aShare = mb / (ma + mb);
   const bShare = ma / (ma + mb);
-  a.x = wrap(a.x - ux * overlap * aShare, GRID_W);
-  a.y = wrap(a.y - uy * overlap * aShare, GRID_H);
-  b.x = wrap(b.x + ux * overlap * bShare, GRID_W);
-  b.y = wrap(b.y + uy * overlap * bShare, GRID_H);
+  a.x = wrap(a.x - ux * overlap * aShare, ARENA.w);
+  a.y = wrap(a.y - uy * overlap * aShare, ARENA.h);
+  b.x = wrap(b.x + ux * overlap * bShare, ARENA.w);
+  b.y = wrap(b.y + uy * overlap * bShare, ARENA.h);
 };
 
 /** Pairwise asteroid collisions (O(n²); n = NUM_ASTEROIDS is small). */
@@ -155,16 +169,16 @@ const collideRocks = (rocks: Mutable<Asteroid>[]): void => {
 const advanceBubbles = (world: World, steps: number): Mutable<Pickup>[] =>
   world.pickups.items.map((p) => ({
     ...p,
-    x: wrap(p.x + p.vx * steps, GRID_W),
-    y: wrap(p.y + p.vy * steps, GRID_H),
+    x: wrap(p.x + p.vx * steps, ARENA.w),
+    y: wrap(p.y + p.vy * steps, ARENA.h),
   }));
 
 const advanceShards = (world: World, steps: number): Mutable<Projectile>[] =>
   world.projectiles.items
     .map((p) => ({
       ...p,
-      x: wrap(p.x + p.vx * steps, GRID_W),
-      y: wrap(p.y + p.vy * steps, GRID_H),
+      x: wrap(p.x + p.vx * steps, ARENA.w),
+      y: wrap(p.y + p.vy * steps, ARENA.h),
       spin: p.spin + p.spinRate * steps,
       life: p.life - steps,
     }))
@@ -184,8 +198,8 @@ const advanceBullets = (world: World, steps: number): Mutable<Bullet>[] =>
   world.bullets.items
     .map((b) => ({
       ...b,
-      x: wrap(b.x + b.vx * steps, GRID_W),
-      y: wrap(b.y + b.vy * steps, GRID_H),
+      x: wrap(b.x + b.vx * steps, ARENA.w),
+      y: wrap(b.y + b.vy * steps, ARENA.h),
       life: b.life - steps,
     }))
     .filter((b) => b.life > 0);
