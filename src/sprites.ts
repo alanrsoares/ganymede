@@ -56,7 +56,8 @@ const SHIP_LAYER_TOTAL = SHIP_FRAMES.length;
 export const EXPLOSION_FRAME_COUNTS = [11, 9, 9] as const;
 export const EXPLOSION_VARIANTS = EXPLOSION_FRAME_COUNTS.length;
 export const EXHAUST_FRAMES = 5;
-export const MINE_FRAMES = 9; // mine_1 tumble loop
+export const MINE_FRAMES = 9; // frames per mine tumble loop
+export const MINE_VARIANTS = 3; // distinct mine sprites, picked per-mine for variety
 export const PROTON_FRAMES = 3; // proton bolt-projectile flicker loop
 export const VULCAN_FRAMES = 3; // vulcan muzzle/impact spark + bolt projectile
 export const PLASMA_FRAMES = 2; // plasma bolt-body flicker loop
@@ -71,9 +72,11 @@ const EXHAUST_URLS = frames(
   EXHAUST_FRAMES,
   (n) => `${ROOT}/FX/exhaust_${pad2(n)}.png`,
 );
-const MINE_URLS = frames(
-  MINE_FRAMES,
-  (n) => `${ROOT}/Enemies/mine_1_${pad2(n)}.png`,
+// Three tumble sets (each MINE_FRAMES long), laid end-to-end so variant v starts
+// at layer offset v * MINE_FRAMES within the group. Picked per-mine for variety.
+const MINE_SETS = ["mine_1", "mine_11", "mine_12"] as const;
+const MINE_URLS = MINE_SETS.flatMap((set) =>
+  frames(MINE_FRAMES, (n) => `${ROOT}/Enemies/${set}_${pad2(n)}.png`),
 );
 // proton_01..03 — the blue bolt projectile fired by heavies.
 const PROTON_URLS = frames(
@@ -127,10 +130,21 @@ export interface SpriteRef {
   readonly angleOffset: number; // radians added to heading to orient the art
 }
 
+// In Arcade, ships read as hero-vs-foe rather than by class: the piloted ship
+// always wears the player hull, and every enemy wears an enemy hull (light
+// classes → enemy_1, heavy → enemy_2). Autobattle passes no role, keeping the
+// class = silhouette mapping.
+export type ShipRole = "hero" | "foe";
+
 // Hull for a ship's class archetype (team = tint, level = size, applied in the
 // overlay). Archetype names are the hull keys; fall back to scout if unknown.
-export const shipSprite = (archetype: string): SpriteRef => {
-  const key: HullKey = archetype in HULLS ? (archetype as HullKey) : "scout";
+export const shipSprite = (archetype: string, role?: ShipRole): SpriteRef => {
+  let key: HullKey = archetype in HULLS ? (archetype as HullKey) : "scout";
+  if (role === "hero") {
+    key = "scout"; // player_b silhouette
+  } else if (role === "foe") {
+    key = key === "heavy" || key === "fighter" ? "heavy" : "fighter"; // enemy hulls
+  }
   return {
     layer0: hullLayer0[key],
     frameCount: SHIP_FRAME_COUNT,
@@ -199,6 +213,23 @@ export const CLIP = {
     loop: true,
   },
 } as const satisfies Record<string, AnimClip>;
+
+// One clip per mine variant, laid out contiguously from the "mine" group base
+// layer (mirrors EXPLOSION_CLIPS).
+export const MINE_CLIPS: readonly AnimClip[] = Array.from(
+  { length: MINE_VARIANTS },
+  (_, v) => ({
+    layer0: L("mine") + v * MINE_FRAMES,
+    frames: MINE_FRAMES,
+    frameMs: 80,
+    loop: true,
+  }),
+);
+
+// Stable per-mine variant picked from its id, so each mine keeps one look but the
+// field shows a mix.
+export const mineClip = (id: number): AnimClip =>
+  MINE_CLIPS[((id % MINE_VARIANTS) + MINE_VARIANTS) % MINE_VARIANTS];
 
 // Projectile bolt bodies keyed by Bullet.kind (BOLT_VULCAN/PLASMA/PROTON) — each
 // a looping flicker of its SpaceRage sprite. Index order matches the BOLT_*

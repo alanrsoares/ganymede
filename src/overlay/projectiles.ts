@@ -14,6 +14,7 @@ import {
   BURST_COUNTER,
   BURST_DETONATION,
   BURST_EMP,
+  BURST_EXPLOSION,
   BURST_IMPACT,
   BURST_MUZZLE,
   BURST_SHIELD,
@@ -469,6 +470,38 @@ function drawFieldBurst(
   return true;
 }
 
+// A white-hot core on ship/rock deaths that expands and fades over the blast's
+// first third. Bright enough to trip the bloom pass, so kills punch instead of
+// just cycling an explosion sprite. Drawn over the sprite, tinted from the blast.
+function drawKillFlash(
+  push: PushFn,
+  burst: Burst,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+) {
+  if (burst.kind !== BURST_EXPLOSION) return;
+  const t = (now - burst.start) / EXPLOSION_DURATION;
+  if (t < 0 || t >= 0.35) return;
+  const k = 1 - t / 0.35; // 1 at ignition → 0 as it settles
+  const size = 4 + 11 * (1 - k); // tight core → wide flash
+  const c = burst.rgb ?? [1, 0.85, 0.5];
+  push(
+    (burst.x + 0.5) * cellPx,
+    (burst.y + 0.5) * cellPy,
+    size * cellPx,
+    size * cellPy,
+    0,
+    SHAPE.solid,
+    [
+      Math.min(1, c[0] * 0.4 + 0.75),
+      Math.min(1, c[1] * 0.4 + 0.65),
+      Math.min(1, c[2] * 0.4 + 0.45),
+      k * 0.85,
+    ],
+  );
+}
+
 // Animated blast FX at their sites.
 export function drawBursts(
   push: PushFn,
@@ -492,5 +525,6 @@ export function drawBursts(
       style.tint,
       layer,
     );
+    drawKillFlash(push, burst, cellPx, cellPy, now);
   }
 }

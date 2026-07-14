@@ -56,19 +56,34 @@ fn fs(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
   // Base gradient: deep blue-black, a touch lighter toward the bottom.
   var col = mix(vec3f(0.015, 0.02, 0.04), vec3f(0.03, 0.05, 0.09), uv.y);
 
-  // Drifting nebula haze — two octaves of value noise, tinted.
+  // Deep nebula floor — the art-directed base layer: large, slow, teal-dominant
+  // clouds with warm pockets (matching the SpaceRage BG palette). Low frequency
+  // + slow drift so it reads as far-away depth beneath everything else.
+  let ft = u.time * 0.008;
+  let fn1 = valueNoise(auv * 1.3 + vec2f(ft, ft * 0.4));
+  let fn2 = valueNoise(auv * 2.4 - vec2f(ft * 0.3, ft * 0.6));
+  let floorMask = smoothstep(0.35, 0.95, fn1 * 0.6 + fn2 * 0.4);
+  let floorTint = mix(vec3f(0.02, 0.09, 0.11), vec3f(0.11, 0.05, 0.03), fn2);
+  col += floorMask * floorTint;
+
+  // Nearer drifting haze — two octaves of value noise, faint teal-violet, on top
+  // of the floor for a second depth plane.
   let t = u.time * 0.02;
   let n = valueNoise(auv * 3.0 + vec2f(t, t * 0.5)) * 0.6
         + valueNoise(auv * 7.0 - vec2f(t * 0.7, t)) * 0.4;
-  let nebula = smoothstep(0.55, 1.0, n);
-  col += nebula * vec3f(0.08, 0.03, 0.14) * 0.6;
+  let nebula = smoothstep(0.6, 1.0, n);
+  col += nebula * vec3f(0.05, 0.05, 0.12) * 0.5;
 
   // Parallax star layers (far = dim/slow, near = bright/fast).
   var stars = 0.0;
   stars += starLayer(auv, 60.0, u.time * 0.006, u.time * 2.0) * 0.5;
   stars += starLayer(auv, 30.0, u.time * 0.012, u.time * 3.0) * 0.8;
   stars += starLayer(auv, 16.0, u.time * 0.02, u.time * 4.0);
-  col += vec3f(stars) * vec3f(0.9, 0.95, 1.0);
+  // Colored stars: cluster toward cool-white, warm, or teal by a slow color
+  // field, so the field isn't a uniform white sprinkle (matches the art).
+  let starHue = valueNoise(auv * 4.0 + vec2f(11.0, 7.0));
+  let starTint = mix(vec3f(0.72, 0.86, 1.0), vec3f(1.0, 0.82, 0.6), starHue);
+  col += vec3f(stars) * mix(vec3f(1.0), starTint, 0.55);
 
   // Vignette to focus the play area.
   let vig = 1.0 - 0.5 * pow(length(uv - 0.5) * 1.3, 2.2);

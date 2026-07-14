@@ -3,7 +3,7 @@
 
 import { clamp01 } from "../engine/physics";
 import { MAX_ORBS, MAX_ROCKS, ROCK_LAYOUT, SHIELD_LAYOUT } from "../gpu";
-import { CLIP, clipLayer, SHAPE } from "../sprites";
+import { clipLayer, mineClip, SHAPE } from "../sprites";
 import type { World } from "../world";
 import { SHRAPNEL_LIFE } from "../world/tuning";
 import type { PushFn } from "./push";
@@ -60,10 +60,11 @@ export function drawMines(
   now: number,
   world: World,
 ) {
-  const mineLayer = clipLayer(CLIP.mine, 0, now);
   for (const m of world.mines.items) {
     const armed = m.arm <= 0;
     const blink = armed ? 0.55 + 0.45 * Math.sin(now / 90) : 0.4;
+    // Per-mine variant (stable from its id) → a mix of tumble looks on the field.
+    const mineLayer = clipLayer(mineClip(m.id), 0, now);
     push(
       (m.x + 0.5) * cellPx,
       (m.y + 0.5) * cellPy,

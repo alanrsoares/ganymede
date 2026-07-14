@@ -3,7 +3,7 @@
 
 import { clamp01 } from "../engine/physics";
 import { MAX_SHIELDS, SHIELD_LAYOUT } from "../gpu";
-import { bankLayer, SHAPE, shipSprite } from "../sprites";
+import { bankLayer, SHAPE, type ShipRole, shipSprite } from "../sprites";
 import type { LightCycle, World } from "../world";
 import { hasRaidedAllEnemyBases, SHIELD_FLASH } from "../world/factory";
 import type { PushFn, Rgba } from "./push";
@@ -31,6 +31,7 @@ export function computeShipVisual(
   cellPx: number,
   cellPy: number,
   now: number,
+  role?: ShipRole,
 ): ShipVisual {
   const scx = (cycle.x + 0.5) * cellPx;
   // Out of fuel: the hull bobs gently like a drifting power-up orb.
@@ -44,7 +45,7 @@ export function computeShipVisual(
   // FX: the hull angle lags its heading while turning, so the residual is
   // the turn amount — pick the matching banked frame. Flipped (PI-rotated)
   // hulls have their left/right mirrored, so invert the sign.
-  const sprite = shipSprite(cycle.archetype);
+  const sprite = shipSprite(cycle.archetype, role);
   let turn = Math.atan2(cycle.dx, cycle.dy) - cycle.angle;
   turn = Math.atan2(Math.sin(turn), Math.cos(turn)); // wrap to [-π, π]
   if (sprite.angleOffset !== 0) turn = -turn;
@@ -553,8 +554,9 @@ function drawShip(
   showHp: boolean,
   exhaustL: number,
   isControlled: boolean,
+  role?: ShipRole,
 ): number {
-  const v = computeShipVisual(cycle, cellPx, cellPy, now);
+  const v = computeShipVisual(cycle, cellPx, cellPy, now, role);
   drawShipShadow(push, v, cellPx, cellPy);
   drawShipTrail(push, cycle, v, cellPx, cellPy, now);
   drawShipExhaust(push, cycle, v, cellPx, cellPy, exhaustL);
@@ -586,7 +588,15 @@ export function drawShips(
   exhaustL: number,
 ): number {
   let shieldCount = 0;
+  // Arcade only: ships read as hero (piloted) vs foe, not by class.
+  const arcade = world.arcade !== null;
   for (const cycle of world.ships.items) {
+    const isControlled = cycle.id === world.controlledShipId;
+    const role: ShipRole | undefined = arcade
+      ? isControlled
+        ? "hero"
+        : "foe"
+      : undefined;
     shieldCount = drawShip(
       push,
       shieldInstances,
@@ -598,7 +608,8 @@ export function drawShips(
       now,
       showHp,
       exhaustL,
-      cycle.id === world.controlledShipId,
+      isControlled,
+      role,
     );
   }
   return shieldCount;
