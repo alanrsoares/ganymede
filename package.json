@@ -21,6 +21,8 @@
     "build": "bun run scripts/build.ts",
     "deploy": "bun run scripts/deploy.ts",
     "hero": "bun run scripts/capture-hero.ts",
+    "gen-audio": "bun run scripts/gen-audio.ts",
+    "gen-music": "bun run scripts/gen-music.ts",
     "test": "bun test",
     "check": "bun run lint && bun run typecheck",
     "lint": "bun x @biomejs/biome check .",

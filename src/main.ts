@@ -6,7 +6,9 @@ import { type Lobby, mountArcadeLobby } from "./arcade-lobby";
 import { createAccumulator, createLoop } from "./engine/loop";
 import { createRenderer, loadCycleTextures, type Renderer } from "./gpu";
 import { acquireGpu } from "./gpu-context";
+import { mountMixer } from "./mixer";
 import { createOverlay, type Overlay } from "./overlay";
+import { type Audio, createAudio, type Scene } from "./runtime/audio";
 import {
   buildAndRender,
   createResizeSync,
@@ -25,7 +27,14 @@ import { mountSetup } from "./setup";
 import { rgbCss } from "./shipInfo";
 import { mountUi, type Ui } from "./ui";
 import { mountWelcome, type Welcome } from "./welcome";
-import { initWorld, type MatchConfig, type Msg, TEAMS, update } from "./world";
+import {
+  initWorld,
+  type MatchConfig,
+  type Msg,
+  TEAMS,
+  update,
+  type World,
+} from "./world";
 import { DEFAULT_CONFIG } from "./world/factory";
 
 // Team colors (0..1 rgb) → CSS strings for the scoreboard.
@@ -46,6 +55,11 @@ const ATTRACT_CONFIG: MatchConfig = {
 };
 
 const canvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
+
+// Soundtrack scene from game state: pre-game screens → menu bed, a live match →
+// battle or arcade.
+const sceneFor = (world: World, inMatch: boolean): Scene =>
+  !inMatch ? "menu" : world.config.format === "arcade" ? "arcade" : "battle";
 
 // Acquire the GPU device/context, wire up the "device lost" surface, and build
 // the renderer. Split out of `main` purely to keep that function short.
@@ -86,6 +100,7 @@ const startRuntime = (
   ui: Ui,
   welcome: Welcome,
   sim: Sim,
+  audio: Audio,
 ) => {
   // The single port from the pure world into the runtime: swap in the next world.
   const dispatch = (msg: Msg) => {
@@ -104,10 +119,18 @@ const startRuntime = (
     ui,
     () => sim.world,
     () => setup.isOpen() || lobby.isOpen(),
+    audio,
   );
   // Keep the welcome splash clean; reveal all chrome together on launch.
   codex.setChromeHidden(true);
-  welcome.begun.then((mode) => revealForMode(mode, lobby, setup, ui, codex));
+  // The welcome CTA is the first user gesture — the only moment the browser lets
+  // us start the AudioContext.
+  let begun = false;
+  welcome.begun.then((mode) => {
+    begun = true;
+    audio.resume();
+    revealForMode(mode, lobby, setup, ui, codex);
+  });
 
   const syncCanvasSize = createResizeSync(renderer, canvas);
   const loop = createLoop((dt, now) => {
@@ -137,6 +160,10 @@ const startRuntime = (
     );
     updateScreenShake(canvas, sim.world, now, loopState);
     updateHud(ui, sim.world);
+    // setScene is idempotent, so calling it each frame is fine.
+    const inMatch = begun && !setup.isOpen() && !lobby.isOpen();
+    audio.setScene(sceneFor(sim.world, inMatch));
+    audio.frame(sim.world, now);
   });
   loop.start();
 };
@@ -146,6 +173,8 @@ const main = async () => {
   // directs the composite camera over the live attract scene behind it.
   const welcome = mountWelcome();
   const overlay = createOverlay();
+  const audio = createAudio();
+  mountMixer(audio);
   // Placeholder attract world on the default grid; rebuilt on the real grid
   // once GPU init settles the client layout (below).
   const sim: Sim = {
@@ -169,7 +198,7 @@ const main = async () => {
     // GPU init done → the browser has settled the client layout sizing.
     updateGridDimensions(canvas);
     sim.world = initWorld(Date.now(), ATTRACT_CONFIG);
-    startRuntime(renderer, overlay, ui, welcome, sim);
+    startRuntime(renderer, overlay, ui, welcome, sim, audio);
   } catch (e: unknown) {
     ui.showError(
       e instanceof Error

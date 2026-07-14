@@ -38,6 +38,7 @@ gravity well — or take the stick and fly one ship through escalating waves.
 | Click empty space | Deselect, or drop a ship |
 | `Z` / `X` | Launch reinforcements |
 | `H` | Toggle HP bars |
+| `M` | Mute / unmute audio |
 | `C` | Codex (pauses the game) |
 
 ## Ship classes
@@ -63,6 +64,24 @@ Combat runs on a counter-web — each class beats the next:
 
 A ship that counters its target rams harder and presses in; a countered ship
 chips lightly and holds off.
+
+## Audio
+
+Sound is driven straight off the pure sim — every combat `Burst` the world
+already emits (muzzle, explosion, EMP, …) becomes a voice, so audio needs no
+state of its own and stays deterministic. Marquee hits play small pre-baked OGG
+samples; the dense cheap ones (muzzle, impact) are synthesised live so a
+firefight never thrashes the sample voices. A three-scene synthwave soundtrack
+(menu / battle / arcade) crossfades on game state and seam-crossfades its own
+loop. The corner **mixer** (🎚️) sets master / music / SFX faders + mute; every
+choice persists.
+
+- **SFX** are procedural — regenerate with `bun run scripts/gen-audio.ts`
+  (needs `ffmpeg`).
+- **Music** tracks are instrumental synthwave rendered offline with
+  [ACE-Step](https://github.com/ace-step/ACE-Step), then trimmed to
+  `src/assets/audio/music/*.ogg`. `scripts/gen-music.ts` is a dependency-free
+  procedural fallback.
 
 ## Develop
 

@@ -205,6 +205,7 @@ export const wireInput = (
   ui: Ui,
   getWorld: () => World,
   isMenuOpen: () => boolean,
+  audio: { toggleMute(): void },
 ): Codex => {
   const card = mountShipCard();
   const codex = mountCodex();
@@ -239,6 +240,7 @@ export const wireInput = (
     h: () => {
       ui.hpOn.val = !ui.hpOn.val;
     },
+    m: () => audio.toggleMute(),
   };
 
   window.addEventListener("keydown", (e) =>
