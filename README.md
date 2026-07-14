@@ -44,18 +44,22 @@ gravity well — or take the stick and fly one ship through escalating waves.
 
 Four hulls, each on its own stat and weapon path:
 
-| Class | Role | Weapon |
-|-------|------|--------|
-| **Scout** | Fastest, fragile; shares base-raid progress with allies | `vulcan` |
-| **Fighter** | Balanced gunner; extra barrel at max level | `vulcan` |
-| **Heavy** | Tank; drops mines and seeking missiles at rank | `proton` |
-| **Interceptor** | Nimble | `plasma` |
+| Hull | Class | Role | Weapon |
+|:---:|-------|------|--------|
+| <img src="docs/hulls/scout.png" alt="Scout hull" width="48" /> | **Scout** | Fastest, fragile; shares base-raid progress with allies | `vulcan` |
+| <img src="docs/hulls/fighter.png" alt="Fighter hull" width="48" /> | **Fighter** | Balanced gunner; extra barrel at max level | `vulcan` |
+| <img src="docs/hulls/heavy.png" alt="Heavy hull" width="48" /> | **Heavy** | Tank; drops mines and seeking missiles at rank | `proton` |
+| <img src="docs/hulls/interceptor.png" alt="Interceptor hull" width="48" /> | **Interceptor** | Nimble; hit-and-run | `plasma` |
 
 Combat runs on a counter-web — each class beats the next:
 
-```
-scout → interceptor → heavy → fighter → scout
-```
+<p align="center">
+  <img src="docs/hulls/scout.png" alt="Scout" width="40" /> →
+  <img src="docs/hulls/interceptor.png" alt="Interceptor" width="40" /> →
+  <img src="docs/hulls/heavy.png" alt="Heavy" width="40" /> →
+  <img src="docs/hulls/fighter.png" alt="Fighter" width="40" /> →
+  <img src="docs/hulls/scout.png" alt="Scout" width="40" />
+</p>
 
 A ship that counters its target rams harder and presses in; a countered ship
 chips lightly and holds off.
