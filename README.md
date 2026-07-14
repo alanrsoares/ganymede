@@ -39,6 +39,7 @@ gravity well — or take the stick and fly one ship through escalating waves.
 | `Z` / `X` | Launch reinforcements |
 | `H` | Toggle HP bars |
 | `M` | Mute / unmute audio |
+| `.` | Skip to the next soundtrack variation |
 | `C` | Codex (pauses the game) |
 
 ## Ship classes

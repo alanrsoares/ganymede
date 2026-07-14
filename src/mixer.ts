@@ -87,7 +87,21 @@ export const mountMixer = (audio: Audio) => {
         { class: "text-[11px] font-semibold uppercase tracking-[0.16em]" },
         "Audio",
       ),
-      muteButton(muted, audio),
+      div(
+        { class: "flex items-center gap-1.5" },
+        button(
+          {
+            type: "button",
+            "aria-label": "Next track",
+            title: "Next track (.)",
+            class: `rounded px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-[#3fd8ff] transition-colors hover:bg-[#3fd8ff]/10 ${FOCUS_RING}`,
+            style: `border:1px solid ${CYAN}55`,
+            onclick: () => audio.skip(),
+          },
+          "⏭ Next",
+        ),
+        muteButton(muted, audio),
+      ),
     ),
     fader("Master", master, bind("master", master)),
     fader("Music", music, bind("music", music)),
