@@ -62,6 +62,22 @@ const muteButton = (muted: State<boolean>, audio: Audio) =>
     () => (muted.val ? "🔇 Muted" : "🔊 Sound"),
   );
 
+// The collapsed 🎚️ affordance; flips the panel open.
+const mixerToggle = (open: State<boolean>) =>
+  button(
+    {
+      type: "button",
+      "aria-label": "Audio mixer",
+      "aria-expanded": () => String(open.val),
+      class: `h-9 w-9 self-end rounded-lg border-0 text-[16px] leading-none text-[#3fd8ff] backdrop-blur transition-colors ${FOCUS_RING}`,
+      style: "background:#0b1220cc",
+      onclick: () => {
+        open.val = !open.val;
+      },
+    },
+    "🎚️",
+  );
+
 export const mountMixer = (audio: Audio) => {
   const init = audio.getLevels();
   const open = van.state(false);
@@ -69,7 +85,6 @@ export const mountMixer = (audio: Audio) => {
   const master = van.state(init.master);
   const music = van.state(init.music);
   const sfx = van.state(init.sfx);
-
   const bind = (b: Bus, s: State<number>) => (v: number) => {
     s.val = v;
     audio.setLevel(b, v);
@@ -108,26 +123,13 @@ export const mountMixer = (audio: Audio) => {
     fader("SFX", sfx, bind("sfx", sfx)),
   );
 
-  const toggle = button(
-    {
-      type: "button",
-      "aria-label": "Audio mixer",
-      "aria-expanded": () => String(open.val),
-      class: `h-9 w-9 self-end rounded-lg border-0 text-[16px] leading-none text-[#3fd8ff] backdrop-blur transition-colors ${FOCUS_RING}`,
-      style: "background:#0b1220cc",
-      onclick: () => {
-        open.val = !open.val;
-      },
-    },
-    "🎚️",
-  );
-
   const root = div(
     {
-      class: "fixed right-3 bottom-3 z-50 flex flex-col items-end gap-2",
+      class:
+        "hud-mixer fixed right-3 bottom-3 z-50 flex flex-col items-end gap-2",
     },
     panel,
-    toggle,
+    mixerToggle(open),
   );
   van.add(document.body, root);
 };

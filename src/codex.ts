@@ -480,7 +480,7 @@ const buildOpener = (
     {
       type: "button",
       class: () =>
-        `fixed left-4 top-4 z-30 cursor-pointer rounded-lg border border-[#3fd8ff]/25 bg-[#040a0e]/75 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8fe6ff] backdrop-blur-[4px] transition-colors hover:bg-[#3fd8ff]/10 ${FOCUS_RING} ${open.val || hidden.val ? "hidden" : "block"}`,
+        `hud-codex-open fixed left-4 top-4 z-30 cursor-pointer rounded-lg border border-[#3fd8ff]/25 bg-[#040a0e]/75 px-3 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#8fe6ff] backdrop-blur-[4px] transition-colors hover:bg-[#3fd8ff]/10 ${FOCUS_RING} ${open.val || hidden.val ? "hidden" : "block"}`,
       onclick: onOpen,
     },
     "◈ Ships (C)",

@@ -61,3 +61,65 @@ body {
   width: 100%;
   height: 100%;
 }
+
+/* --- Mobile / touch HUD reflow ---------------------------------------------
+   The in-match chrome is positioned for a wide viewport; on a phone the top
+   and bottom clusters pile up and run under a notch / home-indicator. These
+   rules reflow the fixed/absolute chrome by its stable `hud-*` hooks and fold
+   in the safe-area insets. Wide, fine-pointer desktops are untouched. */
+@media (max-width: 700px) {
+  /* Top row: codex opener stays top-left, status readout hugs top-right and
+     stays narrow so the two never meet in the middle. */
+  .hud-status {
+    max-width: 46vw;
+    right: max(0.5rem, env(safe-area-inset-right));
+    top: max(0.5rem, env(safe-area-inset-top));
+    font-size: 10px;
+    text-align: right;
+  }
+  .hud-codex-open {
+    left: max(0.75rem, env(safe-area-inset-left));
+    top: max(0.75rem, env(safe-area-inset-top));
+  }
+  /* Drop the scoreboard below the (multi-line) status readout so it clears
+     both the opener and the status. */
+  .hud-score {
+    top: calc(env(safe-area-inset-top) + 5.75rem);
+  }
+  /* Bottom clusters clear the home-indicator. */
+  .hud-controls {
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    left: max(1rem, env(safe-area-inset-left));
+  }
+  .hud-mixer {
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+    right: max(0.75rem, env(safe-area-inset-right));
+  }
+}
+
+/* Touch-primary only. The keyboard-oriented panels carry no value here — the
+   guide lists keys, the manual panel is a display-only status readout — and
+   the on-screen stick/fire/abilities replace them. */
+@media (hover: none) and (pointer: coarse) {
+  .hud-guide,
+  .hud-manual {
+    display: none;
+  }
+  /* Cockpit mode: while piloting, the sticks own the bottom corners. Clear the
+     tempo/hp panel and park the mixer between them at bottom-center. */
+  body[data-piloting="1"] .hud-controls {
+    display: none;
+  }
+  body[data-piloting="1"] .hud-mixer {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  /* Safe-area gutters for the touch-control root. */
+  [data-mobile-controls] {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}

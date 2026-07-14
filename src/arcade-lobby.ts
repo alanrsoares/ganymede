@@ -146,7 +146,7 @@ const panel = (
       "aria-modal": "true",
       "aria-label": "Arcade lobby",
       class:
-        "w-full max-w-[440px] rounded-2xl border border-[#3fd8ff]/25 bg-[#050b0f]/90 p-5 shadow-[0_20px_60px_-20px_#000]",
+        "w-full max-w-[440px] max-h-[90dvh] overflow-y-auto overscroll-contain rounded-2xl border border-[#3fd8ff]/25 bg-[#050b0f]/90 p-5 shadow-[0_20px_60px_-20px_#000]",
     },
     h1(
       {

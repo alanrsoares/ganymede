@@ -7,6 +7,7 @@ import { createAccumulator, createLoop } from "./engine/loop";
 import { createRenderer, loadCycleTextures, type Renderer } from "./gpu";
 import { acquireGpu } from "./gpu-context";
 import { mountMixer } from "./mixer";
+import { mountMobileControls } from "./mobileControls";
 import { createOverlay, type Overlay } from "./overlay";
 import { type Audio, createAudio, type Scene } from "./runtime/audio";
 import {
@@ -94,6 +95,13 @@ const revealForMode = (
 
 // Wire the post-init runtime: the world port, the two pre-game screens (gated
 // behind the welcome splash), input, and the fixed-timestep loop.
+const wireTouchControls = (dispatch: (msg: Msg) => void, ui: Ui) =>
+  mountMobileControls({
+    controlledShip: ui.controlledShip,
+    onKeys: (k) => dispatch({ kind: "controlKeys", ...k }),
+    onAction: (id) => dispatch({ kind: "action", actionId: id }),
+  });
+
 const startRuntime = (
   renderer: Renderer,
   overlay: Overlay,
@@ -121,6 +129,9 @@ const startRuntime = (
     () => setup.isOpen() || lobby.isOpen(),
     audio,
   );
+  // On-screen stick/fire/abilities for touch devices — the same intent the
+  // keyboard emits, so the sim is unchanged. No-op on pointer devices.
+  wireTouchControls(dispatch, ui);
   // Keep the welcome splash clean; reveal all chrome together on launch.
   codex.setChromeHidden(true);
   // The welcome CTA is the first user gesture — the only moment the browser lets

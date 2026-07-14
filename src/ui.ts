@@ -162,7 +162,7 @@ const buildHud = (title: State<string>, status: State<string>) =>
   div(
     {
       class:
-        "pointer-events-none absolute right-4 top-4 max-w-[430px] text-left font-mono [text-shadow:0_0_8px_#04070a]",
+        "hud-status pointer-events-none absolute right-4 top-4 max-w-[430px] text-left font-mono [text-shadow:0_0_8px_#04070a]",
     },
     h1(
       {
@@ -214,7 +214,7 @@ const buildControls = (cfg: UiConfig, hpOn: State<boolean>) => {
   const el = div(
     {
       class:
-        "absolute bottom-4 left-4 rounded-lg border border-[#3fd8ff]/25 bg-[#040a0e]/75 px-3.5 py-3 font-mono text-[11px] text-[#8fe6ff] [touch-action:manipulation] backdrop-blur-[4px]",
+        "hud-controls absolute bottom-4 left-4 rounded-lg border border-[#3fd8ff]/25 bg-[#040a0e]/75 px-3.5 py-3 font-mono text-[11px] text-[#8fe6ff] [touch-action:manipulation] backdrop-blur-[4px]",
     },
     div(
       {
@@ -336,7 +336,7 @@ const buildScoreBox = (
   return div(
     {
       class:
-        "absolute left-1/2 top-3 min-w-[190px] -translate-x-1/2 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/70 px-3 py-2 font-mono text-[11px] [text-shadow:0_0_8px_#04070a] backdrop-blur-[3px]",
+        "hud-score absolute left-1/2 top-3 min-w-[190px] -translate-x-1/2 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/70 px-3 py-2 font-mono text-[11px] [text-shadow:0_0_8px_#04070a] backdrop-blur-[3px]",
     },
     div(
       {
@@ -476,7 +476,7 @@ const buildManualPanel = (controlledShip: State<LightCycle | null>) => {
   return div(
     {
       class: () =>
-        `absolute bottom-4 right-4 rounded-lg border border-[#ffb83f]/20 bg-[#040a0e]/85 px-4 py-3 font-mono text-[11px] text-[#ffe08a] backdrop-blur-[4px] transition-opacity duration-200 ${controlledShip.val ? "opacity-100 block" : "opacity-0 hidden"}`,
+        `hud-manual absolute bottom-4 right-4 rounded-lg border border-[#ffb83f]/20 bg-[#040a0e]/85 px-4 py-3 font-mono text-[11px] text-[#ffe08a] backdrop-blur-[4px] transition-opacity duration-200 ${controlledShip.val ? "opacity-100 block" : "opacity-0 hidden"}`,
       style:
         "width: 270px; box-shadow: 0 0 15px rgba(255, 184, 63, 0.15); pointer-events: none;",
     },
@@ -547,7 +547,7 @@ const buildControlsInfoPanel = () => {
   return div(
     {
       class:
-        "absolute top-12 left-4 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/75 px-3 py-2 font-mono text-[11px] backdrop-blur-[4px]",
+        "hud-guide absolute top-12 left-4 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/75 px-3 py-2 font-mono text-[11px] backdrop-blur-[4px]",
       style: "box-shadow: 0 0 15px rgba(63, 216, 255, 0.1); z-index: 10;",
     },
     div(

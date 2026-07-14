@@ -197,6 +197,28 @@ const createControlState = (
   return { pressedKeys, updateControls, clearControls };
 };
 
+// Touch has no hover, so the inspector card is unreachable via pointermove. A
+// tap surfaces the ship under it transiently; any control/drop is still handled
+// by the primary pointerdown handler.
+const wireTouchInspect = (
+  canvas: HTMLCanvasElement,
+  card: ReturnType<typeof mountShipCard>,
+  getWorld: () => World,
+) => {
+  let cardTimer = 0;
+  canvas.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") return;
+    const gx = (e.offsetX / canvas.clientWidth) * ARENA.w;
+    const gy = (e.offsetY / canvas.clientHeight) * ARENA.h;
+    const ship = pickShip(getWorld(), gx, gy);
+    card.render(ship, e.clientX, e.clientY);
+    clearTimeout(cardTimer);
+    if (ship) {
+      cardTimer = window.setTimeout(() => card.render(null, 0, 0), 2600);
+    }
+  });
+};
+
 // Wire pointer/keyboard/resize; returns the codex handle the loop reads to pause.
 export const wireInput = (
   canvas: HTMLCanvasElement,
@@ -228,6 +250,7 @@ export const wireInput = (
     card.render(pickShip(getWorld(), gx, gy), e.clientX, e.clientY);
   });
   canvas.addEventListener("pointerleave", () => card.render(null, 0, 0));
+  wireTouchInspect(canvas, card, getWorld);
 
   const { pressedKeys, updateControls, clearControls } = createControlState(
     dispatch,
