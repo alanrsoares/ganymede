@@ -219,8 +219,10 @@ for (const scene of scenes) {
   if (!mood) throw new Error(`unknown scene: ${scene}`);
   const t = compose(mood);
   const wav = `${OUT}/${scene}.wav`;
+  // Runtime loads `<scene>-<n>.ogg`; this fallback fills variation slot 1.
+  const ogg = `${OUT}/${scene}-1.ogg`;
   await Bun.write(wav, toWav(t.L, t.R));
-  await $`ffmpeg -y -v error -i ${wav} -c:a libopus -b:a 112k ${OUT}/${scene}.ogg`;
+  await $`ffmpeg -y -v error -i ${wav} -c:a libopus -b:a 112k ${ogg}`;
   await $`rm ${wav}`;
-  console.log("baked ->", `${OUT}/${scene}.ogg`);
+  console.log("baked ->", ogg);
 }

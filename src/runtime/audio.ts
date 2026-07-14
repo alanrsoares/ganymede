@@ -124,23 +124,54 @@ const playSample = (k: Kit, buf: AudioBuffer, gain: number) => {
 const SCENES: Scene[] = ["menu", "battle", "arcade"];
 const SCENE_XFADE = 1.4; // seconds to crossfade between scenes
 const LOOP_XFADE = 2; // seconds to crossfade a track's loop seam
+// How many variations each scene ships (`<scene>-<n>.ogg`, n = 1..count). The
+// runtime round-robins through them so a long stay in one scene keeps evolving.
+const VARIATIONS: Record<Scene, number> = { menu: 4, battle: 4, arcade: 4 };
+
+// Schedule one loop iteration with fade-in/out at the seam; returns the time the
+// next iteration should begin (i.e. where this one's fade-out starts).
+const scheduleLoop = (
+  ctx: AudioContext,
+  buf: AudioBuffer,
+  gain: GainNode,
+  t0: number,
+) => {
+  const dur = buf.duration;
+  const src = ctx.createBufferSource();
+  const vg = ctx.createGain();
+  src.buffer = buf;
+  src.connect(vg).connect(gain);
+  vg.gain.setValueAtTime(0.0001, t0);
+  vg.gain.linearRampToValueAtTime(1, t0 + LOOP_XFADE);
+  vg.gain.setValueAtTime(1, t0 + dur - LOOP_XFADE);
+  vg.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+  src.start(t0);
+  src.stop(t0 + dur + 0.05);
+  return t0 + dur - LOOP_XFADE;
+};
 
 // The soundtrack: one persistent gain per scene (scene crossfade) feeding the
-// music bus; each active scene re-schedules its own buffer with an overlapping
-// gain envelope so the loop point is a crossfade, not a click.
+// music bus. Each active scene re-schedules a buffer with an overlapping gain
+// envelope so the loop seam is a crossfade, cycling through its variations.
 const createMusic = (ctx: AudioContext, out: GainNode) => {
   const gains = {} as Record<Scene, GainNode>;
-  const bufs: Partial<Record<Scene, AudioBuffer>> = {};
+  const bufs: Record<Scene, AudioBuffer[]> = {
+    menu: [],
+    battle: [],
+    arcade: [],
+  };
   const next = { menu: 0, battle: 0, arcade: 0 } as Record<Scene, number>;
+  const rr = { menu: 0, battle: 0, arcade: 0 } as Record<Scene, number>;
   let active: Scene | null = null;
   for (const s of SCENES) {
     const g = ctx.createGain();
     g.gain.value = 0;
     g.connect(out);
     gains[s] = g;
-    void fetchDecode(ctx, `${MUSIC_DIR}/${s}.ogg`).then((b) => {
-      bufs[s] = b;
-    });
+    for (let i = 1; i <= VARIATIONS[s]; i++)
+      void fetchDecode(ctx, `${MUSIC_DIR}/${s}-${i}.ogg`)
+        .then((b) => bufs[s].push(b))
+        .catch(() => {}); // tolerate a missing variation
   }
 
   const setScene = (s: Scene) => {
@@ -152,27 +183,17 @@ const createMusic = (ctx: AudioContext, out: GainNode) => {
     if (next[s] < t) next[s] = t + 0.05; // (re)start this track's loop pump
   };
 
-  // Schedule loop iterations a little ahead of the playhead; each new iteration
-  // fades in over the previous one's fade-out at the seam.
+  // Keep the playhead a little ahead; each new iteration picks the next
+  // variation, fading in over the previous one's fade-out.
   const pump = () => {
     const s = active;
     if (!s) return;
-    const buf = bufs[s];
-    if (!buf) return;
-    const dur = buf.duration;
+    const list = bufs[s];
+    if (!list.length) return;
     while (next[s] < ctx.currentTime + 0.4) {
+      const buf = list[rr[s]++ % list.length];
       const t0 = Math.max(next[s], ctx.currentTime + 0.02);
-      const src = ctx.createBufferSource();
-      const vg = ctx.createGain();
-      src.buffer = buf;
-      src.connect(vg).connect(gains[s]);
-      vg.gain.setValueAtTime(0.0001, t0);
-      vg.gain.linearRampToValueAtTime(1, t0 + LOOP_XFADE);
-      vg.gain.setValueAtTime(1, t0 + dur - LOOP_XFADE);
-      vg.gain.linearRampToValueAtTime(0.0001, t0 + dur);
-      src.start(t0);
-      src.stop(t0 + dur + 0.05);
-      next[s] = t0 + dur - LOOP_XFADE;
+      next[s] = scheduleLoop(ctx, buf, gains[s], t0);
     }
   };
 
