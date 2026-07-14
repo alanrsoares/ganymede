@@ -13,12 +13,21 @@ const OUT = "dist";
 
 await $`rm -rf ${OUT}`;
 
+// Build label: the nearest tag, else the short commit (+`-dirty` if the tree has
+// uncommitted changes). Inlined as the `__BUILD__` global so the welcome screen
+// shows exactly what shipped instead of a hand-bumped package version.
+const build =
+  (
+    await $`git describe --tags --always --dirty`.nothrow().quiet().text()
+  ).trim() || "unknown";
+
 const result = await Bun.build({
   entrypoints: ["src/index.html"],
   outdir: OUT,
   plugins: [tailwind],
   minify: true,
   sourcemap: "linked",
+  define: { __BUILD__: JSON.stringify(build) },
 });
 
 if (!result.success) {

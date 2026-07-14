@@ -160,6 +160,10 @@ const label = (text: string, extra: string) =>
 // it, the tagline/CTA just below, framing the star instead of covering it.
 const CORE_GAP = "clamp(96px,16vh,168px)";
 
+// Nearest git tag / commit, inlined by the prod bundler; "dev" under the dev
+// server (see scripts/build.ts + globals.d.ts).
+const BUILD_LABEL = `build ${typeof __BUILD__ === "string" ? __BUILD__ : "dev"}`;
+
 // Build the full overlay tree; returns the nodes the animator needs to drive.
 const buildOverlay = (onBegin: (mode: WelcomeMode) => void) => {
   const { el: mark, letters } = wordmark();
@@ -221,7 +225,7 @@ const buildOverlay = (onBegin: (mode: WelcomeMode) => void) => {
     },
     scrim,
     liveBadge(),
-    cornerTag("bottom:22px;left:24px", "build 0.1.0"),
+    cornerTag("bottom:22px;left:24px", BUILD_LABEL),
     cornerTag("bottom:22px;right:24px", "webgpu · typegpu"),
     topGroup,
     bottomGroup,
