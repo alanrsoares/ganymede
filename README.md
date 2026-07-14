@@ -12,7 +12,7 @@ gravity well — or take the stick and fly one ship through escalating waves.
 [![Bun](https://img.shields.io/badge/Bun-1.3-fbf0df?logo=bun&logoColor=black)](https://bun.com)
 [![WebGPU](https://img.shields.io/badge/WebGPU-enabled-005a9c)](https://caniuse.com/webgpu)
 
-<img src="src/assets/SpaceRage/PromoPic.png" alt="Ganymede gameplay" width="360" />
+<img src="docs/hero.png" alt="Ganymede — four AI fleets battling around the central gravity well" width="820" />
 
 </div>
 
@@ -69,6 +69,7 @@ bun install
 bun run web        # dev server with HMR at http://localhost:3000
 bun test           # sim characterization tests
 bun run check      # biome lint + tsc typecheck
+bun run hero       # recapture docs/hero.png from a live Autobattle (needs the dev server)
 ```
 
 ## Build & deploy
