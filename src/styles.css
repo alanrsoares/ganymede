@@ -81,9 +81,14 @@ body {
     left: max(0.75rem, env(safe-area-inset-left));
     top: max(0.75rem, env(safe-area-inset-top));
   }
-  /* Drop the scoreboard below the (multi-line) status readout so it clears
-     both the opener and the status. */
+  /* On a phone the scoreboard sits at the right, under the status readout it
+     belongs with — not centered over the play area. */
   .hud-score {
+    left: auto;
+    right: max(0.5rem, env(safe-area-inset-right));
+    /* Tailwind v4 sets `-translate-x-1/2` via the `translate` property, so this
+       (not `transform`) is what cancels the desktop centering. */
+    translate: none;
     top: calc(env(safe-area-inset-top) + 5.75rem);
   }
   /* Bottom clusters clear the home-indicator. */

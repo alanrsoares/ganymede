@@ -258,58 +258,92 @@ const buildErrorBox = (error: State<string>) =>
     () => error.val,
   );
 
-// A single scoreboard row: team dot + name + living-ship count, plus score
-// (and a floating "+N" bump when it just scored).
+type Team = { name: string; css: string };
+
+// Team-tinted fill that grows with the team's share of the leader's score, so
+// the row itself reads as a bar — relative standings without a separate gauge.
+const rowFill = (css: string, frac: number) =>
+  div({
+    class: "pointer-events-none absolute inset-y-0 left-0 rounded",
+    style: `width:${(frac * 100).toFixed(1)}%;background:linear-gradient(90deg,${css}33,${css}08)`,
+  });
+
+// Left cluster: rank · dot · name · living-ship count (count turns red at 0).
+const rowLeft = (t: Team, rank: number, n: number, dead: boolean) =>
+  span(
+    { class: "relative flex items-center gap-1.5" },
+    span(
+      { class: "w-3 text-right text-[9px] tabular-nums opacity-40" },
+      String(rank + 1),
+    ),
+    span({
+      class: "inline-block h-2.5 w-2.5 rounded-full",
+      style: `background:${t.css};box-shadow:0 0 6px ${t.css}`,
+    }),
+    span(
+      { class: "uppercase tracking-[0.12em]", style: `color:${t.css}` },
+      t.name,
+    ),
+    span(
+      {
+        class: `tabular-nums text-[9px] ${dead ? "text-[#ff8a8a] opacity-90" : "opacity-55"}`,
+      },
+      `×${n}`,
+    ),
+  );
+
+// Right cluster: floating "+N" bump when a team just scored, plus the total
+// (leader's total is brighter and larger).
+const rowRight = (val: number, bump: number | undefined, leader: boolean) =>
+  span(
+    { class: "relative flex items-center gap-1.5" },
+    bump
+      ? span(
+          {
+            class: "tabular-nums font-bold text-[#7fe6a2]",
+            style:
+              "animation:scorePop 1s ease-out forwards;text-shadow:0 0 6px #2c7d5f",
+          },
+          `+${bump}`,
+        )
+      : null,
+    span(
+      {
+        class: `tabular-nums font-bold ${leader ? "text-[13px] text-[#ffe9a6] [text-shadow:0_0_8px_#ffb83f66]" : "text-[#ffe08a]"}`,
+      },
+      String(val),
+    ),
+  );
+
+// A single scoreboard row, doubling as a relative-score bar. Leader (rank 0
+// with points) gets a colour edge accent; eliminated teams (0 ships) dim out.
 const buildTeamRow = (
-  t: { name: string; css: string },
+  t: Team,
   s: Readonly<Record<string, number>>,
   b: Readonly<Record<string, number>>,
   c: Readonly<Record<string, number>>,
+  rank: number,
+  maxScore: number,
 ) => {
   const n = c[t.name] ?? 0;
+  const val = s[t.name] ?? 0;
+  const dead = n === 0;
+  const leader = rank === 0 && val > 0;
   return div(
-    { class: "flex items-center justify-between gap-4" },
-    span(
-      { class: "flex items-center gap-1.5" },
-      span({
-        class: "inline-block h-2 w-2 rounded-full",
-        style: `background:${t.css};box-shadow:0 0 6px ${t.css}`,
-      }),
-      span(
-        { class: "uppercase tracking-[0.12em]", style: `color:${t.css}` },
-        t.name,
-      ),
-      span(
-        {
-          class: `tabular-nums text-[9px] ${n === 0 ? "text-[#f0a0a0] opacity-70" : "opacity-55"}`,
-        },
-        `×${n}`,
-      ),
-    ),
-    span(
-      { class: "flex items-center gap-1.5" },
-      b[t.name]
-        ? span(
-            {
-              class: "tabular-nums font-bold text-[#7fe6a2]",
-              style:
-                "animation:scorePop 1s ease-out forwards;text-shadow:0 0 6px #2c7d5f",
-            },
-            `+${b[t.name]}`,
-          )
-        : null,
-      span(
-        { class: "tabular-nums font-bold text-[#ffe08a]" },
-        String(s[t.name] ?? 0),
-      ),
-    ),
+    {
+      class: `relative flex items-center justify-between gap-3 overflow-hidden rounded px-1.5 py-1 ${dead ? "opacity-40" : ""}`,
+      style: leader ? `box-shadow:inset 2px 0 0 ${t.css}` : "",
+    },
+    rowFill(t.css, maxScore > 0 ? val / maxScore : 0),
+    rowLeft(t, rank, n, dead),
+    rowRight(val, b[t.name], leader),
   );
 };
 
 // Per-team scoreboard rows, sorted by score (leader on top), scoped to the
 // active teams (first N — the match may run fewer than the full roster).
 const buildTeamRows = (
-  teams: readonly { name: string; css: string }[],
+  teams: readonly Team[],
   score: State<Readonly<Record<string, number>>>,
   bump: State<Readonly<Record<string, number>>>,
   counts: State<Readonly<Record<string, number>>>,
@@ -318,10 +352,11 @@ const buildTeamRows = (
   const s = score.val;
   const b = bump.val;
   const c = counts.val;
-  return teams
+  const ranked = teams
     .slice(0, activeTeamCount.val)
-    .sort((a, b2) => (s[b2.name] ?? 0) - (s[a.name] ?? 0))
-    .map((t) => buildTeamRow(t, s, b, c));
+    .sort((a, b2) => (s[b2.name] ?? 0) - (s[a.name] ?? 0));
+  const maxScore = ranked.reduce((m, t) => Math.max(m, s[t.name] ?? 0), 0);
+  return ranked.map((t, i) => buildTeamRow(t, s, b, c, i, maxScore));
 };
 
 const buildScoreBox = (
@@ -336,7 +371,7 @@ const buildScoreBox = (
   return div(
     {
       class:
-        "hud-score absolute left-1/2 top-3 min-w-[190px] -translate-x-1/2 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/70 px-3 py-2 font-mono text-[11px] [text-shadow:0_0_8px_#04070a] backdrop-blur-[3px]",
+        "hud-score absolute left-1/2 top-3 min-w-[216px] -translate-x-1/2 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/70 px-2.5 py-2 font-mono text-[11px] [text-shadow:0_0_8px_#04070a] backdrop-blur-[3px]",
     },
     div(
       {
@@ -353,8 +388,9 @@ const buildScoreBox = (
       button(
         {
           type: "button",
+          "aria-label": "Toggle scoreboard",
           class:
-            "cursor-pointer rounded border border-[#3fd8ff]/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#8fe6ff] transition-colors hover:bg-[#3fd8ff]/10",
+            "cursor-pointer rounded border border-[#3fd8ff]/30 px-2 py-1 text-[10px] leading-none uppercase tracking-[0.1em] text-[#8fe6ff] transition-colors hover:bg-[#3fd8ff]/10 [touch-action:manipulation]",
           "aria-expanded": () => String(scoreOpen.val),
           onclick: () => {
             scoreOpen.val = !scoreOpen.val;
@@ -366,7 +402,7 @@ const buildScoreBox = (
     () =>
       scoreOpen.val
         ? div(
-            { class: "flex flex-col gap-0.5" },
+            { class: "flex flex-col gap-1" },
             ...buildTeamRows(cfg.teams, score, bump, counts, activeTeamCount),
           )
         : div(),
