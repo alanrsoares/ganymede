@@ -128,7 +128,7 @@ const LOOP_XFADE = 2.5; // seconds to crossfade one track into the next
 const LOOKAHEAD = 0.4; // schedule the seam this far ahead of the playhead
 // How many variations each scene ships (`<scene>-<n>.ogg`, n = 1..count). The
 // runtime round-robins through them so a long stay in one scene keeps evolving.
-const VARIATIONS: Record<Scene, number> = { menu: 4, battle: 4, arcade: 4 };
+const VARIATIONS: Record<Scene, number> = { menu: 3, battle: 3, arcade: 3 };
 
 // Equal-power fade curves (cos/sin): summed across a crossfade they hold power
 // constant, so two decorrelated tracks meet with no dip — unlike a linear ramp.
@@ -176,19 +176,10 @@ const fadeOutVoice = (v: Voice, at: number, xf: number) => {
 
 // A scene's own gain (fed by the scene crossfade) with its variation buffers
 // loading in the background.
-const initSceneBus = (
-  ctx: AudioContext,
-  s: Scene,
-  out: GainNode,
-  bufs: Record<Scene, AudioBuffer[]>,
-): GainNode => {
+const makeSceneGain = (ctx: AudioContext, out: GainNode): GainNode => {
   const g = ctx.createGain();
   g.gain.value = 0;
   g.connect(out);
-  for (let i = 1; i <= VARIATIONS[s]; i++)
-    void fetchDecode(ctx, `${MUSIC_DIR}/${s}-${i}.ogg`)
-      .then((b) => bufs[s].push(b))
-      .catch(() => {}); // tolerate a missing variation
   return g;
 };
 
@@ -204,7 +195,19 @@ const createMusic = (ctx: AudioContext, out: GainNode) => {
   const idx = { menu: 0, battle: 0, arcade: 0 } as Record<Scene, number>;
   const voices = {} as Record<Scene, Voice | null>;
   let active: Scene | null = null;
-  for (const s of SCENES) gains[s] = initSceneBus(ctx, s, out, bufs);
+  for (const s of SCENES) gains[s] = makeSceneGain(ctx, out);
+
+  // Fetch a scene's variations on first use — most sessions never touch every
+  // scene, so eager-loading all three (now ~120s tracks) wastes bandwidth.
+  const loaded = new Set<Scene>();
+  const load = (s: Scene) => {
+    if (loaded.has(s)) return;
+    loaded.add(s);
+    for (let i = 1; i <= VARIATIONS[s]; i++)
+      void fetchDecode(ctx, `${MUSIC_DIR}/${s}-${i}.ogg`)
+        .then((b) => bufs[s].push(b))
+        .catch(() => {}); // tolerate a missing variation
+  };
 
   // Crossfade the active scene's current variation into the next one at `at`.
   const advance = (s: Scene, at: number) => {
@@ -217,6 +220,7 @@ const createMusic = (ctx: AudioContext, out: GainNode) => {
   };
 
   const setScene = (s: Scene) => {
+    load(s); // fetch this scene's tracks the first time we enter it
     if (active === s) return;
     active = s;
     const t = ctx.currentTime;
