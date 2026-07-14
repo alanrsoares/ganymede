@@ -267,6 +267,13 @@ export const weaponFor = (a: Archetype, level: number): WeaponProfile => {
 // wider volley, not a firehose (see fireCooldownFor).
 export const FIGHTER_CAPSTONE_FIRE_MULT = 1.4;
 
+// Arcade aim assist (Easy/Normal only): when a piloted shot's direction lands
+// within a narrow cone of a nearby enemy, bias the bolt toward it. Subtle — the
+// player still chooses the direction; this only forgives small misses.
+export const AIM_ASSIST_CONE_COS = Math.cos((15 * Math.PI) / 180); // ±15° cone
+export const AIM_ASSIST_BIAS = 0.5; // 0 = none, 1 = full snap onto the target
+export const AIM_ASSIST_RANGE = 130; // px; only assist toward enemies this close
+
 // Longest explosion variant — bursts live at least this long so none clip early.
 export const EXPLOSION_DURATION = Math.max(...EXPLOSION_CLIPS.map(durationOf));
 

@@ -2,6 +2,9 @@ import { normalize, wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
 import {
+  AIM_ASSIST_BIAS,
+  AIM_ASSIST_CONE_COS,
+  AIM_ASSIST_RANGE,
   ARC_CHAIN_FALLOFF,
   ARC_CHAIN_RANGE,
   ARC_DAMAGE,
@@ -207,6 +210,67 @@ const manualAim = (
     : { x: s.x + s.dx * 100, y: s.y + s.dy * 100 };
 };
 
+// Distance to `e` if it lies within the aim-assist cone of unit direction
+// (dx, dy) and in range, else null. Toroidal.
+const coneDist = (
+  s: Mutable<LightCycle>,
+  e: LightCycle,
+  dx: number,
+  dy: number,
+): number | null => {
+  const ex = wrapDelta(s.x, e.x, ARENA.w);
+  const ey = wrapDelta(s.y, e.y, ARENA.h);
+  const dist = Math.hypot(ex, ey);
+  if (dist < 1 || dist > AIM_ASSIST_RANGE) return null;
+  return (ex * dx + ey * dy) / dist >= AIM_ASSIST_CONE_COS ? dist : null;
+};
+
+// Nearest live enemy within the aim-assist cone of a unit direction (dx, dy).
+const assistCandidate = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  dx: number,
+  dy: number,
+): Mutable<LightCycle> | null => {
+  let best: Mutable<LightCycle> | null = null;
+  let bestDist = Infinity;
+  for (const e of ctx.moved) {
+    if (e.colorName === s.colorName || ctx.removed.has(e.id)) continue;
+    const dist = coneDist(s, e, dx, dy);
+    if (dist !== null && dist < bestDist) {
+      bestDist = dist;
+      best = e;
+    }
+  }
+  return best;
+};
+
+// Subtle arcade aim assist: if an enemy sits within a narrow cone of the shot,
+// bias the aim toward it (partial, not a lock). Toroidal-aware.
+const assistAim = (ctx: TickCtx, s: Mutable<LightCycle>, aim: Aim): Aim => {
+  const ax = wrapDelta(s.x, aim.x, ARENA.w);
+  const ay = wrapDelta(s.y, aim.y, ARENA.h);
+  const ad = Math.hypot(ax, ay) || 1;
+  const dx = ax / ad;
+  const dy = ay / ad;
+  const best = assistCandidate(ctx, s, dx, dy);
+  if (!best) return aim;
+  const tx = wrapDelta(s.x, best.x, ARENA.w);
+  const ty = wrapDelta(s.y, best.y, ARENA.h);
+  const td = Math.hypot(tx, ty) || 1;
+  const nx = dx + (tx / td - dx) * AIM_ASSIST_BIAS;
+  const ny = dy + (ty / td - dy) * AIM_ASSIST_BIAS;
+  return { x: s.x + nx * 100, y: s.y + ny * 100 };
+};
+
+// Final aim for a piloted shot: the steering-input direction, with Easy/Normal
+// arcade forgiving small misses toward nearby enemies.
+const pilotAim = (ctx: TickCtx, s: Mutable<LightCycle>): Aim => {
+  const aim = manualAim(s, ctx.world.controlKeys);
+  const diff = ctx.world.config.arcade?.difficulty;
+  return diff === "easy" || diff === "normal" ? assistAim(ctx, s, aim) : aim;
+};
+
 const fireWeapon = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
@@ -215,7 +279,7 @@ const fireWeapon = (
 ): number => {
   if (s.id === ctx.world.controlledShipId) {
     if (ctx.world.controlKeys.space && s.fuel > 0 && s.fireCooldown <= 0) {
-      const aim = manualAim(s, ctx.world.controlKeys);
+      const aim = pilotAim(ctx, s);
       const wp = weaponFor(s.archetype, s.level);
       const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp);
       s.fireCooldown = applyFireCadence(s, wp);
