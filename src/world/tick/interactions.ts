@@ -192,6 +192,21 @@ const applyFireCadence = (
 };
 
 /** Fire at the nearest enemy ship in range, else strafe the nearest alive enemy base. */
+// Where a piloted ship shoots: along the live steering input, so holding two
+// direction keys fires a clean diagonal instead of chasing the momentum-lagged
+// heading. Coasting (no keys) falls back to the heading, so it still fires
+// forward when you let go.
+const manualAim = (
+  s: LightCycle,
+  keys: { left: boolean; right: boolean; up: boolean; down: boolean },
+): Aim => {
+  const ix = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+  const iy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+  return ix || iy
+    ? { x: s.x + ix * 100, y: s.y + iy * 100 }
+    : { x: s.x + s.dx * 100, y: s.y + s.dy * 100 };
+};
+
 const fireWeapon = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
@@ -200,7 +215,7 @@ const fireWeapon = (
 ): number => {
   if (s.id === ctx.world.controlledShipId) {
     if (ctx.world.controlKeys.space && s.fuel > 0 && s.fireCooldown <= 0) {
-      const aim = { x: s.x + s.dx * 100, y: s.y + s.dy * 100 };
+      const aim = manualAim(s, ctx.world.controlKeys);
       const wp = weaponFor(s.archetype, s.level);
       const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp);
       s.fireCooldown = applyFireCadence(s, wp);
