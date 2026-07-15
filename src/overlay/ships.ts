@@ -91,31 +91,83 @@ function drawShipShadow(
   );
 }
 
-// Exhaust flare behind the nose (drawn first, under the body). Offset by
-// the *rendered* hull angle — which eases behind the heading during a turn
-// — not the raw heading (dx/dy), so the tail stays pinned to the ship's
-// rear instead of swinging off it mid-turn. Dead tank = dead engine: the
-// exhaust cuts out (ship is coasting, defenseless).
+// Engine plume behind the nose (drawn under the body). Three layers: the
+// textured exhaust sprite for the ragged flame, a hot solid core disc punching
+// out of the nozzle, and — under boost — an elongated blue-white afterburner
+// cone of Mach-diamond shock puffs marching down the thrust axis. Length,
+// brightness and a fast per-ship flicker all scale with real thrust, so a ship
+// visibly lights up as it accelerates. Offset by the *rendered* hull angle
+// (which eases behind the heading through a turn), so the plume stays pinned to
+// the rear instead of swinging off it. Dead tank = dead engine: plume cuts out.
 function drawShipExhaust(
   push: PushFn,
   cycle: LightCycle,
   v: ShipVisual,
   cellPx: number,
   cellPy: number,
+  now: number,
   exhaustL: number,
 ) {
   if (cycle.fuel <= 0) return;
+  const speed = Math.hypot(cycle.vx, cycle.vy);
+  const drive = Math.max(0.35, Math.min(1, speed / 3));
+  const boosting = cycle.boostTime > 0;
+  const boost = boosting ? 1.8 : 1;
+  // Fast engine-flame flicker (deterministic per ship) — plume never sits still.
+  const flick =
+    1 +
+    0.18 * Math.sin(now * 0.05 + cycle.id * 2.3) +
+    0.08 * Math.sin(now * 0.11 + cycle.id);
   const exOff = v.size * 0.9;
+  const nx = -v.hx; // unit vector out the tail
+  const ny = -v.hy;
+  const nozx = v.scx + nx * exOff * cellPx;
+  const nozy = v.scy + ny * exOff * cellPy;
+
+  // Outer ragged flame (textured), stretched along thrust by drive × boost.
+  const flame = v.size * 0.7 * drive * boost * flick;
   push(
-    v.scx - v.hx * exOff * cellPx,
-    v.scy - v.hy * exOff * cellPy,
-    v.size * 0.7 * cellPx,
-    v.size * 0.7 * cellPy,
+    nozx,
+    nozy,
+    flame * cellPx,
+    flame * cellPy,
     cycle.angle,
     SHAPE.sprite,
-    [1.0, 0.75, 0.35, 0.9],
+    [1.0, 0.72, 0.32, 0.55 + 0.4 * drive],
     exhaustL,
   );
+
+  // Hot core disc at the nozzle — white-gold punch (blue-white under boost).
+  const core = v.size * 0.34 * (0.85 + 0.3 * drive) * flick;
+  push(
+    nozx,
+    nozy,
+    core * cellPx,
+    core * cellPy,
+    0,
+    SHAPE.solid,
+    boosting ? [0.75, 0.9, 1.0, 0.95] : [1.0, 0.95, 0.7, 0.9],
+  );
+
+  if (!boosting) return;
+
+  // Afterburner: Mach-diamond shock puffs marching down the thrust axis,
+  // shrinking + fading toward the tip.
+  const DIAMONDS = 4;
+  for (let k = 1; k <= DIAMONDS; k++) {
+    const t = k / DIAMONDS;
+    const back = exOff + t * v.size * 3.2;
+    const sz = v.size * 0.3 * (1 - t * 0.7) * flick;
+    push(
+      v.scx + nx * back * cellPx,
+      v.scy + ny * back * cellPy,
+      sz * cellPx,
+      sz * cellPy,
+      0,
+      SHAPE.solid,
+      [0.6, 0.8, 1.0, 0.55 * (1 - t)],
+    );
+  }
 }
 
 // Comet tail: a bright coma just behind the engine that stretches into a long,
@@ -559,7 +611,7 @@ function drawShip(
   const v = computeShipVisual(cycle, cellPx, cellPy, now, role);
   drawShipShadow(push, v, cellPx, cellPy);
   drawShipTrail(push, cycle, v, cellPx, cellPy, now);
-  drawShipExhaust(push, cycle, v, cellPx, cellPy, exhaustL);
+  drawShipExhaust(push, cycle, v, cellPx, cellPy, now, exhaustL);
   drawShipDistressSmoke(push, cycle, v, cellPx, cellPy, now);
   const nextShieldCount = drawShipShield(
     shieldInstances,
