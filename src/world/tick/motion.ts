@@ -29,9 +29,11 @@ import {
   type Mutable,
   type Pickup,
   type Projectile,
+  type Whip,
   type World,
 } from "../types";
 import type { TickCtx } from "./context";
+import { advanceWhips } from "./whips";
 
 export interface MotionState {
   rocks: Mutable<Asteroid>[];
@@ -40,10 +42,12 @@ export interface MotionState {
   mines: Mutable<Mine>[];
   bullets: Mutable<Bullet>[];
   missiles: Mutable<Missile>[];
+  whips: Mutable<Whip>[];
   projId: number;
   mineId: number;
   bulletId: number;
   missileId: number;
+  whipId: number;
 }
 
 type BaseHp = Readonly<Record<string, number>>;
@@ -236,9 +240,11 @@ export const advanceMotion = (ctx: TickCtx): MotionState => {
     mines: advanceMines(world, steps),
     bullets: advanceBullets(world, steps),
     missiles: advanceMissiles(world, shipById, steps),
+    whips: advanceWhips(world, shipById, steps),
     projId: world.projectiles.nextId,
     mineId: world.mines.nextId,
     bulletId: world.bullets.nextId,
     missileId: world.missiles.nextId,
+    whipId: world.whips.nextId,
   };
 };

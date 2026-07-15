@@ -7,6 +7,7 @@
 
 import van, { type State } from "vanjs-core";
 import type { LightCycle } from "./world";
+import { WHIP_ENABLED } from "./world/factory";
 
 const { div, button, span } = van.tags;
 
@@ -33,6 +34,7 @@ export const isTouchPrimary = (): boolean =>
   matchMedia("(hover: none) and (pointer: coarse)").matches;
 
 const ABILITIES: readonly { id: number; label: string; icon: string }[] = [
+  { id: 8, label: "Whip", icon: "🐙" },
   { id: 2, label: "Mine", icon: "💣" },
   { id: 3, label: "Missile", icon: "🚀" },
   { id: 4, label: "Boost", icon: "⚡" },
@@ -190,7 +192,9 @@ export const mountMobileControls = (opts: MobileControlsOpts) => {
 
   const abilityPad = div(
     { class: "grid grid-cols-3 gap-1.5" },
-    ...ABILITIES.map((a) => abilityButton(a, onAction)),
+    ...ABILITIES.filter((a) => a.id !== 8 || WHIP_ENABLED).map((a) =>
+      abilityButton(a, onAction),
+    ),
   );
   const rightCluster = div(
     { class: "flex flex-col items-end gap-2" },

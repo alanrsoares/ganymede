@@ -109,6 +109,9 @@ const retainPools = (
     ),
     nextId: motion.missileId,
   },
+  // Whips expire / orphan-drop inside advanceWhips, so survivors pass straight
+  // through — a lash never destroys the whip itself, so no removal set.
+  whips: { items: motion.whips, nextId: motion.whipId },
 });
 
 /** Commit entity pools, bursts, respawns, and match outcome after all phases. */

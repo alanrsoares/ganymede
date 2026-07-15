@@ -17,6 +17,7 @@ import {
   eliminateBaselessTeams,
   resolveShipCollisions,
 } from "./ship-collisions";
+import { resolveWhips } from "./whips";
 
 /** Advance the entity world by `steps` generations; returns the next world. */
 export const tick = (world: World, steps: number, now: number): World => {
@@ -31,6 +32,7 @@ export const tick = (world: World, steps: number, now: number): World => {
   resolveInteractions(ctx, motion, interactions);
   resolveFieldEffects(ctx, motion, interactions, hazards);
   resolveProjectiles(ctx, motion, hazards, projectiles);
+  resolveWhips(ctx, motion.whips);
   eliminateBaselessTeams(ctx);
 
   const next = finalizeTick(ctx, motion, hazards, interactions, projectiles);

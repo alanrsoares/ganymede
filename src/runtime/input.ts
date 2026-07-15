@@ -14,7 +14,7 @@ import {
   setGridBounds,
   type World,
 } from "../world";
-import { shipRadius } from "../world/factory";
+import { shipRadius, WHIP_ENABLED } from "../world/factory";
 
 type PressedKeys = {
   up: boolean;
@@ -103,11 +103,17 @@ const triggerManualAction = (
   getWorld: () => World,
   dispatch: (msg: Msg) => void,
 ): boolean => {
-  const isAction = /^[1-7]$/.test(key);
-  if (!isAction) return false;
+  // 1-7 = fire/mine/missile/buffs; q = the whip special (action 8), gated off
+  // while the whip is unplugged from gameplay.
+  const actionId = /^[1-7]$/.test(key)
+    ? Number.parseInt(key, 10)
+    : key === "q" && WHIP_ENABLED
+      ? 8
+      : 0;
+  if (actionId === 0) return false;
   const world = getWorld();
   if (world.controlledShipId !== null) {
-    dispatch({ kind: "action", actionId: Number.parseInt(key, 10) });
+    dispatch({ kind: "action", actionId });
     return true;
   }
   return false;

@@ -234,6 +234,32 @@ export interface Missile extends Entity {
   readonly blast?: number; // if set, contact detonates as AoE within this cell radius
 }
 
+// One link node of a verlet whip: its current position plus where it was last
+// gen (the integrator derives velocity from that gap). Grid-cell space.
+export interface WhipNode {
+  readonly x: number;
+  readonly y: number;
+  readonly px: number;
+  readonly py: number;
+}
+
+// Pilot special: a chain of linked nodes anchored to the ship's nose that whips
+// out toward a target under verlet + distance-constraint physics, lashing every
+// enemy a node sweeps across (once each), then retracts and expires. Persistent
+// across ticks — lives in its own World pool like bullets/missiles.
+export interface Whip extends Entity {
+  readonly owner: number; // anchor ship id (node[0] pinned to its nose)
+  readonly team: string; // owner's team (never lashes its own)
+  readonly rgb: Rgb;
+  readonly nodes: readonly WhipNode[]; // node[0] = anchor, last = tip
+  readonly life: number; // gens remaining (lash-out then retract)
+  readonly maxLife: number; // initial life, for the extend→retract envelope
+  readonly damage: number; // pierce dealt per struck enemy
+  readonly restLen: number; // per-segment rest length (cells)
+  readonly targetId: number; // enemy the tip lashes toward (0 = aim straight)
+  readonly hits: readonly number[]; // enemy ids already lashed (one hit each)
+}
+
 // A rock drifting through space. Heavy hazard: ships bounce off and take chip
 // damage. `curl` bends its velocity each gen for a lazy swirl; `spinRate`
 // tumbles the sprite; `variant` picks its texture.
@@ -423,6 +449,7 @@ export interface World {
   readonly mines: EntityList<Mine>;
   readonly bullets: EntityList<Bullet>;
   readonly missiles: EntityList<Missile>;
+  readonly whips: EntityList<Whip>; // pilot-special verlet lash chains
   readonly seed: Seed;
   readonly score: Readonly<Record<string, number>>; // points per team name
   readonly baseHp: Readonly<Record<string, number>>; // per-team base integrity

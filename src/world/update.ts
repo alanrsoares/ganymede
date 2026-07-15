@@ -12,12 +12,16 @@ import {
   spawnEmpMissile,
   spawnMissile,
   speedForLevel,
+  WHIP_DAMAGE,
+  WHIP_FUEL_COST,
+  WHIP_REACH,
   weaponFor,
   wrap,
 } from "./factory";
 import { initArcadeWorld, initWorld, spawnShip } from "./init";
 import { cycleLock } from "./lock";
 import { tick } from "./tick";
+import { spawnWhip } from "./tick/whips";
 import {
   ARENA,
   BURST_MUZZLE,
@@ -32,6 +36,7 @@ import {
   type RallyBeacon,
   setOrbitPhase,
   TEAMS,
+  type Whip,
   type World,
 } from "./types";
 
@@ -272,6 +277,46 @@ function handleMissile(
   return missileId;
 }
 
+// Nearest live enemy within `range` (naive, matches findNearestMissileTarget).
+function findNearestEnemy(
+  s: LightCycle,
+  ships: readonly LightCycle[],
+  range: number,
+): LightCycle | null {
+  let best: LightCycle | null = null;
+  let bestD2 = range * range;
+  for (const other of ships) {
+    if (other.id === s.id || other.colorName === s.colorName) continue;
+    const dx = other.x - s.x;
+    const dy = other.y - s.y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = other;
+    }
+  }
+  return best;
+}
+
+// Pilot special: crack a verlet whip toward the nearest enemy. One whip per
+// ship at a time (its short life is the cooldown) and it costs fuel. Returns
+// the next whip id (unchanged if it didn't fire).
+function handleWhip(
+  s: LightCycle,
+  nextShips: LightCycle[],
+  idx: number,
+  nextWhips: Whip[],
+  whipId: number,
+  ships: readonly LightCycle[],
+  alreadyActive: boolean,
+): number {
+  if (alreadyActive || s.fuel < WHIP_FUEL_COST) return whipId;
+  const target = findNearestEnemy(s, ships, WHIP_REACH);
+  nextWhips.push(spawnWhip(whipId, s, target, WHIP_DAMAGE));
+  nextShips[idx] = { ...s, fuel: Math.max(0, s.fuel - WHIP_FUEL_COST) };
+  return whipId + 1;
+}
+
 function handleBuffs(
   s: LightCycle,
   nextShips: LightCycle[],
@@ -306,6 +351,71 @@ function handleBuffs(
 }
 
 /** Execute a manually-triggered quick action on the user-controlled ship. */
+// Mutable working copies of every pool a manual action can touch, plus their id
+// cursors. Handlers mutate this in place; handleUserAction freezes it back.
+type ActionPools = {
+  ships: LightCycle[];
+  bullets: Bullet[];
+  missiles: Missile[];
+  mines: Mine[];
+  bursts: Burst[];
+  whips: Whip[];
+  idBullets: number;
+  idMissiles: number;
+  idMines: number;
+  idBursts: number;
+  idWhips: number;
+};
+
+/** Route one manual action to its handler, mutating `p` in place. */
+function dispatchAction(
+  world: World,
+  s: LightCycle,
+  idx: number,
+  actionId: number,
+  p: ActionPools,
+): void {
+  switch (actionId) {
+    case 1:
+      [p.idBullets, p.idBursts] = handleFire(
+        s,
+        p.ships,
+        idx,
+        p.bullets,
+        p.bursts,
+        p.idBullets,
+        p.idBursts,
+      );
+      break;
+    case 2:
+      handleMine(s, p.ships, idx, p.mines, p.idMines++);
+      break;
+    case 3:
+      p.idMissiles = handleMissile(
+        s,
+        p.ships,
+        idx,
+        p.missiles,
+        p.idMissiles,
+        world.ships.items,
+      );
+      break;
+    case 8:
+      p.idWhips = handleWhip(
+        s,
+        p.ships,
+        idx,
+        p.whips,
+        p.idWhips,
+        world.ships.items,
+        world.whips.items.some((w) => w.owner === s.id),
+      );
+      break;
+    default:
+      handleBuffs(s, p.ships, idx, actionId);
+  }
+}
+
 function handleUserAction(world: World, actionId: number): World {
   if (world.controlledShipId === null) return world;
   const ships = world.ships.items;
@@ -314,53 +424,29 @@ function handleUserAction(world: World, actionId: number): World {
   const s = ships[idx];
   if (s.fuel <= 0) return world;
 
-  const nextShips = [...ships];
-  const nextBullets = [...world.bullets.items];
-  const nextMissiles = [...world.missiles.items];
-  const nextMines = [...world.mines.items];
-  const nextBursts = [...world.bursts.items];
-
-  let nextIdBullets = world.bullets.nextId;
-  let nextIdMissiles = world.missiles.nextId;
-  let nextIdMines = world.mines.nextId;
-  let nextIdBursts = world.bursts.nextId;
-
-  if (actionId === 1) {
-    [nextIdBullets, nextIdBursts] = handleFire(
-      s,
-      nextShips,
-      idx,
-      nextBullets,
-      nextBursts,
-      nextIdBullets,
-      nextIdBursts,
-    );
-  } else if (actionId === 2) {
-    handleMine(s, nextShips, idx, nextMines, nextIdMines++);
-  } else if (actionId === 3) {
-    nextIdMissiles = handleMissile(
-      s,
-      nextShips,
-      idx,
-      nextMissiles,
-      nextIdMissiles,
-      ships,
-    );
-  } else {
-    handleBuffs(s, nextShips, idx, actionId);
-  }
+  const p: ActionPools = {
+    ships: [...ships],
+    bullets: [...world.bullets.items],
+    missiles: [...world.missiles.items],
+    mines: [...world.mines.items],
+    bursts: [...world.bursts.items],
+    whips: [...world.whips.items],
+    idBullets: world.bullets.nextId,
+    idMissiles: world.missiles.nextId,
+    idMines: world.mines.nextId,
+    idBursts: world.bursts.nextId,
+    idWhips: world.whips.nextId,
+  };
+  dispatchAction(world, s, idx, actionId, p);
 
   return {
     ...world,
-    ships: { ...world.ships, items: nextShips },
-    bullets: { ...world.bullets, items: nextBullets, nextId: nextIdBullets },
-    missiles: {
-      ...world.missiles,
-      items: nextMissiles,
-      nextId: nextIdMissiles,
-    },
-    mines: { ...world.mines, items: nextMines, nextId: nextIdMines },
-    bursts: { ...world.bursts, items: nextBursts, nextId: nextIdBursts },
+    ships: { ...world.ships, items: p.ships },
+    bullets: { ...world.bullets, items: p.bullets, nextId: p.idBullets },
+    missiles: { ...world.missiles, items: p.missiles, nextId: p.idMissiles },
+    mines: { ...world.mines, items: p.mines, nextId: p.idMines },
+    bursts: { ...world.bursts, items: p.bursts, nextId: p.idBursts },
+    whips: { ...world.whips, items: p.whips, nextId: p.idWhips },
   };
 }
 
