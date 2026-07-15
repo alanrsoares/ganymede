@@ -6,6 +6,12 @@
 import { nextRange } from "../../engine/rng";
 import { activeTeams, rollShip } from "../factory";
 import {
+  HANDICAP_ADAPT_MAX,
+  HANDICAP_CLEAN_STEP,
+  HANDICAP_DEATH_STEP,
+  SPAWN_INVULN_GENS,
+} from "../tuning";
+import {
   type ArcadeConfig,
   type ArcadeState,
   baseByName,
@@ -28,6 +34,7 @@ function spawnAt(
   color: string,
   lvl: number,
   archetype?: LightCycle["archetype"],
+  invuln = 0,
 ): { world: World; id: number } {
   const id = world.ships.nextId;
   const [ship, s1] = rollShip(
@@ -43,7 +50,9 @@ function spawnAt(
   const base = baseByName.get(color);
   const [ox, s2] = nextRange(s1, -SPAWN_SPREAD, SPAWN_SPREAD);
   const [oy, seed] = nextRange(s2, -SPAWN_SPREAD, SPAWN_SPREAD);
-  const placed = base ? { ...ship, x: base.x + ox, y: base.y + oy } : ship;
+  const placed = base
+    ? { ...ship, x: base.x + ox, y: base.y + oy, invulnTime: invuln }
+    : { ...ship, invulnTime: invuln };
   return {
     world: {
       ...world,
@@ -71,13 +80,14 @@ function spawnWave(
   return next;
 }
 
-/** Respawn the player at `lvl` at their base and hand back control. */
+/** Respawn the player at `lvl` at their base (with i-frames) and hand control. */
 function respawnPlayer(world: World, cfg: ArcadeConfig, lvl: number): World {
   const { world: next, id } = spawnAt(
     world,
     cfg.playerTeam,
     lvl,
     cfg.playerArchetype,
+    SPAWN_INVULN_GENS,
   );
   return { ...next, controlledShipId: id };
 }
@@ -91,10 +101,12 @@ const playerAlive = (world: World): boolean =>
 function loseLife(world: World, a: ArcadeState, cfg: ArcadeConfig): World {
   const lives = a.lives - 1;
   if (lives <= 0) return { ...world, arcade: { ...a, lives: 0, over: true } };
-  // Respawn at the rank the pilot had reached — dying costs a life, not progress.
+  // Respawn at the rank the pilot had reached — dying costs a life, not progress —
+  // and nudge the adaptive handicap up (and mark the wave wounded).
+  const adapt = Math.min(HANDICAP_ADAPT_MAX, a.adapt + HANDICAP_DEATH_STEP);
   return {
     ...respawnPlayer(world, cfg, a.playerLevel),
-    arcade: { ...a, lives },
+    arcade: { ...a, lives, adapt, woundedWave: true },
   };
 }
 
@@ -115,10 +127,21 @@ function advanceWave(
   }
   const kills = a.kills + Math.max(0, a.waveRemaining - enemyCount);
   if (enemyCount === 0 && a.waveRemaining > 0) {
-    // Wave cleared → advance; next tick musters the harder wave.
+    // Wave cleared → advance; next tick musters the harder wave. A clean clear
+    // (no death this wave) eases the adaptive handicap back toward the base.
+    const adapt = a.woundedWave
+      ? a.adapt
+      : Math.max(0, a.adapt - HANDICAP_CLEAN_STEP);
     return {
       ...world,
-      arcade: { ...a, wave: a.wave + 1, waveRemaining: 0, kills },
+      arcade: {
+        ...a,
+        wave: a.wave + 1,
+        waveRemaining: 0,
+        kills,
+        adapt,
+        woundedWave: false,
+      },
     };
   }
   return { ...world, arcade: { ...a, waveRemaining: enemyCount, kills } };

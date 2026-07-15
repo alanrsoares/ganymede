@@ -94,6 +94,11 @@ export interface ArcadeState {
   // Last-known pilot rank, stashed while alive so a respawn keeps it (dying
   // shouldn't wipe progress); the dead ship is gone by the time we respawn.
   readonly playerLevel: number;
+  // Adaptive half of the moving handicap: nudged up on death, down on a clean
+  // wave clear (see arcadeHandicap). `woundedWave` tracks whether the pilot has
+  // died since the current wave began (so a clean clear can ease difficulty).
+  readonly adapt: number;
+  readonly woundedWave: boolean;
 }
 
 // Ship class archetypes. Each is a distinct hull silhouette + stat path + weapon

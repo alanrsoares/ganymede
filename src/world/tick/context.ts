@@ -2,6 +2,7 @@ import type { Seed } from "~/engine/rng";
 import { nextInt } from "~/engine/rng";
 import {
   ARCHETYPE_MODS,
+  arcadeHandicap,
   armorFor,
   BASE_RAID_XP,
   hurtShip,
@@ -139,6 +140,22 @@ function awardCombatXp(
 // the pierce/melee armor split lives in exactly one place. When `attackerId` is
 // given (a ship dealt it — bolt/missile/blast/ram/aura), the attacker banks
 // combat XP for the damage it landed (see awardCombatXp).
+// Arcade moving handicap on one exchange: the pilot takes less and hits harder
+// by the live ratio (wave-scaled base + adaptive offset). Neutral off-arcade.
+const withArcadeHandicap = (
+  ctx: TickCtx,
+  victim: Mutable<LightCycle>,
+  attackerId: number | undefined,
+  dealt: number,
+): number => {
+  const arc = ctx.world.arcade;
+  if (!arc) return dealt;
+  const h = arcadeHandicap(arc.wave, arc.adapt);
+  if (victim.id === ctx.world.controlledShipId) return dealt / h;
+  if (attackerId === ctx.world.controlledShipId) return dealt * h;
+  return dealt;
+};
+
 export function hit(
   ctx: TickCtx,
   s: Mutable<LightCycle>,
@@ -147,10 +164,10 @@ export function hit(
   attackerId?: number,
 ) {
   if (s.invulnTime > 0) return;
+  let dealt = withArcadeHandicap(ctx, s, attackerId, amt);
   // Counter-web for ranged hits (T1/T2): if the shooter is known and this is
   // pierce damage, bolts/missiles hit harder against the class it counters, and
   // armor-shredder classes (scout) skip a slice of the target's pierce armor.
-  let dealt = amt;
   let armor = armorFor(s.archetype, type);
   if (type === "pierce" && attackerId !== undefined) {
     const shooter = ctx.moved.find(

@@ -13,6 +13,7 @@ import {
   rollShip,
   zeroScores,
 } from "./factory";
+import { SPAWN_INVULN_GENS } from "./tuning";
 import {
   type ArcadeConfig,
   type ArcadeState,
@@ -22,6 +23,10 @@ import {
   setOrbitPhase,
   type World,
 } from "./types";
+
+// The arcade pilot starts a rank up (3 HP, not the 2-HP L1 glass) so the
+// opening wave isn't a two-hit death; respawns keep whatever rank they reached.
+const PILOT_START_LEVEL = 2;
 
 // Fresh arcade run bookkeeping (lives/wave/phase) for a new pilot run.
 const initArcadeRun = (cfg: ArcadeConfig): ArcadeState => ({
@@ -33,7 +38,9 @@ const initArcadeRun = (cfg: ArcadeConfig): ArcadeState => ({
   kills: 0,
   startAge: 0,
   over: false,
-  playerLevel: 1,
+  playerLevel: PILOT_START_LEVEL,
+  adapt: 0,
+  woundedWave: false,
 });
 
 // Half-width of the square each fresh ship spawns in, centred on its team base
@@ -120,13 +127,17 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
     playerId,
     0,
     0,
-    1,
+    PILOT_START_LEVEL,
     cfg.playerTeam,
     cfg.playerArchetype,
     teams,
   );
   const base = baseByName.get(cfg.playerTeam);
-  const placed = base ? { ...player, x: base.x, y: base.y } : player;
+  const placed = {
+    ...player,
+    invulnTime: SPAWN_INVULN_GENS, // spawn-in mercy window
+    ...(base ? { x: base.x, y: base.y } : {}),
+  };
   const [rocks, s2] = rollMany(NUM_ASTEROIDS, s1, (s, i) =>
     rollAsteroid(s, i + 1),
   );

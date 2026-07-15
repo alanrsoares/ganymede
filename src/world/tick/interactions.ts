@@ -61,6 +61,7 @@ import {
   OVERCHARGE_MULT,
   PAD_HEAL,
   PICKUP_RADIUS,
+  PILOT_FIRE_MULT,
   PORTAL_COOLDOWN,
   PORTAL_HORIZON,
   PORTAL_PULL,
@@ -291,11 +292,13 @@ const fireWeapon = (
   bulletId: number,
 ): number => {
   if (s.id === ctx.world.controlledShipId) {
-    if (ctx.world.controlKeys.space && s.fuel > 0 && s.fireCooldown <= 0) {
+    // Pilot's primary blaster is free (fuel gates only abilities) and snappier
+    // than the base cadence, so waves clear faster / you're exposed less.
+    if (ctx.world.controlKeys.space && s.fireCooldown <= 0) {
       const aim = pilotAim(ctx, s);
       const wp = weaponFor(s.archetype, s.level);
       const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp);
-      s.fireCooldown = applyFireCadence(s, wp);
+      s.fireCooldown = applyFireCadence(s, wp) * PILOT_FIRE_MULT;
       return nextId;
     }
     return bulletId;

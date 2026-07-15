@@ -274,6 +274,32 @@ export const AIM_ASSIST_CONE_COS = Math.cos((22 * Math.PI) / 180); // ±22° con
 export const AIM_ASSIST_BIAS = 0.66; // 0 = none, 1 = full snap onto the target
 export const AIM_ASSIST_RANGE = 180; // px; only assist toward enemies this close
 
+// --- Arcade pilot aids ------------------------------------------------------
+export const SPAWN_INVULN_GENS = 90; // ~2s of i-frames on (re)spawn
+export const PILOT_FIRE_MULT = 0.7; // the pilot's blaster is snappier than base
+
+// Arcade "moving handicap": a player-vs-enemy damage ratio (≥1 favours the
+// pilot), applied in hit(). A wave-scaled base compensates the enemy level ramp
+// so you never fall hopelessly behind; an adaptive offset (see arcade.ts) rubber-
+// bands to the run — up when you die, back down on a clean wave clear.
+const HANDICAP_WAVE_STEP = 0.05; // + per wave of base compensation
+const HANDICAP_WAVE_CAP = 8; // base stops climbing past this wave
+export const HANDICAP_MAX = 1.8;
+export const HANDICAP_DEATH_STEP = 0.12; // adapt bump when the pilot dies
+export const HANDICAP_CLEAN_STEP = 0.07; // adapt ease on a no-death wave clear
+export const HANDICAP_ADAPT_MAX = 0.4; // clamp on the adaptive offset
+export const arcadeHandicap = (wave: number, adapt: number): number =>
+  Math.min(
+    HANDICAP_MAX,
+    Math.max(
+      1,
+      1 +
+        HANDICAP_WAVE_STEP *
+          Math.min(Math.max(0, wave - 1), HANDICAP_WAVE_CAP) +
+        adapt,
+    ),
+  );
+
 // Longest explosion variant — bursts live at least this long so none clip early.
 export const EXPLOSION_DURATION = Math.max(...EXPLOSION_CLIPS.map(durationOf));
 
