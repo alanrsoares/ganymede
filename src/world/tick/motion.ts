@@ -11,6 +11,8 @@ import {
   advanceMissile,
   BOOST_MULT,
   cruiseFor,
+  DRONE_ORBIT_RADIUS,
+  DRONE_ORBIT_SPEED,
   ENGAGE_RADIUS,
   FUEL_BURN,
   FUEL_DRIFT_SPEED,
@@ -18,6 +20,7 @@ import {
   fuelCarriers,
   regenForLevel,
   SPEED_EASE_LVL,
+  shipRadius,
   TURN_EASE_LVL,
   wrap,
 } from "../factory";
@@ -25,6 +28,7 @@ import {
   ARENA,
   type Asteroid,
   type Bullet,
+  type Drone,
   type LightCycle,
   type Mine,
   type Missile,
@@ -46,6 +50,7 @@ export interface MotionState {
   bullets: Mutable<Bullet>[];
   missiles: Mutable<Missile>[];
   whips: Mutable<Whip>[];
+  drones: Mutable<Drone>[];
   projId: number;
   mineId: number;
   bulletId: number;
@@ -231,6 +236,34 @@ const advanceMissiles = (
     .map((m) => ({ ...advanceMissile(m, shipById.get(m.targetId), steps) }))
     .filter((m) => m.life > 0);
 
+// Escort drones ride their owner: re-anchor to the (moved) owner each gen on an
+// orbit ring, tick down life + fire cooldown, and dissipate when the timer runs
+// out or the owner is gone. Firing itself happens in resolveInteractions.
+const advanceDrones = (
+  drones: readonly Drone[],
+  shipById: Map<number, Mutable<LightCycle>>,
+  steps: number,
+): Mutable<Drone>[] => {
+  const out: Mutable<Drone>[] = [];
+  for (const d of drones) {
+    const owner = shipById.get(d.ownerId);
+    if (!owner) continue; // owner gone → drone dissipates
+    const life = d.life - steps;
+    if (life <= 0) continue;
+    const phase = d.phase + DRONE_ORBIT_SPEED * steps;
+    const r = shipRadius(owner.level) + DRONE_ORBIT_RADIUS;
+    out.push({
+      ...d,
+      phase,
+      x: wrap(owner.x + Math.cos(phase) * r, ARENA.w),
+      y: wrap(owner.y + Math.sin(phase) * r, ARENA.h),
+      life,
+      fireCooldown: Math.max(0, d.fireCooldown - steps),
+    });
+  }
+  return out;
+};
+
 /** Advance every entity for `steps` generations; returns mutable copies for collision. */
 export const advanceMotion = (ctx: TickCtx): MotionState => {
   const { world, steps } = ctx;
@@ -270,6 +303,7 @@ export const advanceMotion = (ctx: TickCtx): MotionState => {
     bullets: advanceBullets(world, steps),
     missiles: advanceMissiles(world, shipById, steps),
     whips: advanceWhips(world, shipById, steps),
+    drones: advanceDrones(world.drones.items, shipById, steps),
     projId: world.projectiles.nextId,
     mineId: world.mines.nextId,
     bulletId: world.bullets.nextId,

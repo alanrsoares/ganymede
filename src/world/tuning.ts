@@ -47,6 +47,16 @@ export const FORCEFIELD_DURATION = 420; // gens the force-field aura lasts
 export const FORCEFIELD_RADIUS = 24; // aura reach (push + melee)
 export const FORCEFIELD_PUSH = 0.12; // knockback accel applied to enemies/gen
 export const FORCEFIELD_DAMAGE = 1; // melee damage to an enemy caught in it
+// Orbiting escort drones (arcade drone pickup).
+export const DRONE_COUNT = 3; // drones spawned per pickup
+export const DRONE_DURATION = 480; // gens the escort lasts
+export const DRONE_ORBIT_RADIUS = 14; // px beyond the owner's hull radius
+export const DRONE_ORBIT_SPEED = 0.14; // orbit angular speed (radians/gen)
+export const DRONE_FIRE_RANGE = 90; // enemy acquisition radius
+export const DRONE_FIRE_COOLDOWN = 40; // gens between a drone's bolts
+export const DRONE_DAMAGE = 1; // bolt damage
+export const DRONE_BOLT_LIFE = 80; // gens a drone bolt flies before fizzling
+export const DRONE_RADIUS = 2.5; // render size (drones don't collide)
 export const PORTAL_COOLDOWN = 40; // gens before a ship can re-enter a portal
 export const PORTAL_PULL = 0.02; // event-horizon accel toward a nearby gate
 export const PORTAL_HORIZON = 2.6; // pull reaches this × the gate radius
