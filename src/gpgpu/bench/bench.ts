@@ -3,18 +3,34 @@
 // playwright driver (scripts/gpgpu-bench.ts) to await and print. Kept out of
 // `bun test` because it needs a real GPU adapter.
 
+import {
+  AGGRO_FAVOR,
+  AGGRO_FEAR,
+  AGGRO_MAX,
+  AGGRO_MIN,
+  CONCAVE_COMMIT_DIST,
+  CONCAVE_GAIN,
+  COORDINATE_MIN_LEVEL,
+  ENGAGE_GAIN,
+  ENGAGE_RADIUS,
+  KITE_DIST,
+  TARGET_VETERAN_BOUNTY,
+} from "../../world/tuning";
 import { acquireComputeDevice } from "../device";
 import { FlockKernel, type FlockTuning } from "../kernels/flock";
+import { PursuitKernel, type PursuitTuning } from "../kernels/pursuit";
 import type { Arena } from "../kernels/separation";
 import { SeparationKernel } from "../kernels/separation";
 import { SeparationGridKernel } from "../kernels/separation-grid";
 import {
   compare,
   cpuFlock,
+  cpuPursuit,
   cpuSeparation,
   type Divergence,
   makeField,
   makeFlockField,
+  makePursuitField,
 } from "../parity";
 
 // Both kernels expose this shape, so the timing helpers are kernel-agnostic.
@@ -37,6 +53,22 @@ const FLOCK: FlockTuning = {
   flockR: 22,
   alignGain: 0.6,
   cohereGain: 0.35,
+};
+
+// Pursuit tuning pulled straight from the sim so the GPU (which bakes matching
+// consts into WGSL) is graded against the real numbers — parity catches drift.
+const PURSUIT: PursuitTuning = {
+  engageGain: ENGAGE_GAIN,
+  engageRadius: ENGAGE_RADIUS,
+  kiteDist: KITE_DIST,
+  coordMinLevel: COORDINATE_MIN_LEVEL,
+  concaveGain: CONCAVE_GAIN,
+  concaveCommitDist: CONCAVE_COMMIT_DIST,
+  vetBounty: TARGET_VETERAN_BOUNTY,
+  aggroMin: AGGRO_MIN,
+  aggroMax: AGGRO_MAX,
+  aggroFavor: AGGRO_FAVOR,
+  aggroFear: AGGRO_FEAR,
 };
 
 const cpuIters = (n: number) => (n <= 2048 ? 20 : 5);
@@ -179,23 +211,66 @@ const benchFlockSize = async (
   };
 };
 
+// Pursuit (foe reduction + steering force): brute-CPU oracle vs the GPU kernel.
+// No grid (engageR is near arena-scale) — pure per-ship parallel reduction.
+const benchPursuitSize = async (
+  kernel: PursuitKernel,
+  queue: GPUQueue,
+  n: number,
+) => {
+  const { posHead, combat, health } = makePursuitField(n, ARENA);
+  let cpuRef: Float32Array<ArrayBufferLike> = new Float32Array(0);
+  const cpuMs = meanSyncMs(cpuIters(n), () => {
+    cpuRef = cpuPursuit(posHead, combat, health, n, ARENA);
+  });
+
+  kernel.upload(posHead, combat, health, n, ARENA, PURSUIT);
+  kernel.dispatch();
+  await queue.onSubmittedWorkDone();
+  const iters = 50;
+  let t0 = performance.now();
+  for (let k = 0; k < iters; k++) kernel.dispatch();
+  await queue.onSubmittedWorkDone();
+  const computeMs = (performance.now() - t0) / iters;
+
+  const rt = roundtripIters(n);
+  t0 = performance.now();
+  for (let k = 0; k < rt; k++) {
+    kernel.upload(posHead, combat, health, n, ARENA, PURSUIT);
+    kernel.dispatch();
+    await kernel.read();
+  }
+  const roundtripMs = (performance.now() - t0) / rt;
+
+  const out = await kernel.read();
+  return {
+    n,
+    cpuMs: +cpuMs.toFixed(3),
+    ...fmt(cpuMs, computeMs, roundtripMs, compare(cpuRef, out)),
+  };
+};
+
 const runBench = async () => {
   const gpu = await acquireComputeDevice();
   if (!gpu) return { error: "WebGPU unavailable" };
   const brute = new SeparationKernel(gpu.device);
   const grid = new SeparationGridKernel(gpu.device);
   const flock = new FlockKernel(gpu.device);
+  const pursuit = new PursuitKernel(gpu.device);
   const separation = [];
   const flockResults = [];
+  const pursuitResults = [];
   for (const n of SIZES) {
     separation.push(await benchSize(brute, grid, gpu.device.queue, n));
     flockResults.push(await benchFlockSize(flock, gpu.device.queue, n));
+    pursuitResults.push(await benchPursuitSize(pursuit, gpu.device.queue, n));
   }
   return {
     adapter: { vendor: gpu.info.vendor, architecture: gpu.info.architecture },
     relErrBudget: REL_ERR_BUDGET,
     separation,
     flock: flockResults,
+    pursuit: pursuitResults,
   };
 };
 

@@ -5,6 +5,20 @@
 // we assert relative error stays under a gameplay-safe threshold, not zero.
 
 import { normalize, wrapDelta } from "../engine/physics";
+import {
+  ARCHETYPE_MODS,
+  CONCAVE_COMMIT_DIST,
+  CONCAVE_GAIN,
+  COORDINATE_MIN_LEVEL,
+  combatAggression,
+  ENGAGE_GAIN,
+  ENGAGE_RADIUS,
+  isRammer,
+  KITE_DIST,
+  maxHpForLevel,
+  targetPriority,
+} from "../world/tuning";
+import { ARCHETYPES, type Archetype, type LightCycle } from "../world/types";
 import type { FlockTuning } from "./kernels/flock";
 import type { Arena } from "./kernels/separation";
 
@@ -205,6 +219,163 @@ export const cpuFlock = (
       fx += (ahx - hdx) * t.alignGain + (a.cx / a.cnt) * t.cohereGain;
       fy += (ahy - hdy) * t.alignGain + (a.cy / a.cnt) * t.cohereGain;
     }
+    out[i * 2] = fx;
+    out[i * 2 + 1] = fy;
+  }
+  return out;
+};
+
+// --- Pursuit parity (per-ship foe reduction + steering) ---------------------
+
+// Deterministic combat field: posHead [x,y,dx,dy], combat [team,level,arch,id],
+// health [hp,maxHp,fuel,maxFuel]. Teams/levels/archetypes span the full range so
+// the reduction exercises focus vs nearest, counters, and aggression scaling.
+export const makePursuitField = (
+  n: number,
+  arena: Arena,
+  seed = 0x9e37,
+): { posHead: Float32Array; combat: Float32Array; health: Float32Array } => {
+  let s = seed ^ n;
+  const rnd = () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const posHead = new Float32Array(n * 4);
+  const combat = new Float32Array(n * 4);
+  const health = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * Math.PI * 2;
+    posHead[i * 4] = rnd() * arena.w;
+    posHead[i * 4 + 1] = rnd() * arena.h;
+    posHead[i * 4 + 2] = Math.cos(a);
+    posHead[i * 4 + 3] = Math.sin(a);
+    const level = 1 + Math.floor(rnd() * 5); // 1..5
+    const maxHp = maxHpForLevel(level);
+    const maxFuel = 400 + Math.floor(rnd() * 400);
+    combat[i * 4] = Math.floor(rnd() * NUM_TEAMS); // team
+    combat[i * 4 + 1] = level;
+    combat[i * 4 + 2] = Math.floor(rnd() * ARCHETYPES.length); // archetype
+    combat[i * 4 + 3] = i; // id
+    health[i * 4] = (0.2 + rnd() * 0.8) * maxHp; // hp
+    health[i * 4 + 1] = maxHp;
+    health[i * 4 + 2] = rnd() * maxFuel; // fuel
+    health[i * 4 + 3] = maxFuel;
+  }
+  return { posHead, combat, health };
+};
+
+// A LightCycle-lite view over the SoA at index i — only the fields the ported
+// tuning functions (targetPriority / combatAggression / isRammer / counters)
+// actually read, so the oracle drives the REAL tuning code (not a copy of it).
+const shipAt = (
+  i: number,
+  posHead: Float32Array,
+  combat: Float32Array,
+  health: Float32Array,
+): LightCycle =>
+  ({
+    id: combat[i * 4 + 3],
+    x: posHead[i * 4],
+    y: posHead[i * 4 + 1],
+    dx: posHead[i * 4 + 2],
+    dy: posHead[i * 4 + 3],
+    colorName: String(combat[i * 4]),
+    level: combat[i * 4 + 1],
+    archetype: ARCHETYPES[combat[i * 4 + 2]] as Archetype,
+    hp: health[i * 4],
+    maxHp: health[i * 4 + 1],
+    fuel: health[i * 4 + 2],
+    maxFuel: health[i * 4 + 3],
+  }) as unknown as LightCycle;
+
+type PFoe = { ex: number; ey: number; d2: number; ship: LightCycle };
+
+const beatsFoe = (
+  focus: boolean,
+  p: number,
+  d2: number,
+  bestP: number,
+  bestD2: number,
+): boolean => (focus ? p > bestP || (p === bestP && d2 < bestD2) : d2 < bestD2);
+
+// Clone of pickFoe (steering.ts): the winning enemy within rangeSq for `self`.
+const pickFoePar = (
+  self: LightCycle,
+  ships: readonly LightCycle[],
+  rangeSq: number,
+  focus: boolean,
+  arena: Arena,
+): PFoe | null => {
+  let ex = 0;
+  let ey = 0;
+  let bestP = Number.NEGATIVE_INFINITY;
+  let bestD2 = rangeSq;
+  let ship: LightCycle | null = null;
+  for (const o of ships) {
+    if (o.id === self.id || o.colorName === self.colorName) continue;
+    const dx = wrapDelta(self.x, o.x, arena.w);
+    const dy = wrapDelta(self.y, o.y, arena.h);
+    const d2 = dx * dx + dy * dy;
+    const p = targetPriority(o);
+    if (d2 >= rangeSq || !beatsFoe(focus, p, d2, bestP, bestD2)) continue;
+    bestP = p;
+    bestD2 = d2;
+    ex = dx;
+    ey = dy;
+    ship = o;
+  }
+  return ship ? { ex, ey, d2: bestD2, ship } : null;
+};
+
+// Clone of steerPursuit (steering.ts) — press/kite/concave/aggression.
+const pursuitForcePar = (self: LightCycle, foe: PFoe): [number, number] => {
+  const level = self.level;
+  const engageGain = ENGAGE_GAIN[level - 1] ?? 0;
+  if (engageGain <= 0) return [0, 0];
+  const press =
+    isRammer(self.archetype) ||
+    ARCHETYPE_MODS[self.archetype].counters === foe.ship.archetype;
+  const kiteDist = press ? 0 : (KITE_DIST[level - 1] ?? 0);
+  const aggro = combatAggression(self, foe.ship);
+  const dist = Math.sqrt(foe.d2) || 1;
+  const ux = foe.ex / dist;
+  const uy = foe.ey / dist;
+  const dir = kiteDist > 0 ? Math.sign(dist - kiteDist) : 1;
+  const side = self.id % 2 === 0 ? 1 : -1;
+  const arc = press
+    ? CONCAVE_GAIN * side * Math.min(1, dist / CONCAVE_COMMIT_DIST)
+    : 0;
+  const tx = ux * dir - uy * arc;
+  const ty = uy * dir + ux * arc;
+  return [tx * engageGain * aggro, ty * engageGain * aggro];
+};
+
+// CPU pursuit reference — brute O(n^2) mirror of pickFoe + steerPursuit over the
+// SoA field. Authoritative oracle for PursuitKernel.
+export const cpuPursuit = (
+  posHead: Float32Array,
+  combat: Float32Array,
+  health: Float32Array,
+  n: number,
+  arena: Arena,
+): Float32Array => {
+  const ships: LightCycle[] = [];
+  for (let i = 0; i < n; i++) ships.push(shipAt(i, posHead, combat, health));
+  const out = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) {
+    const self = ships[i];
+    const engageR = ENGAGE_RADIUS[self.level - 1] ?? 0;
+    const focus =
+      isRammer(self.archetype) || self.level >= COORDINATE_MIN_LEVEL;
+    const foe =
+      engageR > 0
+        ? pickFoePar(self, ships, engageR * engageR, focus, arena)
+        : null;
+    if (!foe) continue;
+    const [fx, fy] = pursuitForcePar(self, foe);
     out[i * 2] = fx;
     out[i * 2 + 1] = fy;
   }
