@@ -24,10 +24,12 @@ import {
   BURST_SHIELD,
   CENTER_PAD,
   type LightCycle,
+  MAX_LEVEL,
   type Mutable,
   type Projectile,
   TEAM_BASES,
 } from "../types";
+import { gridCrossPairs, type PairList, runCrossPairs } from "./broadphase";
 import {
   creditBaseHit,
   hit,
@@ -283,11 +285,32 @@ const shardVsShip = (
   return "break";
 };
 
-const collideShardsShips = (
+// Widest shrapnel↔ship hit radius. Ships are already at their post-rock/base/pad
+// positions when this (the last hazard sub-step) runs and shardVsShip doesn't move
+// them, so the snapshot grid is exact — no drift margin.
+const SHARD_SHIP_BAND = SHRAPNEL_RADIUS + shipRadius(MAX_LEVEL);
+
+/** Candidate shard×ship pairs for this tick (grouped by shard, ship asc). */
+export const shardShipPairs = (ctx: TickCtx, motion: MotionState): PairList =>
+  gridCrossPairs(motion.shards, ctx.moved, ARENA, SHARD_SHIP_BAND);
+
+// Broad-phase (with `pairs`) or brute nested scan — bit-identical. A removed ship
+// returns false (keep scanning this shard's other candidates), mirroring the
+// nested loop's inner `continue`.
+export const collideShardsShips = (
   ctx: TickCtx,
   motion: MotionState,
   hazards: HazardState,
+  pairs?: PairList,
 ): void => {
+  if (pairs) {
+    runCrossPairs(pairs, (bi, ai) => {
+      const s = ctx.moved[ai];
+      if (ctx.removed.has(s.id)) return false;
+      return shardVsShip(ctx, hazards, motion.shards[bi], s) === "break";
+    });
+    return;
+  }
   for (const f of motion.shards) {
     for (const s of ctx.moved) {
       if (ctx.removed.has(s.id)) continue;
@@ -306,5 +329,5 @@ export const resolveHazardCollisions = (
   collideShipsBases(ctx);
   collideRocksBases(ctx, motion, hazards);
   collideBodiesCenterPad(ctx, motion, hazards);
-  collideShardsShips(ctx, motion, hazards);
+  collideShardsShips(ctx, motion, hazards, shardShipPairs(ctx, motion));
 };

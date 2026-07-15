@@ -17,11 +17,18 @@ import {
   SHIP_PAIR_BAND,
 } from "~/world/tick/broadphase";
 import { createTickCtx } from "~/world/tick/context";
+import {
+  collideShardsShips,
+  createHazardState,
+  shardShipPairs,
+} from "~/world/tick/hazard-collisions";
 import { advanceMotion } from "~/world/tick/motion";
 import {
   bulletShipPairs,
   bulletsVsShips,
   createProjectileState,
+  missileShipPairs,
+  missilesVsShips,
 } from "~/world/tick/projectiles";
 import {
   resolveShipCollisions,
@@ -65,6 +72,20 @@ const scratchSnapshot = (ctx: ReturnType<typeof createTickCtx>) =>
     seed: ctx.seed,
     nextId: ctx.nextId,
   });
+
+// A warmed match (ships have spread and started engaging), split into the tick
+// prelude (createTickCtx + advanceMotion) a collision resolver consumes.
+const warmed = (seed: number, ticks = 12) => {
+  let w = initWorld(seed);
+  for (let i = 0; i < ticks; i++) {
+    w = update({ kind: "tick", steps: 3, now: i * 100 }, w);
+  }
+  const ctx = createTickCtx(w, 3, 1200);
+  return { ctx, motion: advanceMotion(ctx) };
+};
+
+const enemyOf = (team: string): string =>
+  TEAMS.find((t) => t.name !== team)?.name ?? team;
 
 test("gridSelfPairs matches the brute oracle exactly (set + order)", () => {
   for (const seed of [1, 2, 3, 7, 42]) {
@@ -150,16 +171,9 @@ test("runCrossPairs breaks a B-group on first stop but continues later groups", 
 test("broad-phase bulletsVsShips is bit-identical to the nested loop", () => {
   let hits = 0;
   for (const seed of [1, 13, 99, 256, 2024]) {
-    let w = initWorld(seed);
-    for (let i = 0; i < 12; i++) {
-      w = update({ kind: "tick", steps: 3, now: i * 100 }, w);
-    }
-    const ctxNested = createTickCtx(w, 3, 1200);
-    const motion = advanceMotion(ctxNested);
+    const { ctx: ctxNested, motion } = warmed(seed);
     // Bolts fire only once ships engage; inject enemy bolts sitting on the first
     // few live ships (shared by both paths) so the hit/break path is exercised.
-    const enemyTeam = (team: string) =>
-      TEAMS.find((t) => t.name !== team)?.name ?? team;
     for (let k = 0; k < Math.min(3, ctxNested.moved.length); k++) {
       const s = ctxNested.moved[k];
       motion.bullets.push({
@@ -168,7 +182,7 @@ test("broad-phase bulletsVsShips is bit-identical to the nested loop", () => {
         y: s.y,
         vx: 0,
         vy: 0,
-        team: enemyTeam(s.colorName),
+        team: enemyOf(s.colorName),
         rgb: [1, 1, 1],
         angle: 0,
         damage: 1,
@@ -193,4 +207,77 @@ test("broad-phase bulletsVsShips is bit-identical to the nested loop", () => {
     expect(scratchSnapshot(ctxGrid)).toBe(scratchSnapshot(ctxNested));
   }
   expect(hits).toBeGreaterThan(0); // the hit/break path is actually exercised
+});
+
+test("broad-phase missilesVsShips is bit-identical to the nested loop", () => {
+  let hits = 0;
+  for (const seed of [1, 13, 99, 256, 2024]) {
+    const { ctx: ctxNested, motion } = warmed(seed);
+    for (let k = 0; k < Math.min(3, ctxNested.moved.length); k++) {
+      const s = ctxNested.moved[k];
+      motion.missiles.push({
+        id: 9000 + k,
+        x: s.x,
+        y: s.y,
+        vx: 0,
+        vy: 0,
+        team: enemyOf(s.colorName),
+        rgb: [1, 1, 1],
+        angle: 0,
+        targetId: s.id,
+        damage: 1,
+        life: 120,
+        owner: -1,
+      });
+    }
+    const ctxGrid = cloneScratch(ctxNested);
+    const projNested = createProjectileState();
+    const projGrid = createProjectileState();
+    const pairs = missileShipPairs(ctxGrid, motion);
+
+    missilesVsShips(ctxNested, motion, projNested);
+    missilesVsShips(ctxGrid, motion, projGrid, pairs);
+
+    hits += projNested.removedMissiles.size;
+    expect([...projGrid.removedMissiles].sort((a, b) => a - b)).toEqual(
+      [...projNested.removedMissiles].sort((a, b) => a - b),
+    );
+    expect(scratchSnapshot(ctxGrid)).toBe(scratchSnapshot(ctxNested));
+  }
+  expect(hits).toBeGreaterThan(0);
+});
+
+test("broad-phase collideShardsShips is bit-identical to the nested loop", () => {
+  let hits = 0;
+  for (const seed of [1, 13, 99, 256, 2024]) {
+    const { ctx: ctxNested, motion } = warmed(seed);
+    for (let k = 0; k < Math.min(3, ctxNested.moved.length); k++) {
+      const s = ctxNested.moved[k];
+      motion.shards.push({
+        id: 9000 + k,
+        x: s.x,
+        y: s.y,
+        vx: 0,
+        vy: 0,
+        spin: 0,
+        spinRate: 0,
+        life: 60,
+        variant: 0,
+      });
+    }
+    const ctxGrid = cloneScratch(ctxNested);
+    const hazNested = createHazardState();
+    const hazGrid = createHazardState();
+    const pairs = shardShipPairs(ctxGrid, motion);
+
+    collideShardsShips(ctxNested, motion, hazNested);
+    collideShardsShips(ctxGrid, motion, hazGrid, pairs);
+
+    hits += hazNested.removedShards.size;
+    expect([...hazGrid.removedShards].sort((a, b) => a - b)).toEqual(
+      [...hazNested.removedShards].sort((a, b) => a - b),
+    );
+    expect(scratchSnapshot(ctxGrid)).toBe(scratchSnapshot(ctxNested));
+  }
+  expect(hits).toBeGreaterThan(0);
 });

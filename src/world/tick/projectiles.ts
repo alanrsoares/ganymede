@@ -274,11 +274,28 @@ const bulletsVsBases = (
   }
 };
 
-const missilesVsShips = (
+// Widest missile↔ship hit radius; ships are static during projectile resolution.
+const MISSILE_SHIP_BAND = MISSILE_RADIUS + shipRadius(MAX_LEVEL);
+
+/** Candidate missile×ship pairs for this tick (grouped by missile, ship asc). */
+export const missileShipPairs = (ctx: TickCtx, motion: MotionState): PairList =>
+  gridCrossPairs(motion.missiles, ctx.moved, ARENA, MISSILE_SHIP_BAND);
+
+// Broad-phase (with `pairs`) or brute nested scan — bit-identical (see bulletsVsShips).
+export const missilesVsShips = (
   ctx: TickCtx,
   motion: MotionState,
   projectiles: ProjectileState,
+  pairs?: PairList,
 ): void => {
+  if (pairs) {
+    runCrossPairs(pairs, (bi, ai) => {
+      const mi = motion.missiles[bi];
+      if (projectiles.removedMissiles.has(mi.id)) return true; // spent → skip rest
+      return missileVsShip(ctx, ctx.moved[ai], mi, projectiles) === "break";
+    });
+    return;
+  }
   for (const mi of motion.missiles) {
     if (projectiles.removedMissiles.has(mi.id)) continue;
     for (const s of ctx.moved) {
@@ -345,6 +362,6 @@ export const resolveProjectiles = (
   bulletsVsShips(ctx, motion, projectiles, bulletShipPairs(ctx, motion));
   bulletsVsRocks(ctx, motion, hazards, projectiles);
   bulletsVsBases(ctx, motion, projectiles);
-  missilesVsShips(ctx, motion, projectiles);
+  missilesVsShips(ctx, motion, projectiles, missileShipPairs(ctx, motion));
   missilesVsBases(ctx, motion, projectiles);
 };
