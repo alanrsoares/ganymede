@@ -21,7 +21,7 @@ import {
   type Burst,
   type World,
 } from "../world";
-import { EMP_RADIUS, EXPLOSION_DURATION } from "../world/tuning";
+import { DRONE_RADIUS, EMP_RADIUS, EXPLOSION_DURATION } from "../world/tuning";
 import type { PushFn, Rgba } from "./push";
 
 // Weapon bolts — a shader-drawn streak (team glow + tapered tips) with the
@@ -59,6 +59,49 @@ export function drawBolts(
       SHAPE.sprite,
       [1, 1, 1, 1],
       layers[b.kind] ?? layers[0],
+    );
+  }
+}
+
+// Escort drones — a team-tinted orbiting orb: a soft glow disc around a bright
+// core, throbbing gently out of phase per slot so a ring of them shimmers.
+// (SHAPE.solid is a soft radial disc; SHAPE.ring is a HUD reticle, not a circle.)
+export function drawDrones(
+  push: PushFn,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+  world: World,
+) {
+  for (const d of world.drones.items) {
+    const x = (d.x + 0.5) * cellPx;
+    const y = (d.y + 0.5) * cellPy;
+    const [r, g, b] = d.rgb;
+    const pulse = 0.7 + 0.3 * Math.sin(now * 0.02 + d.slot * 2.1);
+    // Soft team-tinted glow.
+    push(
+      x,
+      y,
+      DRONE_RADIUS * 2.6 * cellPx,
+      DRONE_RADIUS * 2.6 * cellPy,
+      0,
+      SHAPE.solid,
+      [r, g, b, 0.35 * pulse],
+    );
+    // Bright white-hot core with a hint of team tint.
+    push(
+      x,
+      y,
+      DRONE_RADIUS * 1.1 * cellPx,
+      DRONE_RADIUS * 1.1 * cellPy,
+      0,
+      SHAPE.solid,
+      [
+        Math.min(1, r * 0.5 + 0.6),
+        Math.min(1, g * 0.5 + 0.6),
+        Math.min(1, b * 0.5 + 0.6),
+        0.95,
+      ],
     );
   }
 }
