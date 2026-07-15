@@ -78,6 +78,11 @@ export class SeparationKernel {
   // Read the force buffer back to the CPU as a Float32Array of length n*2.
   async read(): Promise<Float32Array> {
     if (!this.#force || !this.#staging) return new Float32Array(0);
-    return readFloats(this.#device, this.#force, this.#staging, this.#n * 2 * 4);
+    return readFloats(
+      this.#device,
+      this.#force,
+      this.#staging,
+      this.#n * 2 * 4,
+    );
   }
 }

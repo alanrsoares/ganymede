@@ -41,6 +41,22 @@ export class Kernel {
     });
   }
 
+  // Bind with explicit @binding numbers — required when an entry point uses a
+  // non-contiguous subset of the module's bindings (layout:"auto" infers a
+  // layout with only the bindings that entry actually references).
+  bindGroupAt(
+    device: GPUDevice,
+    entries: { binding: number; buffer: GPUBuffer }[],
+  ): GPUBindGroup {
+    return device.createBindGroup({
+      layout: this.pipeline.getBindGroupLayout(0),
+      entries: entries.map(({ binding, buffer }) => ({
+        binding,
+        resource: { buffer },
+      })),
+    });
+  }
+
   // Encode a dispatch covering `count` invocations (1D) onto an open pass.
   dispatch(
     pass: GPUComputePassEncoder,

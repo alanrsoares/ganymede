@@ -6,70 +6,131 @@
 import { acquireComputeDevice } from "../device";
 import type { Arena } from "../kernels/separation";
 import { SeparationKernel } from "../kernels/separation";
-import { compare, cpuSeparation, makeField } from "../parity";
+import { SeparationGridKernel } from "../kernels/separation-grid";
+import { compare, cpuSeparation, type Divergence, makeField } from "../parity";
+
+// Both kernels expose this shape, so the timing helpers are kernel-agnostic.
+interface SepKernel {
+  upload(positions: Float32Array, n: number, arena: Arena, r: number): void;
+  dispatch(): void;
+  read(): Promise<Float32Array>;
+}
 
 const ARENA: Arena = { w: 320, h: 180 };
 const R = 14;
 const SIZES = [512, 2048, 8192, 16384];
 const REL_ERR_BUDGET = 0.05; // 5% — plausible-divergence gate
 
+const cpuIters = (n: number) => (n <= 2048 ? 20 : 5);
+const roundtripIters = (n: number) => (n <= 2048 ? 30 : 10);
+
+const meanSyncMs = (iters: number, run: () => void): number => {
+  const t0 = performance.now();
+  for (let k = 0; k < iters; k++) run();
+  return (performance.now() - t0) / iters;
+};
+
+const meanAsyncMs = async (
+  iters: number,
+  run: () => Promise<void>,
+): Promise<number> => {
+  const t0 = performance.now();
+  for (let k = 0; k < iters; k++) await run();
+  return (performance.now() - t0) / iters;
+};
+
+const benchCpu = (field: Float32Array, n: number) => {
+  let cpuRef: Float32Array<ArrayBufferLike> = new Float32Array(0);
+  const cpuMs = meanSyncMs(cpuIters(n), () => {
+    cpuRef = cpuSeparation(field, n, ARENA, R);
+  });
+  return { cpuMs, cpuRef };
+};
+
+// Upload once, warm up, then time 50 back-to-back dispatches INCLUDING the final
+// flush — the flush must be inside the timed span or this measures CPU submit
+// cost, not GPU execution. This is the resident-tier cost: no per-tick readback,
+// forces stay GPU-side to feed the next kernel.
+const benchGpuCompute = async (
+  kernel: SepKernel,
+  queue: GPUQueue,
+  field: Float32Array,
+  n: number,
+) => {
+  kernel.upload(field, n, ARENA, R);
+  kernel.dispatch();
+  await queue.onSubmittedWorkDone();
+  const iters = 50;
+  const t0 = performance.now();
+  for (let k = 0; k < iters; k++) kernel.dispatch();
+  await queue.onSubmittedWorkDone();
+  return (performance.now() - t0) / iters;
+};
+
+// Per-tick cost with full marshalling: upload + dispatch + read each iter.
+const benchGpuRoundtrip = (kernel: SepKernel, field: Float32Array, n: number) =>
+  meanAsyncMs(roundtripIters(n), async () => {
+    kernel.upload(field, n, ARENA, R);
+    kernel.dispatch();
+    await kernel.read();
+  });
+
+// Time + validate one GPU kernel against the CPU reference.
+const benchKernel = async (
+  kernel: SepKernel,
+  queue: GPUQueue,
+  field: Float32Array,
+  n: number,
+  cpuRef: Float32Array,
+) => {
+  const computeMs = await benchGpuCompute(kernel, queue, field, n);
+  const roundtripMs = await benchGpuRoundtrip(kernel, field, n);
+  const out = await kernel.read();
+  return { computeMs, roundtripMs, div: compare(cpuRef, out) };
+};
+
+const fmt = (
+  cpuMs: number,
+  computeMs: number,
+  roundtripMs: number,
+  div: Divergence,
+) => ({
+  computeMs: +computeMs.toFixed(3),
+  roundtripMs: +roundtripMs.toFixed(3),
+  speedup: +(cpuMs / computeMs).toFixed(1),
+  roundtripSpeedup: +(cpuMs / roundtripMs).toFixed(1),
+  marshallMs: +(roundtripMs - computeMs).toFixed(3),
+  maxRelErr: div.maxRelErr,
+  pass: div.maxRelErr <= REL_ERR_BUDGET,
+});
+
+const benchSize = async (
+  brute: SepKernel,
+  grid: SepKernel,
+  queue: GPUQueue,
+  n: number,
+) => {
+  const field = makeField(n, ARENA);
+  const { cpuMs, cpuRef } = benchCpu(field, n);
+  const b = await benchKernel(brute, queue, field, n, cpuRef);
+  const g = await benchKernel(grid, queue, field, n, cpuRef);
+  return {
+    n,
+    cpuMs: +cpuMs.toFixed(3),
+    brute: fmt(cpuMs, b.computeMs, b.roundtripMs, b.div),
+    grid: fmt(cpuMs, g.computeMs, g.roundtripMs, g.div),
+    gridVsBrute: +(b.computeMs / g.computeMs).toFixed(2),
+  };
+};
+
 const runBench = async () => {
   const gpu = await acquireComputeDevice();
   if (!gpu) return { error: "WebGPU unavailable" };
-  const kernel = new SeparationKernel(gpu.device);
+  const brute = new SeparationKernel(gpu.device);
+  const grid = new SeparationGridKernel(gpu.device);
   const results = [];
-
-  for (const n of SIZES) {
-    const field = makeField(n, ARENA);
-
-    // CPU reference + timing (fewer iters at large n to stay bounded).
-    const cpuIters = n <= 2048 ? 20 : 5;
-    let cpuRef: Float32Array<ArrayBufferLike> = new Float32Array(0);
-    let t0 = performance.now();
-    for (let k = 0; k < cpuIters; k++)
-      cpuRef = cpuSeparation(field, n, ARENA, R);
-    const cpuMs = (performance.now() - t0) / cpuIters;
-
-    // GPU compute-only: upload once, warm up, time back-to-back dispatches with
-    // a single flush. This is the resident-tier cost — forces never leave the
-    // GPU, they feed the next kernel in-place.
-    kernel.upload(field, n, ARENA, R);
-    kernel.dispatch();
-    await gpu.device.queue.onSubmittedWorkDone();
-    const gpuIters = 50;
-    t0 = performance.now();
-    for (let k = 0; k < gpuIters; k++) kernel.dispatch();
-    await gpu.device.queue.onSubmittedWorkDone();
-    const gpuMs = (performance.now() - t0) / gpuIters;
-
-    // GPU roundtrip: the honest per-tick cost if the CPU needs results every
-    // tick — re-upload positions, dispatch, read forces back. Each read()
-    // flushes the whole submit (upload + compute + copy + map), so this
-    // captures the full marshalling tax the residency plan exists to avoid.
-    const rtIters = n <= 2048 ? 30 : 10;
-    t0 = performance.now();
-    for (let k = 0; k < rtIters; k++) {
-      kernel.upload(field, n, ARENA, R);
-      kernel.dispatch();
-      await kernel.read();
-    }
-    const roundtripMs = (performance.now() - t0) / rtIters;
-
-    const gpuOut = await kernel.read();
-    const div = compare(cpuRef, gpuOut);
-    results.push({
-      n,
-      cpuMs: +cpuMs.toFixed(3),
-      gpuMs: +gpuMs.toFixed(3),
-      roundtripMs: +roundtripMs.toFixed(3),
-      speedup: +(cpuMs / gpuMs).toFixed(1),
-      roundtripSpeedup: +(cpuMs / roundtripMs).toFixed(1),
-      marshallMs: +(roundtripMs - gpuMs).toFixed(3),
-      pass: div.maxRelErr <= REL_ERR_BUDGET,
-      ...div,
-    });
-  }
-
+  for (const n of SIZES)
+    results.push(await benchSize(brute, grid, gpu.device.queue, n));
   return {
     adapter: { vendor: gpu.info.vendor, architecture: gpu.info.architecture },
     relErrBudget: REL_ERR_BUDGET,
