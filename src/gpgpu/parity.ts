@@ -381,3 +381,56 @@ export const cpuPursuit = (
   }
   return out;
 };
+
+// --- Candidate-pair parity (P5 hybrid broad-phase) --------------------------
+
+export interface Pairs {
+  count: number;
+  pairs: Uint32Array; // flat [i0,j0,i1,j1,...] in (i,j) lexicographic order
+}
+
+// CPU brute broad-phase oracle: every ordered pair (i<j) whose toroidal distance
+// is within `r`. Emits pairs in (i,j) lexicographic order — the exact visit order
+// resolveShipCollisions uses — so the GPU list (once sorted) replays identically.
+// Uses wrapDelta components (|wrapDelta| == toroidalDist), matching pairs.wgsl.
+export const cpuCandidatePairs = (
+  positions: Float32Array,
+  n: number,
+  arena: Arena,
+  r: number,
+): Pairs => {
+  const r2 = r * r;
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const xi = positions[i * 4];
+    const yi = positions[i * 4 + 1];
+    for (let j = i + 1; j < n; j++) {
+      const dx = wrapDelta(xi, positions[j * 4], arena.w);
+      const dy = wrapDelta(yi, positions[j * 4 + 1], arena.h);
+      if (dx * dx + dy * dy < r2) out.push(i, j);
+    }
+  }
+  return { count: out.length / 2, pairs: Uint32Array.from(out) };
+};
+
+// Sort a flat pair list into (i,j) lexicographic order (GPU appends in atomic-
+// cursor order, which is device-nondeterministic).
+const sortPairs = (flat: Uint32Array, n: number): number[] => {
+  const keys: number[] = [];
+  for (let k = 0; k < flat.length; k += 2) keys.push(flat[k] * n + flat[k + 1]);
+  return keys.sort((a, b) => a - b);
+};
+
+// Set-equality of two candidate-pair lists (order-independent). The CPU list is
+// the oracle; the GPU list must contain exactly the same pairs.
+export const comparePairs = (
+  cpu: Pairs,
+  gpu: Uint32Array,
+  n: number,
+): { match: boolean; cpuCount: number; gpuCount: number } => {
+  const a = sortPairs(cpu.pairs, n);
+  const b = sortPairs(gpu, n);
+  let match = a.length === b.length;
+  for (let k = 0; match && k < a.length; k++) if (a[k] !== b[k]) match = false;
+  return { match, cpuCount: a.length, gpuCount: b.length };
+};

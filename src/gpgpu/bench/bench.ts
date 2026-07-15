@@ -18,12 +18,15 @@ import {
 } from "../../world/tuning";
 import { acquireComputeDevice } from "../device";
 import { FlockKernel, type FlockTuning } from "../kernels/flock";
+import { CandidatePairKernel } from "../kernels/pairs";
 import { PursuitKernel, type PursuitTuning } from "../kernels/pursuit";
 import type { Arena } from "../kernels/separation";
 import { SeparationKernel } from "../kernels/separation";
 import { SeparationGridKernel } from "../kernels/separation-grid";
 import {
   compare,
+  comparePairs,
+  cpuCandidatePairs,
   cpuFlock,
   cpuPursuit,
   cpuSeparation,
@@ -31,6 +34,7 @@ import {
   makeField,
   makeFlockField,
   makePursuitField,
+  type Pairs,
 } from "../parity";
 
 // Both kernels expose this shape, so the timing helpers are kernel-agnostic.
@@ -69,6 +73,17 @@ const PURSUIT: PursuitTuning = {
   aggroMax: AGGRO_MAX,
   aggroFavor: AGGRO_FAVOR,
   aggroFear: AGGRO_FEAR,
+};
+
+// Ship-collision band (SEMITOUCH radius, sqrt(484)). Short → the grid applies.
+const PAIR_R = 22;
+// Density held constant (~253 px²/ship, the 480×270 @512 baseline) by scaling the
+// arena area with n, so candidate-pair counts (and the buffer cap) stay realistic
+// across sizes instead of exploding in a fixed worst-case arena.
+const pairArena = (n: number): Arena => {
+  const area = 253 * n;
+  const w = Math.round(Math.sqrt((area * 16) / 9));
+  return { w, h: Math.round((w * 9) / 16) };
 };
 
 const cpuIters = (n: number) => (n <= 2048 ? 20 : 5);
@@ -250,6 +265,56 @@ const benchPursuitSize = async (
   };
 };
 
+// Candidate-pair broad-phase (P5 hybrid): GPU grid pair enumeration vs the CPU
+// brute O(n²) scan. Validates SET equality (GPU emits every in-band pair), not
+// force divergence. Buffer cap is sized from the exact CPU count + margin.
+const benchPairsSize = async (
+  kernel: CandidatePairKernel,
+  queue: GPUQueue,
+  n: number,
+) => {
+  const arena = pairArena(n);
+  const field = makeField(n, arena, 0x2f11);
+  let cp: Pairs = { count: 0, pairs: new Uint32Array(0) };
+  const cpuMs = meanSyncMs(cpuIters(n), () => {
+    cp = cpuCandidatePairs(field, n, arena, PAIR_R);
+  });
+  const maxPairs = Math.ceil(cp.count * 1.15) + 256;
+
+  kernel.upload(field, n, arena, PAIR_R, maxPairs);
+  kernel.dispatch();
+  await queue.onSubmittedWorkDone();
+  const iters = 50;
+  let t0 = performance.now();
+  for (let k = 0; k < iters; k++) kernel.dispatch();
+  await queue.onSubmittedWorkDone();
+  const computeMs = (performance.now() - t0) / iters;
+
+  const rt = roundtripIters(n);
+  t0 = performance.now();
+  for (let k = 0; k < rt; k++) {
+    kernel.upload(field, n, arena, PAIR_R, maxPairs);
+    kernel.dispatch();
+    await kernel.read();
+  }
+  const roundtripMs = (performance.now() - t0) / rt;
+
+  const res = await kernel.read();
+  const cmp = comparePairs(cp, res.pairs, n);
+  return {
+    n,
+    arena: `${arena.w}×${arena.h}`,
+    pairs: cp.count,
+    cpuMs: +cpuMs.toFixed(3),
+    computeMs: +computeMs.toFixed(3),
+    roundtripMs: +roundtripMs.toFixed(3),
+    speedup: +(cpuMs / computeMs).toFixed(1),
+    roundtripSpeedup: +(cpuMs / roundtripMs).toFixed(1),
+    overflow: res.overflow,
+    match: cmp.match,
+  };
+};
+
 const runBench = async () => {
   const gpu = await acquireComputeDevice();
   if (!gpu) return { error: "WebGPU unavailable" };
@@ -257,13 +322,16 @@ const runBench = async () => {
   const grid = new SeparationGridKernel(gpu.device);
   const flock = new FlockKernel(gpu.device);
   const pursuit = new PursuitKernel(gpu.device);
+  const pairs = new CandidatePairKernel(gpu.device);
   const separation = [];
   const flockResults = [];
   const pursuitResults = [];
+  const pairResults = [];
   for (const n of SIZES) {
     separation.push(await benchSize(brute, grid, gpu.device.queue, n));
     flockResults.push(await benchFlockSize(flock, gpu.device.queue, n));
     pursuitResults.push(await benchPursuitSize(pursuit, gpu.device.queue, n));
+    pairResults.push(await benchPairsSize(pairs, gpu.device.queue, n));
   }
   return {
     adapter: { vendor: gpu.info.vendor, architecture: gpu.info.architecture },
@@ -271,6 +339,7 @@ const runBench = async () => {
     separation,
     flock: flockResults,
     pursuit: pursuitResults,
+    pairs: pairResults,
   };
 };
 
