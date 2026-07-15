@@ -111,12 +111,13 @@ const noiseHit = (
   src.start(t);
 };
 
-// Fire a baked sample one-shot with a little pitch jitter so repeats stay alive.
+// Fire a baked sample one-shot. Pitched down (with jitter) so the marquee hits
+// land heavy and doom-slow rather than tinny; the bus reverb does the rest.
 const playSample = (k: Kit, buf: AudioBuffer, gain: number) => {
   const src = k.ctx.createBufferSource();
   const g = k.ctx.createGain();
   src.buffer = buf;
-  src.playbackRate.value = 0.94 + Math.random() * 0.12;
+  src.playbackRate.value = 0.8 + Math.random() * 0.08;
   g.gain.value = gain;
   src.connect(g).connect(k.bus);
   src.start(k.ctx.currentTime);
@@ -258,8 +259,8 @@ const createMusic = (ctx: AudioContext, out: GainNode) => {
 // Play the right voice for one burst kind: live synth for the dense cheap hits,
 // a baked sample (or a synth stand-in until it loads) for the marquee ones.
 const voice = (k: Kit, kind: number, samples: Map<number, AudioBuffer>) => {
-  if (kind === BURST_MUZZLE) return noiseHit(k, 0.05, 0.05, 1600, "highpass");
-  if (kind === BURST_IMPACT) return noiseHit(k, 0.04, 0.07, 900, "bandpass");
+  if (kind === BURST_MUZZLE) return noiseHit(k, 0.05, 0.05, 1300, "highpass");
+  if (kind === BURST_IMPACT) return noiseHit(k, 0.09, 0.09, 550, "bandpass");
   const s = SAMPLE[kind];
   if (!s) return;
   const buf = samples.get(kind);
@@ -309,14 +310,59 @@ interface Engine {
 
 // Construct the whole graph on the first gesture (autoplay policy): sfxBus +
 // musicBus → master → limiter → speakers, and kick off async asset loading.
+// Synthetic impulse response: decaying noise, stereo-decorrelated. `decay`
+// shapes the tail curve (higher = faster initial falloff, longer sparse tail).
+const makeReverbIR = (
+  ctx: AudioContext,
+  seconds: number,
+  decay: number,
+): AudioBuffer => {
+  const len = Math.floor(seconds * ctx.sampleRate);
+  const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let i = 0; i < len; i++)
+      d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** decay;
+  }
+  return ir;
+};
+
+// A dark, cavernous reverb send for the SFX bus — the "cosmic" space that makes
+// hits bloom. Low-passed so the tail is doom-dark, not fizzy; wet level kept
+// modest so dense muzzle fire doesn't wash out.
+const buildSfxSend = (ctx: AudioContext, master: GainNode): GainNode => {
+  const send = ctx.createGain();
+  const reverb = ctx.createConvolver();
+  reverb.buffer = makeReverbIR(ctx, 3.4, 2.2);
+  const lp = ctx.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 1700;
+  const wet = ctx.createGain();
+  wet.gain.value = 0.27;
+  send.connect(reverb).connect(lp).connect(wet).connect(master);
+  return send;
+};
+
 const buildEngine = (levels: Levels, muted: boolean, scene: Scene): Engine => {
   const ctx = new AudioContext();
   const master = ctx.createGain();
   master.gain.value = muted ? 0 : levels.master;
-  master.connect(ctx.createDynamicsCompressor()).connect(ctx.destination);
+  // Brick-wall peak limiter, NOT a broadband compressor. WebAudio's default
+  // DynamicsCompressor (threshold -24dB, ratio 12) pumps continuously under
+  // loudness-normalised music and ducks SFX transients on the shared bus,
+  // colouring their tone. A high threshold + fast attack only tames true peaks,
+  // so music and SFX pass through uncompressed.
+  const limiter = ctx.createDynamicsCompressor();
+  limiter.threshold.value = -3;
+  limiter.knee.value = 0;
+  limiter.ratio.value = 20;
+  limiter.attack.value = 0.003;
+  limiter.release.value = 0.1;
+  master.connect(limiter).connect(ctx.destination);
   const bus = ctx.createGain();
   bus.gain.value = levels.sfx;
-  bus.connect(master);
+  bus.connect(master); // dry
+  bus.connect(buildSfxSend(ctx, master)); // wet — cosmic-doom reverb space
   const musicBus = ctx.createGain();
   musicBus.gain.value = levels.music;
   musicBus.connect(master);
