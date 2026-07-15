@@ -296,8 +296,30 @@ export interface Projectile extends Entity {
 // 7 force field (push + melee aura that builds on the shield orb),
 // 8 fuel cell — carrier-only harvest that refills the carrier and pumps nearby
 // allies; the anti-stall valve that keeps a starving field from grinding out.
-export type PickupKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-export const PICKUP_KINDS = 9;
+// ARCADE-ONLY extras (rolled only via ARCADE_PICKUP_KINDS, autobattle unchanged):
+// 9 muster — reinforces the collector's team with a pair of AI allies.
+// 10 drones — a short-lived escort of orbiting drones that auto-fire at enemies.
+export type PickupKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export const PICKUP_KINDS = 9; // autobattle roll bound (kinds 0..8)
+export const ARCADE_PICKUP_KINDS = 11; // arcade roll bound (adds 9 muster, 10 drones)
+export const MUSTER_KIND = 9;
+export const DRONE_KIND = 10;
+
+// A short-lived escort drone orbiting its owner ship and auto-firing at the
+// nearest enemy in range. Purely offensive/cosmetic — it never collides; its
+// bolts go through the normal bullet pipeline. Dies when its life runs out or
+// its owner is gone.
+export interface Drone extends Entity {
+  readonly x: number;
+  readonly y: number;
+  readonly ownerId: number; // ship it orbits (bolts credit this owner)
+  readonly team: string; // owner's team — won't target its own side
+  readonly rgb: Rgb; // owner's colour, for render + bolt tint
+  readonly phase: number; // current orbit angle (radians)
+  readonly slot: number; // 0..count-1, spaces drones evenly around the ring
+  readonly life: number; // gens remaining
+  readonly fireCooldown: number; // gens until the next bolt
+}
 export interface Pickup extends Entity {
   readonly x: number;
   readonly y: number;
@@ -450,6 +472,7 @@ export interface World {
   readonly bullets: EntityList<Bullet>;
   readonly missiles: EntityList<Missile>;
   readonly whips: EntityList<Whip>; // pilot-special verlet lash chains
+  readonly drones: EntityList<Drone>; // short-lived orbiting escort drones
   readonly seed: Seed;
   readonly score: Readonly<Record<string, number>>; // points per team name
   readonly baseHp: Readonly<Record<string, number>>; // per-team base integrity

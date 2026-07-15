@@ -28,6 +28,7 @@ import {
   BURST_EXPLOSION,
   baseByName,
   type DamageType,
+  type Drone,
   type LightCycle,
   MAX_LEVEL,
   type Mutable,
@@ -60,6 +61,7 @@ export interface TickCtx {
   score: Record<string, number>;
   baseHp: Record<string, number>;
   spawned: LightCycle[];
+  spawnedDrones: Omit<Drone, "id">[]; // escort drones queued by a drone pickup
   burstAt: BurstSpec[];
   removed: Set<number>;
 }
@@ -80,6 +82,7 @@ export const createTickCtx = (
   score: { ...world.score },
   baseHp: { ...world.baseHp },
   spawned: [],
+  spawnedDrones: [],
   burstAt: [],
   removed: new Set<number>(),
 });

@@ -24,6 +24,7 @@ import {
   BULLET_SPEED,
   baseHitsRequired,
   cruiseFor,
+  DRONE_COUNT,
   fullBaseHp,
   goalDelta,
   MATCH_REINFORCE_GENS,
@@ -566,4 +567,84 @@ test("losing the pilot burns a life and respawns; zero lives ends the run", () =
   }
   expect(w.arcade?.lives).toBe(0);
   expect(w.arcade?.over).toBe(true);
+});
+
+test("arcade muster pickup reinforces the player's team with AI allies", () => {
+  let w = initArcadeWorld(7, arcadeConfig());
+  const p = w.ships.items[0];
+  // Drop a muster pickup (kind 9) right on the player so it's collected next tick.
+  w = {
+    ...w,
+    pickups: {
+      items: [{ id: 1, x: p.x, y: p.y, vx: 0, vy: 0, kind: 9, bob: 0 }],
+      nextId: 2,
+    },
+  };
+  const cyan = (world: World) =>
+    world.ships.items.filter((s) => s.colorName === "cyan");
+  const before = cyan(w).length; // just the player
+  w = update({ kind: "tick", steps: 1, now: 0 }, w);
+  // 1–2 AI allies mustered onto the player's team.
+  expect(cyan(w).length).toBeGreaterThan(before);
+  const allies = cyan(w).filter((s) => s.id !== w.controlledShipId);
+  expect(allies.length).toBeGreaterThanOrEqual(1);
+});
+
+test("muster pickup only rolls in arcade — autobattle pool is unchanged", () => {
+  // Autobattle never produces kind 9 (rolls 0..8); scan a long run's pool.
+  let w = initWorld(5);
+  const kinds = new Set<number>();
+  for (let i = 0; i < 300; i++) {
+    w = update({ kind: "tick", steps: 3, now: i * 100 }, w);
+    for (const p of w.pickups.items) kinds.add(p.kind);
+  }
+  expect(kinds.has(9)).toBe(false);
+});
+
+test("arcade drone pickup escorts the player with orbiting drones", () => {
+  let w = initArcadeWorld(7, arcadeConfig());
+  const p = w.ships.items[0];
+  w = {
+    ...w,
+    pickups: {
+      items: [{ id: 1, x: p.x, y: p.y, vx: 0, vy: 0, kind: 10, bob: 0 }],
+      nextId: 2,
+    },
+  };
+  w = update({ kind: "tick", steps: 1, now: 0 }, w);
+  const mine = w.drones.items.filter((d) => d.ownerId === w.controlledShipId);
+  expect(mine.length).toBe(DRONE_COUNT);
+  // Each drone rides an orbit ring offset from the player (not on top of it).
+  const player = w.ships.items.find((s) => s.id === w.controlledShipId);
+  for (const d of mine) {
+    expect(
+      Math.hypot(d.x - (player?.x ?? 0), d.y - (player?.y ?? 0)),
+    ).toBeGreaterThan(5);
+  }
+});
+
+test("escort drones dissipate when their owner is gone", () => {
+  let w = initArcadeWorld(7, arcadeConfig());
+  const p = w.ships.items[0];
+  w = {
+    ...w,
+    pickups: {
+      items: [{ id: 1, x: p.x, y: p.y, vx: 0, vy: 0, kind: 10, bob: 0 }],
+      nextId: 2,
+    },
+  };
+  w = update({ kind: "tick", steps: 1, now: 0 }, w);
+  expect(w.drones.items.length).toBeGreaterThan(0);
+  // Yank every ship: with no owner to orbit, drones must clear next tick.
+  w = { ...w, ships: { items: [], nextId: w.ships.nextId } };
+  w = update({ kind: "tick", steps: 1, now: 0 }, w);
+  expect(w.drones.items.every((d) => d.ownerId !== p.id)).toBe(true);
+});
+
+test("drones never spawn in autobattle (arcade-only pickup)", () => {
+  let w = initWorld(5);
+  for (let i = 0; i < 300; i++) {
+    w = update({ kind: "tick", steps: 3, now: i * 100 }, w);
+    expect(w.drones.items.length).toBe(0);
+  }
 });

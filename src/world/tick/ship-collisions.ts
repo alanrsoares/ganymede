@@ -12,6 +12,7 @@ import {
   type LightCycle,
   type Mutable,
 } from "../types";
+import { gridSelfPairs, type PairList, SHIP_PAIR_BAND } from "./broadphase";
 import { hit, killShip, maybeRamShock, replace, type TickCtx } from "./context";
 
 type Ship = Mutable<LightCycle>;
@@ -145,25 +146,47 @@ function resolvePair(ctx: TickCtx, a: Ship, b: Ship, d2: number): void {
   }
 }
 
-/** Resolve `a` against every later ship within the semitouch band. */
-function collideShipFrom(ctx: TickCtx, a: Ship, startJ: number): void {
+// Narrow-phase for one candidate index pair: skip if either ship is already
+// gone, recompute the LIVE toroidal distance (positions may have shifted from an
+// earlier bounce this tick), gate the semitouch band, then resolve. Both the
+// brute nested loop and the broad-phase list route through here, so the gate has
+// a single definition.
+function collidePair(ctx: TickCtx, i: number, j: number): void {
   const { moved, removed } = ctx;
-  for (let j = startJ; j < moved.length; j++) {
-    const b = moved[j];
-    if (removed.has(a.id) || removed.has(b.id)) continue;
-    const dx = toroidalDist(a.x, b.x, ARENA.w);
-    const dy = toroidalDist(a.y, b.y, ARENA.h);
-    const d2 = dx * dx + dy * dy;
-    if (d2 < SEMITOUCH_D2) resolvePair(ctx, a, b, d2);
+  const a = moved[i];
+  const b = moved[j];
+  if (removed.has(a.id) || removed.has(b.id)) return;
+  const dx = toroidalDist(a.x, b.x, ARENA.w);
+  const dy = toroidalDist(a.y, b.y, ARENA.h);
+  const d2 = dx * dx + dy * dy;
+  if (d2 < SEMITOUCH_D2) resolvePair(ctx, a, b, d2);
+}
+
+/**
+ * Ship ↔ ship dogfights (enemies) and resource exchange (allies).
+ *
+ * With no `pairs`, the brute O(n²) nested loop (visit order = i ascending, then
+ * j > i). Given a candidate `pairs` list — a lexicographically-sorted superset
+ * of every semitouch pair, from `gridSelfPairs` (CPU) or a GPU broad-phase — the
+ * identical visit order and per-pair gate are replayed, so the outcome matches
+ * the nested loop bit-for-bit while skipping the far-apart pairs.
+ */
+export function resolveShipCollisions(ctx: TickCtx, pairs?: PairList) {
+  if (pairs) {
+    for (let k = 0; k < pairs.length; k += 2)
+      collidePair(ctx, pairs[k], pairs[k + 1]);
+    return;
+  }
+  const n = ctx.moved.length;
+  for (let i = 0; i < n; i++) {
+    if (ctx.removed.has(ctx.moved[i].id)) continue;
+    for (let j = i + 1; j < n; j++) collidePair(ctx, i, j);
   }
 }
 
-/** Ship ↔ ship dogfights (enemies) and resource exchange (allies). */
-export function resolveShipCollisions(ctx: TickCtx) {
-  for (let i = 0; i < ctx.moved.length; i++) {
-    const a = ctx.moved[i];
-    if (!ctx.removed.has(a.id)) collideShipFrom(ctx, a, i + 1);
-  }
+/** Build the ship×ship candidate pairs for the current tick's moved ships. */
+export function shipCollisionPairs(ctx: TickCtx): PairList {
+  return gridSelfPairs(ctx.moved, ARENA, SHIP_PAIR_BAND);
 }
 
 /** Kill every ship whose team base has been destroyed. */

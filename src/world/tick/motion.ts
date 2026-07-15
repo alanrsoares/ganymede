@@ -11,11 +11,16 @@ import {
   advanceMissile,
   BOOST_MULT,
   cruiseFor,
+  DRONE_ORBIT_RADIUS,
+  DRONE_ORBIT_SPEED,
+  ENGAGE_RADIUS,
   FUEL_BURN,
   FUEL_DRIFT_SPEED,
   flockSteer,
+  fuelCarriers,
   regenForLevel,
   SPEED_EASE_LVL,
+  shipRadius,
   TURN_EASE_LVL,
   wrap,
 } from "../factory";
@@ -23,6 +28,7 @@ import {
   ARENA,
   type Asteroid,
   type Bullet,
+  type Drone,
   type LightCycle,
   type Mine,
   type Missile,
@@ -32,6 +38,7 @@ import {
   type Whip,
   type World,
 } from "../types";
+import { gridNeighbors } from "./broadphase";
 import type { TickCtx } from "./context";
 import { advanceWhips } from "./whips";
 
@@ -43,6 +50,7 @@ export interface MotionState {
   bullets: Mutable<Bullet>[];
   missiles: Mutable<Missile>[];
   whips: Mutable<Whip>[];
+  drones: Mutable<Drone>[];
   projId: number;
   mineId: number;
   bulletId: number;
@@ -51,6 +59,10 @@ export interface MotionState {
 }
 
 type BaseHp = Readonly<Record<string, number>>;
+
+// Broad-phase cell band for flock neighbour queries = the widest per-ship range
+// term (max engage radius). Every flock term re-gates to its own smaller radius.
+const FLOCK_BAND = Math.max(...ENGAGE_RADIUS);
 
 /** Cruise speed target: dead engine drifts slowly; else per-class cruise × boost. */
 const shipCruise = (s: LightCycle, empty: boolean): number =>
@@ -73,6 +85,8 @@ const shipAccel = (
   empty: boolean,
   world: World,
   baseHp: BaseHp,
+  neighbors: readonly LightCycle[],
+  carriers: readonly LightCycle[],
 ): [number, number] => {
   if (empty) return [0, 0];
   if (world.controlledShipId === s.id) {
@@ -87,6 +101,8 @@ const shipAccel = (
     world.rally,
     s.level,
     world.age,
+    neighbors,
+    carriers,
   );
 };
 
@@ -96,12 +112,14 @@ const advanceShip = (
   world: World,
   baseHp: BaseHp,
   steps: number,
+  neighbors: readonly LightCycle[],
+  carriers: readonly LightCycle[],
 ): Mutable<LightCycle> => {
   // Out of fuel = dead engine: no thrust, just a slow aimless drift like a
   // power-up orb — defenseless flotsam until it's tugged home or picked off.
   const empty = s.fuel <= 0;
   const cruise = shipCruise(s, empty);
-  const [ax, ay] = shipAccel(s, empty, world, baseHp);
+  const [ax, ay] = shipAccel(s, empty, world, baseHp, neighbors, carriers);
   const bvx = s.vx + ax * steps;
   const bvy = s.vy + ay * steps;
   const speedEase = SPEED_EASE_LVL[s.level - 1] ?? 0.08;
@@ -218,12 +236,56 @@ const advanceMissiles = (
     .map((m) => ({ ...advanceMissile(m, shipById.get(m.targetId), steps) }))
     .filter((m) => m.life > 0);
 
+// Escort drones ride their owner: re-anchor to the (moved) owner each gen on an
+// orbit ring, tick down life + fire cooldown, and dissipate when the timer runs
+// out or the owner is gone. Firing itself happens in resolveInteractions.
+const advanceDrones = (
+  drones: readonly Drone[],
+  shipById: Map<number, Mutable<LightCycle>>,
+  steps: number,
+): Mutable<Drone>[] => {
+  const out: Mutable<Drone>[] = [];
+  for (const d of drones) {
+    const owner = shipById.get(d.ownerId);
+    if (!owner) continue; // owner gone → drone dissipates
+    const life = d.life - steps;
+    if (life <= 0) continue;
+    const phase = d.phase + DRONE_ORBIT_SPEED * steps;
+    const r = shipRadius(owner.level) + DRONE_ORBIT_RADIUS;
+    out.push({
+      ...d,
+      phase,
+      x: wrap(owner.x + Math.cos(phase) * r, ARENA.w),
+      y: wrap(owner.y + Math.sin(phase) * r, ARENA.h),
+      life,
+      fireCooldown: Math.max(0, d.fireCooldown - steps),
+    });
+  }
+  return out;
+};
+
 /** Advance every entity for `steps` generations; returns mutable copies for collision. */
 export const advanceMotion = (ctx: TickCtx): MotionState => {
   const { world, steps } = ctx;
 
-  ctx.moved = world.ships.items.map((s) =>
-    advanceShip(s, world, ctx.baseHp, steps),
+  // Broad-phase the range-limited flock terms: one grid over ship positions at
+  // the max engage radius. Returns null (→ brute full-array scan) when the arena
+  // is too small to grid, e.g. the default 480×270 field — so behaviour there is
+  // unchanged; the grid only engages in the large arenas high ship counts need.
+  const ships = world.ships.items;
+  const nbr = gridNeighbors(ships, ARENA, FLOCK_BAND);
+  // Pre-filter fuel-capable carriers once so each ship's nearest-fuel-source scan
+  // is O(carriers) instead of O(ships) (carriers ≪ ships) — the last O(n²) term.
+  const carriers = fuelCarriers(ships);
+  ctx.moved = ships.map((s, i) =>
+    advanceShip(
+      s,
+      world,
+      ctx.baseHp,
+      steps,
+      nbr ? nbr[i].map((j) => ships[j]) : ships,
+      carriers,
+    ),
   );
 
   const rocks: Mutable<Asteroid>[] = world.asteroids.items.map((a) => ({
@@ -241,6 +303,7 @@ export const advanceMotion = (ctx: TickCtx): MotionState => {
     bullets: advanceBullets(world, steps),
     missiles: advanceMissiles(world, shipById, steps),
     whips: advanceWhips(world, shipById, steps),
+    drones: advanceDrones(world.drones.items, shipById, steps),
     projId: world.projectiles.nextId,
     mineId: world.mines.nextId,
     bulletId: world.bullets.nextId,

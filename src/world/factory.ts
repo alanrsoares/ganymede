@@ -20,6 +20,8 @@ import {
   bulletLifeFor,
   COORDINATE_MIN_LEVEL,
   cruiseFor,
+  DRONE_BOLT_LIFE,
+  DRONE_DAMAGE,
   EMP_DAMAGE,
   EMP_RADIUS,
   fireCooldownForLevel,
@@ -42,6 +44,7 @@ import {
   type Asteroid,
   type Bullet,
   boltKindFor,
+  type Drone,
   type LightCycle,
   type Missile,
   PICKUP_KINDS,
@@ -383,13 +386,45 @@ export function spawnBullet(
   };
 }
 
+/** A bolt fired by an escort drone at a target point; credited to the owner. */
+export function spawnDroneBolt(
+  id: number,
+  d: Pick<Drone, "x" | "y" | "team" | "rgb" | "ownerId">,
+  tx: number,
+  ty: number,
+): Bullet {
+  const [ax, ay] = normalize(
+    [wrapDelta(d.x, tx, ARENA.w), wrapDelta(d.y, ty, ARENA.h)],
+    [1, 0],
+  );
+  return {
+    id,
+    x: d.x,
+    y: d.y,
+    vx: ax * BULLET_SPEED,
+    vy: ay * BULLET_SPEED,
+    team: d.team,
+    rgb: d.rgb,
+    angle: angleTo([ax, ay]),
+    damage: DRONE_DAMAGE,
+    life: DRONE_BOLT_LIFE,
+    owner: d.ownerId,
+    bounces: 0,
+    kind: 0,
+  };
+}
+
 /** Build a drifting power-up bubble with a random kind + trajectory. */
-export function rollPickup(seed: Seed, id: number): [Pickup, Seed] {
+export function rollPickup(
+  seed: Seed,
+  id: number,
+  kinds: number = PICKUP_KINDS,
+): [Pickup, Seed] {
   const [x, s1] = nextRange(seed, 30, ARENA.w - 30);
   const [y, s2] = nextRange(s1, 30, ARENA.h - 30);
   const [ang, s3] = nextRange(s2, 0, Math.PI * 2);
   const [spd, s4] = nextRange(s3, 0.05, 0.18);
-  const [k, s5] = nextInt(s4, PICKUP_KINDS);
+  const [k, s5] = nextInt(s4, kinds);
   const [bob, s6] = nextRange(s5, 0, Math.PI * 2);
   const pickup: Pickup = {
     id,

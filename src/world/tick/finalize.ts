@@ -11,7 +11,15 @@ import {
   rollPickup,
 } from "../factory";
 import { resolveLock } from "../lock";
-import type { Burst, LightCycle, MatchConfig, World } from "../types";
+import {
+  ARCADE_PICKUP_KINDS,
+  type Burst,
+  type Drone,
+  type LightCycle,
+  type MatchConfig,
+  PICKUP_KINDS,
+  type World,
+} from "../types";
 import type { BurstSpec, TickCtx } from "./context";
 import type { HazardState } from "./hazard-collisions";
 import type { InteractionState } from "./interactions";
@@ -114,6 +122,19 @@ const retainPools = (
   whips: { items: motion.whips, nextId: motion.whipId },
 });
 
+// Commit escort drones: motion advanced/expired the existing ones; new ones
+// queued by drone pickups get their ids here. Any whose owner died this tick drop.
+const commitDrones = (ctx: TickCtx, motion: MotionState): EntityList<Drone> => {
+  const base = ctx.world.drones.nextId;
+  const fresh = ctx.spawnedDrones.map((d, i) => ({ ...d, id: base + i }));
+  return {
+    items: [...motion.drones, ...fresh].filter(
+      (d) => !ctx.removed.has(d.ownerId),
+    ),
+    nextId: base + fresh.length,
+  };
+};
+
 /** Commit entity pools, bursts, respawns, and match outcome after all phases. */
 export const finalizeTick = (
   ctx: TickCtx,
@@ -141,12 +162,16 @@ export const finalizeTick = (
     sBursts,
     rollAsteroid,
   );
+  // Arcade adds the muster kind (9) to the pool; autobattle keeps kinds 0..8, so
+  // its pickup rolls — and the golden characterization — are unchanged.
+  const pickupKinds =
+    world.config.format === "arcade" ? ARCADE_PICKUP_KINDS : PICKUP_KINDS;
   const [pickups, seed] = refillPool(
     motion.bubbles.filter((p) => !interactions.takenPickups.has(p.id)),
     world.pickups.nextId,
     NUM_PICKUPS,
     sRocks,
-    rollPickup,
+    (sd, id) => rollPickup(sd, id, pickupKinds),
   );
   const nextAge = world.age + steps;
 
@@ -155,6 +180,7 @@ export const finalizeTick = (
     bursts,
     asteroids,
     pickups,
+    drones: commitDrones(ctx, motion),
     ...retainPools(motion, hazards, interactions, projectiles),
     seed,
     score: ctx.score,
