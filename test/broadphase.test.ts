@@ -5,11 +5,13 @@
 //      pair list will later drop into.
 import { expect, test } from "bun:test";
 import { nextFloat, type Seed } from "~/engine/rng";
-import { initWorld, update } from "~/world";
+import { initWorld, type LightCycle, setGridBounds, update } from "~/world";
+import { ENGAGE_RADIUS, flockSteer, rollShip } from "~/world/factory";
 import {
   bruteCrossPairs,
   bruteSelfPairs,
   gridCrossPairs,
+  gridNeighbors,
   gridSelfPairs,
   type PairList,
   type Pt,
@@ -148,6 +150,58 @@ test("gridCrossPairs matches the brute oracle exactly (grouped by B, A asc)", ()
       const brute = bruteCrossPairs(ptsB, ptsA, ARENA, CROSS_BAND);
       expect(Array.from(grid)).toEqual(Array.from(brute));
     }
+  }
+});
+
+// --- per-ship neighbour grid (flockSteer) --------------------------------------
+
+test("gridNeighbors returns null when the arena is too small to grid", () => {
+  // Default 480×270 field at the flock band (max engage radius) → <3 cells/axis.
+  const band = Math.max(...ENGAGE_RADIUS);
+  const pts = randomPts(50, 1);
+  expect(gridNeighbors(pts, { w: 480, h: 270 }, band)).toBeNull();
+});
+
+// 400 ships scattered across a big (2400×1350) arena, mixed teams and levels.
+const bigArenaShips = (seed: number): LightCycle[] => {
+  let s: Seed = seed;
+  return Array.from({ length: 400 }, (_, i) => {
+    const [ship, s2] = rollShip(
+      s,
+      i + 1,
+      ((i * 97 + 13) * seed) % 2400,
+      ((i * 61 + 7) * seed) % 1350,
+      1 + (i % 5),
+      TEAMS[i % TEAMS.length].name,
+    );
+    s = s2;
+    return ship;
+  });
+};
+
+test("grid-neighbour flockSteer is bit-identical to the full-array scan", () => {
+  const band = Math.max(...ENGAGE_RADIUS);
+  const { baseHp } = initWorld(1);
+  const steer = (self: LightCycle, nbr: readonly LightCycle[]) =>
+    flockSteer(self, ships, [], [], baseHp, null, self.level, 0, nbr);
+  let ships: LightCycle[] = [];
+  setGridBounds(2400, 1350); // large arena so the grid actually engages
+  try {
+    let covered = 0;
+    for (const seed of [1, 7, 99]) {
+      ships = bigArenaShips(seed);
+      const nbr = gridNeighbors(ships, { w: 2400, h: 1350 }, band);
+      expect(nbr).not.toBeNull();
+      if (!nbr) continue;
+      for (let i = 0; i < ships.length; i++) {
+        const nbrShips = nbr[i].map((j) => ships[j]);
+        if (nbrShips.length > 0) covered++;
+        expect(steer(ships[i], nbrShips)).toEqual(steer(ships[i], ships));
+      }
+    }
+    expect(covered).toBeGreaterThan(0); // ships actually had neighbours
+  } finally {
+    setGridBounds(480, 270); // restore global arena for other tests
   }
 });
 

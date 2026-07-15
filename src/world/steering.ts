@@ -607,13 +607,19 @@ export const flockSteer = (
   rally: RallyBeacon | null,
   level: number,
   age: number,
+  // Broad-phase candidate ships within the max flock radius (ascending index),
+  // for the range-limited terms (separation/align/cohere/pickFoe). Defaults to
+  // the full `ships` array — the exact brute behaviour — when no grid is built
+  // (small arena / low ship count). The full array is still used for the
+  // unbounded nearest-fuel-carrier scan in steerCommandOrObjective.
+  neighbors: readonly LightCycle[] = ships,
 ): [number, number] => {
   // Combat/mission terms first: the nearest enemy in engage range doubles as the
   // combat flag, and the objective term tells us if the ship is on a goal.
   const engageR = ENGAGE_RADIUS[level - 1] ?? 0;
   const foe =
     engageR > 0
-      ? pickFoe(self, ships, engageR * engageR, wantsFocus(self))
+      ? pickFoe(self, neighbors, engageR * engageR, wantsFocus(self))
       : null;
   const [pursueDx, pursueDy] = steerPursuit(self, level, foe);
   const [objDx, objDy] = steerCommandOrObjective(
@@ -629,11 +635,11 @@ export const flockSteer = (
   const committed = foe !== null || objDx !== 0 || objDy !== 0;
   const flock = committed ? COMBAT_FLOCK_DAMP : 1;
 
-  let [fx, fy] = steerSeparation(self, ships, rocks, level); // always on: anti-overlap
+  let [fx, fy] = steerSeparation(self, neighbors, rocks, level); // always on: anti-overlap
 
   const [alignDx, alignDy, cohereDx, cohereDy] = steerAlignCohere(
     self,
-    ships,
+    neighbors,
     level,
   );
   fx += (alignDx + cohereDx) * flock;

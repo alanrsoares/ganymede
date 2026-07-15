@@ -36,12 +36,23 @@ interface Grid {
 
 const wrapCell = (c: number, n: number): number => ((c % n) + n) % n;
 
-function cellDims(w: number, h: number, band: number): Grid {
+// Grid dims, or null when the arena is smaller than 3 cells/axis at this band (the
+// toroidal 3×3 would wrap onto itself). Callers either fall back to brute (null)
+// or treat it as a hard error (cellDims).
+function tryCellDims(w: number, h: number, band: number): Grid | null {
   const ncx = Math.floor(w / band);
   const ncy = Math.floor(h / band);
-  if (ncx < 3 || ncy < 3)
-    throw new Error(`arena too small for broadphase: ${ncx}×${ncy} (need ≥3)`);
+  if (ncx < 3 || ncy < 3) return null;
   return { ncx, ncy, cellW: w / ncx, cellH: h / ncy };
+}
+
+function cellDims(w: number, h: number, band: number): Grid {
+  const g = tryCellDims(w, h, band);
+  if (!g)
+    throw new Error(
+      `arena too small for broadphase at band ${band} (need ≥3 cells/axis)`,
+    );
+  return g;
 }
 
 const cellXOf = (x: number, g: Grid): number =>
@@ -235,4 +246,58 @@ export function runCrossPairs(
     k += 2;
     if (stop) while (k < pairs.length && pairs[k] === b) k += 2;
   }
+}
+
+// --- per-element neighbour lists (for per-ship query/force terms — flockSteer's
+// separation/align/cohere/pickFoe). Unlike the pair enumerators this is consumed
+// as "for each i, its neighbours", the P3 accumulation shape. Neighbours come in
+// ASCENDING index order (a subsequence of the full array's order), so any
+// order-sensitive float accumulation over them stays bit-identical to iterating
+// the full array with the same per-element distance gate.
+
+// The ascending-index neighbours of i within `band` (i itself excluded).
+function collectNeighbors(
+  i: number,
+  pts: readonly Pt[],
+  buckets: number[][],
+  g: Grid,
+  arena: { w: number; h: number },
+  band2: number,
+): number[] {
+  const p = pts[i];
+  const cells = neighborCells(cellXOf(p.x, g), cellYOf(p.y, g), g);
+  const out: number[] = [];
+  for (const c of cells) {
+    for (const j of buckets[c]) {
+      if (j === i) continue;
+      const ex = toroidalDist(p.x, pts[j].x, arena.w);
+      const ey = toroidalDist(p.y, pts[j].y, arena.h);
+      if (ex * ex + ey * ey < band2) out.push(j);
+    }
+  }
+  return out.sort((a, b) => a - b); // ascending → subsequence of full-array order
+}
+
+// For every point, its neighbour indices within `band`. Returns null when the
+// arena is too small to grid (< 3 cells/axis) — the caller then keeps the brute
+// full-array scan (correct, just O(n²)). This is the ONE band for all flock terms
+// (= max engage radius); each term re-gates to its own smaller radius.
+export function gridNeighbors(
+  pts: readonly Pt[],
+  arena: { w: number; h: number },
+  band: number,
+): number[][] | null {
+  const g = tryCellDims(arena.w, arena.h, band);
+  if (!g) return null;
+  const n = pts.length;
+  const buckets: number[][] = Array.from({ length: g.ncx * g.ncy }, () => []);
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    buckets[cellYOf(p.y, g) * g.ncx + cellXOf(p.x, g)].push(i);
+  }
+  const band2 = band * band;
+  const out: number[][] = new Array(n);
+  for (let i = 0; i < n; i++)
+    out[i] = collectNeighbors(i, pts, buckets, g, arena, band2);
+  return out;
 }
