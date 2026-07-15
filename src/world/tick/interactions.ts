@@ -540,9 +540,17 @@ const collectPickups = (
   let nextMissileId = missileId;
   for (const p of bubbles) {
     if (takenPickups.has(p.id)) continue;
-    // Fuel cells are a carrier-only resource — non-carriers coast through and
-    // leave them floating for a carrier to harvest.
-    if (p.kind === FUEL_CELL_KIND && !isCarrier(s.archetype)) continue;
+    // Fuel cells are a carrier-only resource for the AI — non-carriers coast
+    // through and leave them floating for a carrier to harvest. The human pilot
+    // is exempt: whatever hull they picked, they must be able to refuel (else a
+    // non-carrier pilot runs dry with no recourse).
+    if (
+      p.kind === FUEL_CELL_KIND &&
+      !isCarrier(s.archetype) &&
+      s.id !== ctx.world.controlledShipId
+    ) {
+      continue;
+    }
     if (!within(s.x, s.y, p.x, p.y, PICKUP_RADIUS)) continue;
     takenPickups.add(p.id);
     ctx.score[s.colorName] += SCORE_PICKUP;
