@@ -26,7 +26,12 @@ import {
   drawRocks,
   drawShrapnel,
 } from "./overlay/hazards";
-import { drawBolts, drawBursts, drawMissiles } from "./overlay/projectiles";
+import {
+  drawBolts,
+  drawBursts,
+  drawDrones,
+  drawMissiles,
+} from "./overlay/projectiles";
 import { createPusher, type PushFn } from "./overlay/push";
 import { drawShips } from "./overlay/ships";
 import { drawWhips } from "./overlay/whips";
@@ -129,6 +134,7 @@ const drawDynamicEntities = (
     exhaustL,
   );
   drawWhips(push, cellPx, cellPy, now, world);
+  drawDrones(push, cellPx, cellPy, now, world);
   drawBursts(push, cellPx, cellPy, now, world);
 
   return { rockCount, orbCount, shieldCount };

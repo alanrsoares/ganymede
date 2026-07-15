@@ -30,6 +30,11 @@ import {
   carriesArc,
   carriesMissiles,
   centerPadPhase,
+  DRONE_COUNT,
+  DRONE_DURATION,
+  DRONE_FIRE_COOLDOWN,
+  DRONE_FIRE_RANGE,
+  DRONE_ORBIT_RADIUS,
   EMP_MISSILE_LOCK,
   FORCEFIELD_DAMAGE,
   FORCEFIELD_DURATION,
@@ -72,6 +77,7 @@ import {
   SHIELD_BASE_REGEN,
   shipRadius,
   spawnBullet,
+  spawnDroneBolt,
   spawnEmpMissile,
   spawnMissile,
   type WeaponProfile,
@@ -88,6 +94,8 @@ import {
   type Bullet,
   baseByName,
   CENTER_PAD,
+  DRONE_KIND,
+  type Drone,
   HEAL_PADS,
   type LightCycle,
   MAX_LEVEL,
@@ -537,6 +545,46 @@ const musterAllies = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
   }
 };
 
+// Drone escort power-up: queue DRONE_COUNT drones evenly around the ship's orbit
+// ring into ctx.spawnedDrones (finalize commits them). Staggered fire cooldowns
+// so the ring doesn't volley in unison. No RNG → deterministic.
+const musterDrones = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
+  const r = shipRadius(s.level) + DRONE_ORBIT_RADIUS;
+  for (let k = 0; k < DRONE_COUNT; k++) {
+    const phase = (k / DRONE_COUNT) * Math.PI * 2;
+    ctx.spawnedDrones.push({
+      x: wrap(s.x + Math.cos(phase) * r, ARENA.w),
+      y: wrap(s.y + Math.sin(phase) * r, ARENA.h),
+      ownerId: s.id,
+      team: s.colorName,
+      rgb: s.color,
+      phase,
+      slot: k,
+      life: DRONE_DURATION,
+      fireCooldown: Math.floor((k * DRONE_FIRE_COOLDOWN) / DRONE_COUNT),
+    });
+  }
+};
+
+/** Nearest live enemy of the drone's owner within fire range, else null. */
+const nearestEnemyToDrone = (
+  d: Mutable<Drone>,
+  moved: readonly Mutable<LightCycle>[],
+  removed: Set<number>,
+): Mutable<LightCycle> | null => {
+  let best: Mutable<LightCycle> | null = null;
+  let bestD2 = DRONE_FIRE_RANGE * DRONE_FIRE_RANGE;
+  for (const e of moved) {
+    if (removed.has(e.id) || e.colorName === d.team) continue;
+    const d2 = distSq(d.x, d.y, e.x, e.y);
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = e;
+    }
+  }
+  return best;
+};
+
 /** Apply one collected pickup's effect by kind (heal/shield/boost/.../EMP AoE). */
 const applyPickup = (
   ctx: TickCtx,
@@ -572,6 +620,9 @@ const applyPickup = (
       break;
     case MUSTER_KIND:
       musterAllies(ctx, s);
+      break;
+    case DRONE_KIND:
+      musterDrones(ctx, s);
       break;
     default:
       return fireEmpMissile(ctx, s, missiles, missileId);
@@ -962,7 +1013,7 @@ export const resolveInteractions = (
   interactions: InteractionState,
 ) => {
   const { moved, removed, steps } = ctx;
-  const { bubbles, mines, bullets, missiles } = motion;
+  const { bubbles, mines, bullets, missiles, drones } = motion;
   const { takenPickups } = interactions;
   let seed = ctx.seed;
   let { bulletId, missileId, mineId } = motion;
@@ -988,6 +1039,17 @@ export const resolveInteractions = (
     teleportThroughPortal(s);
     [mineId, seed] = dropMine(ctx, s, mines, mineId, seed, steps);
     dockAtHomeBase(ctx, s, steps);
+  }
+
+  // Escort drones auto-fire at the nearest enemy in range (bolts go through the
+  // normal bullet pipeline, so they hit/credit like any bolt).
+  for (const d of drones) {
+    if (d.fireCooldown > 0) continue;
+    const foe = nearestEnemyToDrone(d, moved, removed);
+    if (!foe) continue;
+    bullets.push(spawnDroneBolt(bulletId, d, foe.x, foe.y));
+    bulletId += 1;
+    d.fireCooldown = DRONE_FIRE_COOLDOWN;
   }
 
   // One neighbour grid over the (now settled) ship positions for every aura pass.

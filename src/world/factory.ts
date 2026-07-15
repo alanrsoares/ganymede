@@ -20,6 +20,8 @@ import {
   bulletLifeFor,
   COORDINATE_MIN_LEVEL,
   cruiseFor,
+  DRONE_BOLT_LIFE,
+  DRONE_DAMAGE,
   EMP_DAMAGE,
   EMP_RADIUS,
   fireCooldownForLevel,
@@ -42,6 +44,7 @@ import {
   type Asteroid,
   type Bullet,
   boltKindFor,
+  type Drone,
   type LightCycle,
   type Missile,
   PICKUP_KINDS,
@@ -380,6 +383,34 @@ export function spawnBullet(
     owner: s.id,
     bounces: BULLET_RICOCHETS,
     kind: boltKindFor(s.archetype),
+  };
+}
+
+/** A bolt fired by an escort drone at a target point; credited to the owner. */
+export function spawnDroneBolt(
+  id: number,
+  d: Pick<Drone, "x" | "y" | "team" | "rgb" | "ownerId">,
+  tx: number,
+  ty: number,
+): Bullet {
+  const [ax, ay] = normalize(
+    [wrapDelta(d.x, tx, ARENA.w), wrapDelta(d.y, ty, ARENA.h)],
+    [1, 0],
+  );
+  return {
+    id,
+    x: d.x,
+    y: d.y,
+    vx: ax * BULLET_SPEED,
+    vy: ay * BULLET_SPEED,
+    team: d.team,
+    rgb: d.rgb,
+    angle: angleTo([ax, ay]),
+    damage: DRONE_DAMAGE,
+    life: DRONE_BOLT_LIFE,
+    owner: d.ownerId,
+    bounces: 0,
+    kind: 0,
   };
 }
 

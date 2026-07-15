@@ -14,6 +14,7 @@ import { resolveLock } from "../lock";
 import {
   ARCADE_PICKUP_KINDS,
   type Burst,
+  type Drone,
   type LightCycle,
   type MatchConfig,
   PICKUP_KINDS,
@@ -121,6 +122,19 @@ const retainPools = (
   whips: { items: motion.whips, nextId: motion.whipId },
 });
 
+// Commit escort drones: motion advanced/expired the existing ones; new ones
+// queued by drone pickups get their ids here. Any whose owner died this tick drop.
+const commitDrones = (ctx: TickCtx, motion: MotionState): EntityList<Drone> => {
+  const base = ctx.world.drones.nextId;
+  const fresh = ctx.spawnedDrones.map((d, i) => ({ ...d, id: base + i }));
+  return {
+    items: [...motion.drones, ...fresh].filter(
+      (d) => !ctx.removed.has(d.ownerId),
+    ),
+    nextId: base + fresh.length,
+  };
+};
+
 /** Commit entity pools, bursts, respawns, and match outcome after all phases. */
 export const finalizeTick = (
   ctx: TickCtx,
@@ -166,6 +180,7 @@ export const finalizeTick = (
     bursts,
     asteroids,
     pickups,
+    drones: commitDrones(ctx, motion),
     ...retainPools(motion, hazards, interactions, projectiles),
     seed,
     score: ctx.score,
