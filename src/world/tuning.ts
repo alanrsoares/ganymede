@@ -270,9 +270,9 @@ export const FIGHTER_CAPSTONE_FIRE_MULT = 1.4;
 // Arcade aim assist (Easy/Normal only): when a piloted shot's direction lands
 // within a narrow cone of a nearby enemy, bias the bolt toward it. Subtle — the
 // player still chooses the direction; this only forgives small misses.
-export const AIM_ASSIST_CONE_COS = Math.cos((15 * Math.PI) / 180); // ±15° cone
-export const AIM_ASSIST_BIAS = 0.5; // 0 = none, 1 = full snap onto the target
-export const AIM_ASSIST_RANGE = 130; // px; only assist toward enemies this close
+export const AIM_ASSIST_CONE_COS = Math.cos((22 * Math.PI) / 180); // ±22° cone
+export const AIM_ASSIST_BIAS = 0.66; // 0 = none, 1 = full snap onto the target
+export const AIM_ASSIST_RANGE = 180; // px; only assist toward enemies this close
 
 // Longest explosion variant — bursts live at least this long so none clip early.
 export const EXPLOSION_DURATION = Math.max(...EXPLOSION_CLIPS.map(durationOf));
@@ -687,18 +687,24 @@ export const ARCADE_TIERS: Record<ArcadeDifficulty, ArcadeTier> = {
   easy: {
     key: "easy",
     label: "Easy",
-    blurb: "5 lives · gentle ramp",
-    lives: 5,
+    blurb: "6 lives · gentle ramp",
+    lives: 6,
     intermissionGens: 4 * 45,
-    spawn: (w) => ({ count: 1 + w, maxLevel: levelCap(w, 3) }),
+    spawn: (w) => ({
+      count: 1 + Math.floor(w * 0.6),
+      maxLevel: levelCap(w, 4),
+    }),
   },
   normal: {
     key: "normal",
     label: "Normal",
-    blurb: "4 lives · a fair fight",
-    lives: 4,
+    blurb: "5 lives · a fair fight",
+    lives: 5,
     intermissionGens: 3 * 45,
-    spawn: (w) => ({ count: 2 + w, maxLevel: levelCap(w, 2) }),
+    spawn: (w) => ({
+      count: 1 + Math.floor(w * 0.75),
+      maxLevel: levelCap(w, 3),
+    }),
   },
   hard: {
     key: "hard",
@@ -706,7 +712,7 @@ export const ARCADE_TIERS: Record<ArcadeDifficulty, ArcadeTier> = {
     blurb: "3 lives · swarms fast",
     lives: 3,
     intermissionGens: 3 * 45,
-    spawn: (w) => ({ count: 3 + w, maxLevel: levelCap(w, 2) }),
+    spawn: (w) => ({ count: 2 + w, maxLevel: levelCap(w, 2) }),
   },
   endless: {
     key: "endless",

@@ -14,12 +14,26 @@ import {
   zeroScores,
 } from "./factory";
 import {
+  type ArcadeConfig,
+  type ArcadeState,
   baseByName,
   type LightCycle,
   type MatchConfig,
   setOrbitPhase,
   type World,
 } from "./types";
+
+// Fresh arcade run bookkeeping (lives/wave/phase) for a new pilot run.
+const initArcadeRun = (cfg: ArcadeConfig): ArcadeState => ({
+  lives: cfg.defeat.kind === "lives" ? cfg.defeat.count : ARCADE_LIVES,
+  wave: 1,
+  waveRemaining: 0,
+  phase: "fight",
+  intermissionGens: 0,
+  kills: 0,
+  startAge: 0,
+  over: false,
+});
 
 // Half-width of the square each fresh ship spawns in, centred on its team base
 // (cells). Small enough to read as "docked at base", wide enough to not stack.
@@ -70,6 +84,7 @@ export function initWorld(
     config,
     arcade: null,
     controlledShipId: null,
+    lockedTargetId: null,
     controlKeys: {
       up: false,
       down: false,
@@ -133,17 +148,9 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
     age: 0,
     winner: null,
     config,
-    arcade: {
-      lives: cfg.defeat.kind === "lives" ? cfg.defeat.count : ARCADE_LIVES,
-      wave: 1,
-      waveRemaining: 0,
-      phase: "fight",
-      intermissionGens: 0,
-      kills: 0,
-      startAge: 0,
-      over: false,
-    },
+    arcade: initArcadeRun(cfg),
     controlledShipId: playerId,
+    lockedTargetId: null,
     controlKeys: { ...NO_KEYS },
   };
 }

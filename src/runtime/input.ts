@@ -113,6 +113,20 @@ const triggerManualAction = (
   return false;
 };
 
+// e / Tab cycle the fire lock while piloting (Shift reverses). Gated on control
+// so Tab still tabs through the menu chrome otherwise.
+const tryCycleTarget = (
+  key: string,
+  shift: boolean,
+  getWorld: () => World,
+  dispatch: (msg: Msg) => void,
+): boolean => {
+  if (key !== "e" && key !== "tab") return false;
+  if (getWorld().controlledShipId === null) return false;
+  dispatch({ kind: "cycleTarget", dir: shift ? -1 : 1 });
+  return true;
+};
+
 const handleKeyDown = (
   e: KeyboardEvent,
   codex: Codex,
@@ -144,6 +158,11 @@ const handleKeyDown = (
   }
 
   if (triggerManualAction(key, getWorld, dispatch)) {
+    e.preventDefault();
+    return;
+  }
+
+  if (tryCycleTarget(key, e.shiftKey, getWorld, dispatch)) {
     e.preventDefault();
     return;
   }

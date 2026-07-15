@@ -424,6 +424,9 @@ export interface World {
   readonly config: MatchConfig; // match setup (team count, length, format)
   readonly arcade: ArcadeState | null; // arcade run state (null in autobattle)
   readonly controlledShipId: number | null;
+  // Enemy the piloted ship's fire hard-locks onto (arcade/manual). Auto-acquired
+  // and auto-advanced by the tick; cycled by the player. null = free aim.
+  readonly lockedTargetId: number | null;
   readonly controlKeys: {
     readonly up: boolean;
     readonly down: boolean;
@@ -450,6 +453,7 @@ export type Msg =
       readonly space: boolean;
     }
   | { readonly kind: "action"; readonly actionId: number }
+  | { readonly kind: "cycleTarget"; readonly dir: 1 | -1 }
   | { readonly kind: "arcadeSkipIntermission" };
 
 export type { Mutable } from "../engine/entities";

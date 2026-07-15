@@ -16,6 +16,7 @@ import {
   drawBases,
   drawCenterPad,
   drawHealPads,
+  drawLockReticle,
   drawPortals,
   drawRallyBeacon,
 } from "./overlay/field";
@@ -79,6 +80,7 @@ const drawFieldFurniture = (
     world,
   );
   drawRallyBeacon(push, cellPx, cellPy, now, world);
+  drawLockReticle(push, cellPx, cellPy, now, world);
   return { baseCount, centerPadCount };
 };
 

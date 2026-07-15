@@ -234,6 +234,10 @@ export function maybeRamShock(ctx: TickCtx, s: Mutable<LightCycle>): void {
  * flyover together earn the level.
  */
 export function creditBaseHit(ctx: TickCtx, ownerId: number, baseName: string) {
+  // Base-raid leveling only makes sense as a spread-out objective in a crowd.
+  // With one enemy base (duels) or two (3-way) it's a trivial free ladder, so
+  // gate the whole raid-XP path to 4+ team matches.
+  if (ctx.world.config.teams < 4) return;
   const s = ctx.moved.find((m) => m.id === ownerId && !ctx.removed.has(m.id));
   if (!s || s.level >= MAX_LEVEL) return;
   s.baseHits = { ...s.baseHits, [baseName]: (s.baseHits[baseName] ?? 0) + 1 };

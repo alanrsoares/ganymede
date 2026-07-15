@@ -10,6 +10,7 @@ import {
   rollMany,
   rollPickup,
 } from "../factory";
+import { resolveLock } from "../lock";
 import type { Burst, LightCycle, MatchConfig, World } from "../types";
 import type { BurstSpec, TickCtx } from "./context";
 import type { HazardState } from "./hazard-collisions";
@@ -161,6 +162,7 @@ export const finalizeTick = (
     config: world.config,
     arcade: world.arcade,
     controlledShipId: world.controlledShipId,
+    lockedTargetId: resolveLock(world, ships),
     controlKeys: world.controlKeys,
   };
 };

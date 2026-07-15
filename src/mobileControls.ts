@@ -23,6 +23,7 @@ export interface MobileControlsOpts {
   controlledShip: State<LightCycle | null>;
   onKeys: (k: Keys) => void;
   onAction: (id: number) => void;
+  onCycle: (dir: 1 | -1) => void;
 }
 
 // Touch-primary device: no hover, coarse pointer. Desktops (incl. touchscreen
@@ -161,9 +162,23 @@ const abilityButton = (
     ),
   );
 
+// Cycle the fire lock to the next in-range enemy.
+const cycleButton = (onCycle: (dir: 1 | -1) => void) =>
+  button(
+    {
+      type: "button",
+      "aria-label": "Cycle target",
+      class:
+        "pointer-events-auto flex h-11 items-center justify-center gap-1 rounded-lg border border-[#ff6b6b]/45 bg-[#040a0e]/70 px-3 text-[11px] uppercase tracking-[0.1em] text-[#ffb4b4] [touch-action:manipulation] active:bg-[#ff6b6b]/20",
+      onclick: () => onCycle(1),
+    },
+    span({ class: "text-[14px] leading-none" }, "🎯"),
+    span({}, "Target"),
+  );
+
 export const mountMobileControls = (opts: MobileControlsOpts) => {
   if (!isTouchPrimary()) return;
-  const { controlledShip, onKeys, onAction } = opts;
+  const { controlledShip, onKeys, onAction, onCycle } = opts;
   const keys: Keys = {
     up: false,
     down: false,
@@ -179,6 +194,7 @@ export const mountMobileControls = (opts: MobileControlsOpts) => {
   );
   const rightCluster = div(
     { class: "flex flex-col items-end gap-2" },
+    cycleButton(onCycle),
     abilityPad,
     makeFire(keys, emit),
   );

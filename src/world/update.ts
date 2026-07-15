@@ -16,6 +16,7 @@ import {
   wrap,
 } from "./factory";
 import { initArcadeWorld, initWorld, spawnShip } from "./init";
+import { cycleLock } from "./lock";
 import { tick } from "./tick";
 import {
   ARENA,
@@ -388,6 +389,7 @@ export function update(msg: Msg, world: World): World {
       return {
         ...world,
         controlledShipId: msg.shipId,
+        lockedTargetId: null, // re-acquired by the tick for the new pilot
         controlKeys: {
           up: false,
           down: false,
@@ -396,6 +398,8 @@ export function update(msg: Msg, world: World): World {
           space: false,
         },
       };
+    case "cycleTarget":
+      return { ...world, lockedTargetId: cycleLock(world, msg.dir) };
     case "controlKeys":
       return {
         ...world,

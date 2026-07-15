@@ -301,6 +301,31 @@ export function drawCenterPad(
   return 1;
 }
 
+// Hostile-red reticle over the piloted ship's locked target: two counter-
+// rotating rings so it reads as an active lock, not scenery.
+export function drawLockReticle(
+  push: PushFn,
+  cellPx: number,
+  cellPy: number,
+  now: number,
+  world: World,
+) {
+  if (world.lockedTargetId == null) return;
+  const t = world.ships.items.find((s) => s.id === world.lockedTargetId);
+  if (!t) return;
+  const px = (t.x + 0.5) * cellPx;
+  const py = (t.y + 0.5) * cellPy;
+  const pulse = 0.5 + 0.5 * Math.sin(now / 120);
+  const r = (7 + pulse * 1.6) * cellPx;
+  push(px, py, r, r, now / 380, SHAPE.ring, [1, 0.28, 0.3, 0.9]);
+  push(px, py, r * 1.5, r * 1.5, -now / 560, SHAPE.ring, [
+    1,
+    0.45,
+    0.4,
+    0.3 + pulse * 0.3,
+  ]);
+}
+
 export function drawRallyBeacon(
   push: PushFn,
   cellPx: number,

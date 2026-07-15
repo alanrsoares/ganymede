@@ -266,6 +266,19 @@ const assistAim = (ctx: TickCtx, s: Mutable<LightCycle>, aim: Aim): Aim => {
 // Final aim for a piloted shot: the steering-input direction, with Easy/Normal
 // arcade forgiving small misses toward nearby enemies.
 const pilotAim = (ctx: TickCtx, s: Mutable<LightCycle>): Aim => {
+  // Hard lock: fire tracks the locked enemy's current position, fully decoupled
+  // from steering, so the pilot can dodge while staying on target.
+  const lockId = ctx.world.lockedTargetId;
+  if (lockId != null) {
+    const t = ctx.moved.find((m) => m.id === lockId && !ctx.removed.has(m.id));
+    if (t && t.colorName !== s.colorName)
+      return {
+        x: s.x + wrapDelta(s.x, t.x, ARENA.w),
+        y: s.y + wrapDelta(s.y, t.y, ARENA.h),
+      };
+  }
+  // No lock (no enemy in range): free directional aim, with the cone nudge on
+  // easy/normal.
   const aim = manualAim(s, ctx.world.controlKeys);
   const diff = ctx.world.config.arcade?.difficulty;
   return diff === "easy" || diff === "normal" ? assistAim(ctx, s, aim) : aim;

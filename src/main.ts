@@ -100,6 +100,7 @@ const wireTouchControls = (dispatch: (msg: Msg) => void, ui: Ui) =>
     controlledShip: ui.controlledShip,
     onKeys: (k) => dispatch({ kind: "controlKeys", ...k }),
     onAction: (id) => dispatch({ kind: "action", actionId: id }),
+    onCycle: (dir) => dispatch({ kind: "cycleTarget", dir }),
   });
 
 const startRuntime = (
