@@ -97,9 +97,33 @@ import {
   PORTALS,
   TEAM_BASES,
 } from "../types";
+import { gridNeighbors } from "./broadphase";
 import { hit, killShip, promote, type TickCtx } from "./context";
 import type { HazardState } from "./hazard-collisions";
 import type { MotionState } from "./motion";
+
+// Broad-phase band for the ship×ship aura passes = the widest aura reach. The
+// auras run after every ship has moved and none of them changes a ship's
+// position (forcefield only nudges velocity), so a grid built just before them is
+// exact — each aura re-gates its own smaller radius. Fits the default 480×270
+// field (≥3 cells/axis), so the shipped sim exercises the grid path too.
+const AURA_BAND = Math.max(
+  FORCEFIELD_RADIUS,
+  FUEL_SHARE_RADIUS,
+  CARRIER_LEECH_RADIUS,
+  RECON_SHARE_RADIUS,
+);
+type NbrLists = readonly (readonly number[])[] | null;
+
+// The "other ships" a ship at index i tests in an aura pass: its grid neighbours
+// (mapped back to ships) or, with no grid built, the whole array — so each aura
+// stays a single loop over one iterable.
+const othersFor = (
+  moved: readonly Mutable<LightCycle>[],
+  nbr: NbrLists,
+  i: number,
+): readonly Mutable<LightCycle>[] =>
+  nbr ? nbr[i].map((j) => moved[j]) : moved;
 
 export interface InteractionState {
   takenPickups: Set<number>;
@@ -765,11 +789,13 @@ const forceFieldStrike = (
 };
 
 /** Force-field carriers push and zap nearby enemies with a damage aura. */
-const applyForceFieldAuras = (ctx: TickCtx): void => {
+export const applyForceFieldAuras = (ctx: TickCtx, nbr: NbrLists): void => {
   const { moved, removed, steps } = ctx;
-  for (const s of moved) {
+  for (let i = 0; i < moved.length; i++) {
+    const s = moved[i];
     if (removed.has(s.id) || s.forceFieldTime <= 0) continue;
-    for (const e of moved) forceFieldStrike(ctx, s, e, steps);
+    for (const e of othersFor(moved, nbr, i))
+      forceFieldStrike(ctx, s, e, steps);
   }
 };
 
@@ -795,12 +821,13 @@ const shareFuelWith = (
 };
 
 /** Carriers top up nearby thirstier allies mid-flight, keeping a reserve. */
-const shareCarrierFuel = (ctx: TickCtx): void => {
+export const shareCarrierFuel = (ctx: TickCtx, nbr: NbrLists): void => {
   const { moved, removed, steps } = ctx;
-  for (const s of moved) {
+  for (let i = 0; i < moved.length; i++) {
+    const s = moved[i];
     if (removed.has(s.id) || !isCarrier(s.archetype)) continue;
     const reserve = s.maxFuel * FUEL_SHARE_RESERVE;
-    for (const a of moved) {
+    for (const a of othersFor(moved, nbr, i)) {
       if (s.fuel <= reserve) break;
       shareFuelWith(s, a, removed, reserve, steps);
     }
@@ -835,11 +862,12 @@ const canLeech = (s: Mutable<LightCycle>, removed: Set<number>): boolean =>
   s.fuel < s.maxFuel;
 
 /** Veteran carriers siphon fuel from nearby enemies into their own tank. */
-const leechCarrierFuel = (ctx: TickCtx): void => {
+export const leechCarrierFuel = (ctx: TickCtx, nbr: NbrLists): void => {
   const { moved, removed, steps } = ctx;
-  for (const s of moved) {
+  for (let i = 0; i < moved.length; i++) {
+    const s = moved[i];
     if (!canLeech(s, removed)) continue;
-    for (const e of moved) {
+    for (const e of othersFor(moved, nbr, i)) {
       if (s.fuel >= s.maxFuel) break;
       leechFuelFrom(s, e, removed, steps);
     }
@@ -885,11 +913,15 @@ const shareReconWith = (
 };
 
 /** Scouts broadcast their completed-raid progress to nearby same-team allies. */
-const shareReconIntel = (ctx: TickCtx): void => {
+export const shareReconIntel = (ctx: TickCtx, nbr: NbrLists): void => {
   const { moved, removed } = ctx;
-  for (const s of moved) {
+  for (let i = 0; i < moved.length; i++) {
+    const s = moved[i];
     if (removed.has(s.id) || !isRecon(s.archetype)) continue;
-    for (const a of moved) shareReconWith(s, a, removed);
+    // An L5 ace scout broadcasts map-wide (Infinity reach) → must scan every
+    // ship; only the range-limited lower ranks can use the neighbour list.
+    const others = s.level >= MAX_LEVEL ? moved : othersFor(moved, nbr, i);
+    for (const a of others) shareReconWith(s, a, removed);
   }
 };
 
@@ -928,10 +960,12 @@ export const resolveInteractions = (
     dockAtHomeBase(ctx, s, steps);
   }
 
-  applyForceFieldAuras(ctx);
-  shareCarrierFuel(ctx);
-  leechCarrierFuel(ctx);
-  shareReconIntel(ctx);
+  // One neighbour grid over the (now settled) ship positions for every aura pass.
+  const nbr = gridNeighbors(moved, ARENA, AURA_BAND);
+  applyForceFieldAuras(ctx, nbr);
+  shareCarrierFuel(ctx, nbr);
+  leechCarrierFuel(ctx, nbr);
+  shareReconIntel(ctx, nbr);
 
   ctx.seed = seed;
   motion.bulletId = bulletId;

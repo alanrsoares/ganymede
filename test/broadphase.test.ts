@@ -5,8 +5,21 @@
 //      pair list will later drop into.
 import { expect, test } from "bun:test";
 import { nextFloat, type Seed } from "~/engine/rng";
-import { initWorld, type LightCycle, setGridBounds, update } from "~/world";
-import { ENGAGE_RADIUS, flockSteer, rollShip } from "~/world/factory";
+import {
+  ARCHETYPES,
+  initWorld,
+  type LightCycle,
+  type Mutable,
+  setGridBounds,
+  TEAM_BASES,
+  update,
+} from "~/world";
+import {
+  baseHitsRequired,
+  ENGAGE_RADIUS,
+  flockSteer,
+  rollShip,
+} from "~/world/factory";
 import {
   bruteCrossPairs,
   bruteSelfPairs,
@@ -24,6 +37,12 @@ import {
   createHazardState,
   shardShipPairs,
 } from "~/world/tick/hazard-collisions";
+import {
+  applyForceFieldAuras,
+  leechCarrierFuel,
+  shareCarrierFuel,
+  shareReconIntel,
+} from "~/world/tick/interactions";
 import { advanceMotion } from "~/world/tick/motion";
 import {
   bulletShipPairs,
@@ -334,4 +353,74 @@ test("broad-phase collideShardsShips is bit-identical to the nested loop", () =>
     expect(scratchSnapshot(ctxGrid)).toBe(scratchSnapshot(ctxNested));
   }
   expect(hits).toBeGreaterThan(0);
+});
+
+// --- interaction auras (force-field / carrier fuel / recon) --------------------
+
+// 96 densely-packed ships (within aura reach), mixed teams/levels/archetypes,
+// with force-field, carrier fuel and completed-raid states set so all four aura
+// passes have work to do.
+const buildAuraShips = (seed: number): Mutable<LightCycle>[] => {
+  let s: Seed = seed;
+  return Array.from({ length: 96 }, (_, i) => {
+    const level = 1 + (i % 5);
+    const team = TEAMS[i % TEAMS.length].name;
+    const arch = ARCHETYPES[i % ARCHETYPES.length];
+    // Tight 20×18 lattice so ships sit inside the short aura radii (24–30px).
+    const [ship, s2] = rollShip(
+      s,
+      i + 1,
+      (i % 12) * 20 + 10,
+      Math.floor(i / 12) * 18 + 10,
+      level,
+      team,
+      arch,
+    );
+    s = s2;
+    // Scouts arrive with every enemy base raided (intel to broadcast); everyone
+    // else starts empty so a nearby scout actually has credit to share.
+    const raided = Object.fromEntries(
+      TEAM_BASES.filter((b) => b.name !== team).map((b) => [
+        b.name,
+        baseHitsRequired(level),
+      ]),
+    );
+    return {
+      ...ship,
+      fuel: [ship.maxFuel, ship.maxFuel * 0.5, ship.maxFuel * 0.1][i % 3],
+      forceFieldTime: i % 2 === 0 ? 100 : 0,
+      baseHits: arch === "scout" ? raided : {},
+    } as Mutable<LightCycle>;
+  });
+};
+
+test("grid-neighbour auras are bit-identical to the full-array scan", () => {
+  const w0 = initWorld(1);
+  const runAuras = (
+    ctx: ReturnType<typeof createTickCtx>,
+    n: ReturnType<typeof gridNeighbors>,
+  ) => {
+    applyForceFieldAuras(ctx, n);
+    shareCarrierFuel(ctx, n);
+    leechCarrierFuel(ctx, n);
+    shareReconIntel(ctx, n);
+  };
+  let touched = false;
+  for (const seed of [1, 7, 99]) {
+    const base = createTickCtx(w0, 3, 0);
+    base.moved = buildAuraShips(seed);
+    // Default 480×270 field grids fine at the aura band (60 → 8×4 cells).
+    const nbr = gridNeighbors(base.moved, { w: ARENA.w, h: ARENA.h }, 60);
+    expect(nbr).not.toBeNull();
+    const pristine = scratchSnapshot(base);
+
+    const g = cloneScratch(base);
+    runAuras(g, nbr);
+    const b = cloneScratch(base);
+    runAuras(b, null);
+
+    expect(scratchSnapshot(g)).toBe(scratchSnapshot(b));
+    if (scratchSnapshot(g) !== pristine) touched = true;
+  }
+  expect(touched).toBe(true); // the aura passes actually did something
 });
