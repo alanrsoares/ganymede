@@ -15,6 +15,7 @@ import {
 } from "./factory";
 import { SPAWN_INVULN_GENS } from "./tuning";
 import {
+  ARCADE_PICKUP_KINDS,
   type ArcadeConfig,
   type ArcadeState,
   baseByName,
@@ -143,7 +144,7 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
     rollAsteroid(s, i + 1),
   );
   const [bubbles, seed] = rollMany(NUM_PICKUPS, s2, (s, i) =>
-    rollPickup(s, i + 1),
+    rollPickup(s, i + 1, ARCADE_PICKUP_KINDS),
   );
   return {
     ships: { items: [placed], nextId: playerId + 1 },
