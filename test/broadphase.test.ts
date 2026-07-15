@@ -7,18 +7,27 @@ import { expect, test } from "bun:test";
 import { nextFloat, type Seed } from "~/engine/rng";
 import { initWorld, update } from "~/world";
 import {
+  bruteCrossPairs,
   bruteSelfPairs,
+  gridCrossPairs,
   gridSelfPairs,
+  type PairList,
   type Pt,
+  runCrossPairs,
   SHIP_PAIR_BAND,
 } from "~/world/tick/broadphase";
 import { createTickCtx } from "~/world/tick/context";
 import { advanceMotion } from "~/world/tick/motion";
 import {
+  bulletShipPairs,
+  bulletsVsShips,
+  createProjectileState,
+} from "~/world/tick/projectiles";
+import {
   resolveShipCollisions,
   shipCollisionPairs,
 } from "~/world/tick/ship-collisions";
-import { ARENA } from "~/world/types";
+import { ARENA, TEAMS } from "~/world/types";
 
 const randomPts = (n: number, seed: number): Pt[] => {
   let s: Seed = seed;
@@ -98,4 +107,90 @@ test("broad-phase resolveShipCollisions is bit-identical to the nested loop", ()
       expect(scratchSnapshot(ctxGrid)).toBe(scratchSnapshot(ctxNested));
     }
   }
+});
+
+// --- cross-set broad-phase (bullets/missiles/shards × ships) --------------------
+
+const CROSS_BAND = 13;
+
+test("gridCrossPairs matches the brute oracle exactly (grouped by B, A asc)", () => {
+  for (const seed of [1, 2, 7, 42]) {
+    for (const [nB, nA] of [
+      [0, 5],
+      [5, 0],
+      [3, 3],
+      [40, 60],
+    ]) {
+      const ptsB = randomPts(nB, seed);
+      const ptsA = randomPts(nA, seed + 1000);
+      const grid = gridCrossPairs(ptsB, ptsA, ARENA, CROSS_BAND);
+      const brute = bruteCrossPairs(ptsB, ptsA, ARENA, CROSS_BAND);
+      expect(Array.from(grid)).toEqual(Array.from(brute));
+    }
+  }
+});
+
+test("runCrossPairs breaks a B-group on first stop but continues later groups", () => {
+  // Two B groups: b=0 → a∈{1,2,3}, b=1 → a∈{4,5}. Stop b=0 at a=2.
+  const pairs: PairList = new Int32Array([0, 1, 0, 2, 0, 3, 1, 4, 1, 5]);
+  const seen: Array<[number, number]> = [];
+  runCrossPairs(pairs, (bi, ai) => {
+    seen.push([bi, ai]);
+    return bi === 0 && ai === 2; // break b=0's run here
+  });
+  // b=0 stops after a=2 (a=3 skipped); b=1 runs fully.
+  expect(seen).toEqual([
+    [0, 1],
+    [0, 2],
+    [1, 4],
+    [1, 5],
+  ]);
+});
+
+test("broad-phase bulletsVsShips is bit-identical to the nested loop", () => {
+  let hits = 0;
+  for (const seed of [1, 13, 99, 256, 2024]) {
+    let w = initWorld(seed);
+    for (let i = 0; i < 12; i++) {
+      w = update({ kind: "tick", steps: 3, now: i * 100 }, w);
+    }
+    const ctxNested = createTickCtx(w, 3, 1200);
+    const motion = advanceMotion(ctxNested);
+    // Bolts fire only once ships engage; inject enemy bolts sitting on the first
+    // few live ships (shared by both paths) so the hit/break path is exercised.
+    const enemyTeam = (team: string) =>
+      TEAMS.find((t) => t.name !== team)?.name ?? team;
+    for (let k = 0; k < Math.min(3, ctxNested.moved.length); k++) {
+      const s = ctxNested.moved[k];
+      motion.bullets.push({
+        id: 9000 + k,
+        x: s.x,
+        y: s.y,
+        vx: 0,
+        vy: 0,
+        team: enemyTeam(s.colorName),
+        rgb: [1, 1, 1],
+        angle: 0,
+        damage: 1,
+        life: 120,
+        owner: -1,
+        bounces: 0,
+        kind: 0,
+      });
+    }
+    const ctxGrid = cloneScratch(ctxNested);
+    const projNested = createProjectileState();
+    const projGrid = createProjectileState();
+    const pairs = bulletShipPairs(ctxGrid, motion);
+
+    bulletsVsShips(ctxNested, motion, projNested); // nested
+    bulletsVsShips(ctxGrid, motion, projGrid, pairs); // candidate list
+
+    hits += projNested.removedBullets.size;
+    expect([...projGrid.removedBullets].sort((a, b) => a - b)).toEqual(
+      [...projNested.removedBullets].sort((a, b) => a - b),
+    );
+    expect(scratchSnapshot(ctxGrid)).toBe(scratchSnapshot(ctxNested));
+  }
+  expect(hits).toBeGreaterThan(0); // the hit/break path is actually exercised
 });

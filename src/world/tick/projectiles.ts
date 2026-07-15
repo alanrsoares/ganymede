@@ -19,11 +19,13 @@ import {
   BURST_EXPLOSION,
   BURST_IMPACT,
   type LightCycle,
+  MAX_LEVEL,
   type Mutable,
   PORTALS,
   type Rgb,
   TEAM_BASES,
 } from "../types";
+import { gridCrossPairs, type PairList, runCrossPairs } from "./broadphase";
 import {
   awardXp,
   creditBaseHit,
@@ -201,11 +203,31 @@ const missileVsShip = (
   return "break";
 };
 
-const bulletsVsShips = (
+// Widest bullet↔ship hit radius (bullet + the largest ship). Ships don't move
+// during projectile resolution, so the snapshot grid is exact — no drift margin.
+const BULLET_SHIP_BAND = BULLET_RADIUS + shipRadius(MAX_LEVEL);
+
+/** Candidate bullet×ship pairs for this tick (grouped by bullet, ship asc). */
+export const bulletShipPairs = (ctx: TickCtx, motion: MotionState): PairList =>
+  gridCrossPairs(motion.bullets, ctx.moved, ARENA, BULLET_SHIP_BAND);
+
+// With `pairs`, replay only the candidate bullet×ship pairs (broad-phase); the
+// per-bullet break and per-pair narrow-phase are identical to the nested loop, so
+// the outcome matches bit-for-bit. Without `pairs`, the brute nested scan.
+export const bulletsVsShips = (
   ctx: TickCtx,
   motion: MotionState,
   projectiles: ProjectileState,
+  pairs?: PairList,
 ): void => {
+  if (pairs) {
+    runCrossPairs(pairs, (bi, ai) => {
+      const bt = motion.bullets[bi];
+      if (projectiles.removedBullets.has(bt.id)) return true; // spent → skip rest
+      return bulletVsShip(ctx, ctx.moved[ai], bt, projectiles) === "break";
+    });
+    return;
+  }
   for (const bt of motion.bullets) {
     if (projectiles.removedBullets.has(bt.id)) continue;
     for (const s of ctx.moved) {
@@ -320,7 +342,7 @@ export const resolveProjectiles = (
   // Portal hop first, so a bolt that jumps can still hit on the far side.
   hopMunitionsThroughPortals(motion.bullets, projectiles.removedBullets);
   hopMunitionsThroughPortals(motion.missiles, projectiles.removedMissiles);
-  bulletsVsShips(ctx, motion, projectiles);
+  bulletsVsShips(ctx, motion, projectiles, bulletShipPairs(ctx, motion));
   bulletsVsRocks(ctx, motion, hazards, projectiles);
   bulletsVsBases(ctx, motion, projectiles);
   missilesVsShips(ctx, motion, projectiles);

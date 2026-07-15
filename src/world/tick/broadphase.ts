@@ -145,3 +145,94 @@ export function bruteSelfPairs(
   }
   return new Int32Array(out); // already lexicographic
 }
+
+// --- cross-set pairing (two disjoint sets, e.g. bullets × ships) — mirrors the
+// GPU CrossPairKernel (P6). The grid is built over set A (the inner/scan set); B
+// elements query it. No j>i dedup (the sets are disjoint). Pairs are emitted
+// (bIdx, aIdx) and sorted by (bIdx·nA + aIdx) — i.e. grouped by B, aIdx ascending
+// — so `runCrossPairs` replays a nested `for b { for a }` loop's first-hit order.
+
+// Emit b paired with every A-element within `band`. Extracted to stay under the
+// cognitive-complexity cap.
+function emitCrossPairs(
+  bi: number,
+  ptsB: readonly Pt[],
+  ptsA: readonly Pt[],
+  bucketsA: number[][],
+  g: Grid,
+  arena: { w: number; h: number },
+  band2: number,
+  out: number[],
+): void {
+  const p = ptsB[bi];
+  const cells = neighborCells(cellXOf(p.x, g), cellYOf(p.y, g), g);
+  for (const c of cells) {
+    for (const ai of bucketsA[c]) {
+      const ex = toroidalDist(p.x, ptsA[ai].x, arena.w);
+      const ey = toroidalDist(p.y, ptsA[ai].y, arena.h);
+      if (ex * ex + ey * ey < band2) out.push(bi, ai);
+    }
+  }
+}
+
+// Grid-accelerated cross pairing: candidate (bIdx, aIdx) pairs within `band`,
+// grouped by bIdx with aIdx ascending. `band` must cover the widest per-pair hit
+// radius so the list stays a superset of what the resolver's narrow-phase accepts.
+export function gridCrossPairs(
+  ptsB: readonly Pt[],
+  ptsA: readonly Pt[],
+  arena: { w: number; h: number },
+  band: number,
+): PairList {
+  const nA = ptsA.length;
+  const nB = ptsB.length;
+  if (nA === 0 || nB === 0) return new Int32Array(0);
+  const g = cellDims(arena.w, arena.h, band);
+  const buckets: number[][] = Array.from({ length: g.ncx * g.ncy }, () => []);
+  for (let a = 0; a < nA; a++) {
+    const p = ptsA[a];
+    buckets[cellYOf(p.y, g) * g.ncx + cellXOf(p.x, g)].push(a);
+  }
+
+  const band2 = band * band;
+  const out: number[] = [];
+  for (let b = 0; b < nB; b++)
+    emitCrossPairs(b, ptsB, ptsA, buckets, g, arena, band2, out);
+  return sortPairs(out, nA);
+}
+
+// Brute cross oracle: every (b, a) within `band`, b-major then a ascending —
+// already in the (b·nA + a) order `gridCrossPairs` sorts to.
+export function bruteCrossPairs(
+  ptsB: readonly Pt[],
+  ptsA: readonly Pt[],
+  arena: { w: number; h: number },
+  band: number,
+): PairList {
+  const band2 = band * band;
+  const out: number[] = [];
+  for (let b = 0; b < ptsB.length; b++) {
+    for (let a = 0; a < ptsA.length; a++) {
+      const ex = toroidalDist(ptsB[b].x, ptsA[a].x, arena.w);
+      const ey = toroidalDist(ptsB[b].y, ptsA[a].y, arena.h);
+      if (ex * ex + ey * ey < band2) out.push(b, a);
+    }
+  }
+  return new Int32Array(out);
+}
+
+// Replay a cross candidate list grouped by B in ascending-A order, calling
+// `onPair(bIdx, aIdx)`. A truthy return stops that B's run (mirrors the nested
+// loop's break-on-first-hit) while remaining B groups continue.
+export function runCrossPairs(
+  pairs: PairList,
+  onPair: (bi: number, ai: number) => boolean,
+): void {
+  let k = 0;
+  while (k < pairs.length) {
+    const b = pairs[k];
+    const stop = onPair(b, pairs[k + 1]);
+    k += 2;
+    if (stop) while (k < pairs.length && pairs[k] === b) k += 2;
+  }
+}
