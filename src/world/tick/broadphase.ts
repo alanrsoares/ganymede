@@ -1,0 +1,147 @@
+// CPU broad-phase — candidate-pair enumeration for the O(n²) collision resolvers.
+// A resolver keeps the authoritative LIVE narrow-phase (exact per-pair distance +
+// mutation); this only decides which pairs to CONSIDER, emitted in the same order
+// the nested double-loop visits them (lexicographic by index). So swapping the
+// brute nested loop for a broad-phase list changes cost, never behaviour.
+//
+// The cell scheme mirrors the GPU `SpatialGrid` (src/gpgpu): cell edge =
+// arena/floor(arena/band) ≥ band, a 3×3 toroidal block is a conservative superset
+// of every neighbour within `band`, and ≥3 cells/axis are required (else the
+// toroidal 3×3 wraps onto itself). A GPU-produced pair list is therefore a
+// drop-in replacement for `gridSelfPairs` once the async plumbing lands.
+
+import { toroidalDist } from "~/engine/physics";
+
+export interface Pt {
+  x: number;
+  y: number;
+}
+
+// Flat, lexicographically-sorted candidate pairs: [i0, j0, i1, j1, …], j > i.
+export type PairList = Int32Array;
+
+// Ship-pair candidate band (px). The ship×ship narrow-phase gate is the semitouch
+// radius (22px); the extra margin covers intra-tick bounce drift (a ship can be
+// nudged by hull separation between the snapshot and its collision turn), keeping
+// the snapshot grid a conservative superset of every pair the live gate accepts.
+// Validated bit-identical against the nested loop in broadphase.test.
+export const SHIP_PAIR_BAND = 64;
+
+interface Grid {
+  ncx: number;
+  ncy: number;
+  cellW: number;
+  cellH: number;
+}
+
+const wrapCell = (c: number, n: number): number => ((c % n) + n) % n;
+
+function cellDims(w: number, h: number, band: number): Grid {
+  const ncx = Math.floor(w / band);
+  const ncy = Math.floor(h / band);
+  if (ncx < 3 || ncy < 3)
+    throw new Error(`arena too small for broadphase: ${ncx}×${ncy} (need ≥3)`);
+  return { ncx, ncy, cellW: w / ncx, cellH: h / ncy };
+}
+
+const cellXOf = (x: number, g: Grid): number =>
+  Math.min((x / g.cellW) | 0, g.ncx - 1);
+const cellYOf = (y: number, g: Grid): number =>
+  Math.min((y / g.cellH) | 0, g.ncy - 1);
+
+// The nine flat cell indices of a point's 3×3 toroidal block (its own cell + 8
+// wrapped neighbours). Kept ≤10 cognitive complexity by flattening the 3×3 walk.
+function neighborCells(cx: number, cy: number, g: Grid): number[] {
+  const cells: number[] = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    const gy = wrapCell(cy + dy, g.ncy);
+    for (let dx = -1; dx <= 1; dx++)
+      cells.push(gy * g.ncx + wrapCell(cx + dx, g.ncx));
+  }
+  return cells;
+}
+
+// Emit i paired with every higher-index neighbour within `band` (j > i keeps each
+// unordered pair once). Extracted so `gridSelfPairs` stays under the complexity cap.
+function emitSelfPairs(
+  i: number,
+  pts: readonly Pt[],
+  buckets: number[][],
+  g: Grid,
+  arena: { w: number; h: number },
+  band2: number,
+  out: number[],
+): void {
+  const p = pts[i];
+  const cells = neighborCells(cellXOf(p.x, g), cellYOf(p.y, g), g);
+  for (const c of cells) {
+    for (const j of buckets[c]) {
+      if (j <= i) continue;
+      const ex = toroidalDist(p.x, pts[j].x, arena.w);
+      const ey = toroidalDist(p.y, pts[j].y, arena.h);
+      if (ex * ex + ey * ey < band2) out.push(i, j);
+    }
+  }
+}
+
+// Sort a flat pair array in place by the key (i·n + j) — unique per (i,j), so the
+// order is fully determined regardless of emission order (deterministic).
+function sortPairs(flat: number[], n: number): PairList {
+  const m = flat.length / 2;
+  const order = Array.from({ length: m }, (_, k) => k);
+  order.sort(
+    (a, b) =>
+      flat[a * 2] * n + flat[a * 2 + 1] - (flat[b * 2] * n + flat[b * 2 + 1]),
+  );
+  const out = new Int32Array(m * 2);
+  for (let k = 0; k < m; k++) {
+    out[k * 2] = flat[order[k] * 2];
+    out[k * 2 + 1] = flat[order[k] * 2 + 1];
+  }
+  return out;
+}
+
+// Grid-accelerated self-pairing (ship×ship): emit candidate index pairs (i,j),
+// j > i, within `band` on the given snapshot positions, sorted lexicographically.
+// Each unordered pair is emitted exactly once (only i's walk that finds j>i keeps
+// it), so no dedup pass is needed.
+export function gridSelfPairs(
+  pts: readonly Pt[],
+  arena: { w: number; h: number },
+  band: number,
+): PairList {
+  const n = pts.length;
+  if (n < 2) return new Int32Array(0);
+  const g = cellDims(arena.w, arena.h, band);
+  const buckets: number[][] = Array.from({ length: g.ncx * g.ncy }, () => []);
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    buckets[cellYOf(p.y, g) * g.ncx + cellXOf(p.x, g)].push(i);
+  }
+
+  const band2 = band * band;
+  const out: number[] = [];
+  for (let i = 0; i < n; i++)
+    emitSelfPairs(i, pts, buckets, g, arena, band2, out);
+  return sortPairs(out, n);
+}
+
+// Brute O(n²) self-pairing oracle: every pair (i,j), j > i, within `band`, in
+// lexicographic order. The reference `gridSelfPairs` is validated against.
+export function bruteSelfPairs(
+  pts: readonly Pt[],
+  arena: { w: number; h: number },
+  band: number,
+): PairList {
+  const n = pts.length;
+  const band2 = band * band;
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const ex = toroidalDist(pts[i].x, pts[j].x, arena.w);
+      const ey = toroidalDist(pts[i].y, pts[j].y, arena.h);
+      if (ex * ex + ey * ey < band2) out.push(i, j);
+    }
+  }
+  return new Int32Array(out); // already lexicographic
+}
