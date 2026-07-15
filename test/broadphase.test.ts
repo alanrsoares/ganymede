@@ -18,6 +18,7 @@ import {
   baseHitsRequired,
   ENGAGE_RADIUS,
   flockSteer,
+  fuelCarriers,
   rollShip,
 } from "~/world/factory";
 import {
@@ -201,8 +202,12 @@ const bigArenaShips = (seed: number): LightCycle[] => {
 test("grid-neighbour flockSteer is bit-identical to the full-array scan", () => {
   const band = Math.max(...ENGAGE_RADIUS);
   const { baseHp } = initWorld(1);
-  const steer = (self: LightCycle, nbr: readonly LightCycle[]) =>
-    flockSteer(self, ships, [], [], baseHp, null, self.level, 0, nbr);
+  const steer = (
+    self: LightCycle,
+    nbr: readonly LightCycle[],
+    carriers?: readonly LightCycle[],
+  ) =>
+    flockSteer(self, ships, [], [], baseHp, null, self.level, 0, nbr, carriers);
   let ships: LightCycle[] = [];
   setGridBounds(2400, 1350); // large arena so the grid actually engages
   try {
@@ -210,12 +215,16 @@ test("grid-neighbour flockSteer is bit-identical to the full-array scan", () => 
     for (const seed of [1, 7, 99]) {
       ships = bigArenaShips(seed);
       const nbr = gridNeighbors(ships, { w: 2400, h: 1350 }, band);
+      const carriers = fuelCarriers(ships);
       expect(nbr).not.toBeNull();
       if (!nbr) continue;
       for (let i = 0; i < ships.length; i++) {
         const nbrShips = nbr[i].map((j) => ships[j]);
         if (nbrShips.length > 0) covered++;
-        expect(steer(ships[i], nbrShips)).toEqual(steer(ships[i], ships));
+        // Fully optimised (grid neighbours + pre-filtered carriers) == full brute.
+        expect(steer(ships[i], nbrShips, carriers)).toEqual(
+          steer(ships[i], ships),
+        );
       }
     }
     expect(covered).toBeGreaterThan(0); // ships actually had neighbours

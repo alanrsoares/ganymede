@@ -375,9 +375,15 @@ interface FuelSource {
  * same-team carrier still holding a shareable reserve (carriers refuel allies
  * mid-flight — so a thirsty ship near one need not trek all the way home).
  */
+// `carriers`, when given, is the pre-filtered set of fuel-capable carriers (any
+// team) computed once per tick, so this stays O(carriers) instead of O(ships)
+// per caller. Without it, the same set is derived by scanning `ships` inline
+// (the O(n²) fallback for small fields / direct callers). Same order + same `<`
+// tiebreak either way, so the pick is identical.
 const nearestFuelSource = (
   self: LightCycle,
   ships: readonly LightCycle[],
+  carriers?: readonly LightCycle[],
 ): FuelSource | null => {
   let best: FuelSource | null = null;
   const consider = (x: number, y: number) => {
@@ -389,15 +395,27 @@ const nearestFuelSource = (
   };
   const homeBase = baseByName.get(self.colorName);
   if (homeBase) consider(homeBase.x, homeBase.y);
-  for (const o of ships) {
+  for (const o of carriers ?? ships) {
     if (o.id === self.id || o.colorName !== self.colorName) continue;
-    if (!isCarrier(o.archetype) || o.fuel <= o.maxFuel * FUEL_SHARE_RESERVE) {
+    // Pre-filtered list skips the per-element carrier/fuel test (already applied).
+    if (
+      !carriers &&
+      (!isCarrier(o.archetype) || o.fuel <= o.maxFuel * FUEL_SHARE_RESERVE)
+    ) {
       continue;
     }
     consider(o.x, o.y);
   }
   return best;
 };
+
+/** The fuel-capable carriers (any team) — pre-filter once, share across ships. */
+export const fuelCarriers = (
+  ships: readonly LightCycle[],
+): readonly LightCycle[] =>
+  ships.filter(
+    (o) => isCarrier(o.archetype) && o.fuel > o.maxFuel * FUEL_SHARE_RESERVE,
+  );
 
 /** Would `self` run dry before reaching `source` (with a safety margin)? Also true below the hard floor. */
 const mustRefuel = (self: LightCycle, source: FuelSource): boolean => {
@@ -566,10 +584,11 @@ const steerCommandOrObjective = (
   level: number,
   baseHp: Readonly<Record<string, number>>,
   rally: RallyBeacon | null,
+  carriers?: readonly LightCycle[],
 ): [number, number] => {
   // Survival first: break for the nearest fuel source once the tank can no
   // longer safely cover the trip there (range-aware, not a fixed fraction).
-  const source = nearestFuelSource(self, ships);
+  const source = nearestFuelSource(self, ships, carriers);
   if (source && mustRefuel(self, source)) return steerFuelReturn(self, source);
   const [rx, ry] = steerRally(self, rally);
   return rx !== 0 || ry !== 0 ? [rx, ry] : steerObjective(self, level, baseHp);
@@ -613,6 +632,9 @@ export const flockSteer = (
   // (small arena / low ship count). The full array is still used for the
   // unbounded nearest-fuel-carrier scan in steerCommandOrObjective.
   neighbors: readonly LightCycle[] = ships,
+  // Pre-filtered fuel-capable carriers (fuelCarriers), shared across ships so the
+  // nearest-fuel-source scan is O(carriers) not O(ships). Omit → inline scan.
+  carriers?: readonly LightCycle[],
 ): [number, number] => {
   // Combat/mission terms first: the nearest enemy in engage range doubles as the
   // combat flag, and the objective term tells us if the ship is on a goal.
@@ -628,6 +650,7 @@ export const flockSteer = (
     level,
     baseHp,
     rally,
+    carriers,
   );
 
   // Committed (fighting or on a goal) → damp formation-keeping so it can't drag

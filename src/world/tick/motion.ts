@@ -15,6 +15,7 @@ import {
   FUEL_BURN,
   FUEL_DRIFT_SPEED,
   flockSteer,
+  fuelCarriers,
   regenForLevel,
   SPEED_EASE_LVL,
   TURN_EASE_LVL,
@@ -80,6 +81,7 @@ const shipAccel = (
   world: World,
   baseHp: BaseHp,
   neighbors: readonly LightCycle[],
+  carriers: readonly LightCycle[],
 ): [number, number] => {
   if (empty) return [0, 0];
   if (world.controlledShipId === s.id) {
@@ -95,6 +97,7 @@ const shipAccel = (
     s.level,
     world.age,
     neighbors,
+    carriers,
   );
 };
 
@@ -105,12 +108,13 @@ const advanceShip = (
   baseHp: BaseHp,
   steps: number,
   neighbors: readonly LightCycle[],
+  carriers: readonly LightCycle[],
 ): Mutable<LightCycle> => {
   // Out of fuel = dead engine: no thrust, just a slow aimless drift like a
   // power-up orb — defenseless flotsam until it's tugged home or picked off.
   const empty = s.fuel <= 0;
   const cruise = shipCruise(s, empty);
-  const [ax, ay] = shipAccel(s, empty, world, baseHp, neighbors);
+  const [ax, ay] = shipAccel(s, empty, world, baseHp, neighbors, carriers);
   const bvx = s.vx + ax * steps;
   const bvy = s.vy + ay * steps;
   const speedEase = SPEED_EASE_LVL[s.level - 1] ?? 0.08;
@@ -237,6 +241,9 @@ export const advanceMotion = (ctx: TickCtx): MotionState => {
   // unchanged; the grid only engages in the large arenas high ship counts need.
   const ships = world.ships.items;
   const nbr = gridNeighbors(ships, ARENA, FLOCK_BAND);
+  // Pre-filter fuel-capable carriers once so each ship's nearest-fuel-source scan
+  // is O(carriers) instead of O(ships) (carriers ≪ ships) — the last O(n²) term.
+  const carriers = fuelCarriers(ships);
   ctx.moved = ships.map((s, i) =>
     advanceShip(
       s,
@@ -244,6 +251,7 @@ export const advanceMotion = (ctx: TickCtx): MotionState => {
       ctx.baseHp,
       steps,
       nbr ? nbr[i].map((j) => ships[j]) : ships,
+      carriers,
     ),
   );
 
