@@ -168,6 +168,13 @@ export function resolveShipCollisions(ctx: TickCtx) {
 
 /** Kill every ship whose team base has been destroyed. */
 export function eliminateBaselessTeams(ctx: TickCtx) {
+  // Arcade bases are just wave-spawn anchors (defeat is by lives, not bases), so
+  // a razed base must NOT wipe its team: otherwise once the pilot levels up and
+  // razes an enemy base, every freshly-mustered wave for that team is annihilated
+  // the next tick → wave clears → spawns → wiped → a runaway that blasts through
+  // hundreds of waves in a flash. (It would also insta-game-over on a razed cyan
+  // base.) Base elimination is an autobattle-only rule.
+  if (ctx.world.arcade) return;
   for (const s of ctx.moved) {
     if (!ctx.removed.has(s.id) && ctx.baseHp[s.colorName] <= 0) {
       killShip(ctx, s);
