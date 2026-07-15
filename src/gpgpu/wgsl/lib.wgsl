@@ -52,3 +52,11 @@ fn cellIndexOf(
 fn wrapCell(v: i32, n: i32) -> u32 {
   return u32(((v % n) + n) % n);
 }
+
+// Unit vector, or the fallback when the input is ~zero-length. Mirrors
+// engine/physics.ts normalize (fallback there is the ship's current heading).
+fn normalizeOr(v: vec2<f32>, fbx: f32, fby: f32) -> vec2<f32> {
+  let l = length(v);
+  if (l < 1e-6) { return vec2<f32>(fbx, fby); }
+  return v / l;
+}
