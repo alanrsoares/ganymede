@@ -71,12 +71,12 @@ function spawnWave(
   return next;
 }
 
-/** Respawn the player fresh at their base and hand back control. */
-function respawnPlayer(world: World, cfg: ArcadeConfig): World {
+/** Respawn the player at `lvl` at their base and hand back control. */
+function respawnPlayer(world: World, cfg: ArcadeConfig, lvl: number): World {
   const { world: next, id } = spawnAt(
     world,
     cfg.playerTeam,
-    1,
+    lvl,
     cfg.playerArchetype,
   );
   return { ...next, controlledShipId: id };
@@ -91,7 +91,11 @@ const playerAlive = (world: World): boolean =>
 function loseLife(world: World, a: ArcadeState, cfg: ArcadeConfig): World {
   const lives = a.lives - 1;
   if (lives <= 0) return { ...world, arcade: { ...a, lives: 0, over: true } };
-  return { ...respawnPlayer(world, cfg), arcade: { ...a, lives } };
+  // Respawn at the rank the pilot had reached — dying costs a life, not progress.
+  return {
+    ...respawnPlayer(world, cfg, a.playerLevel),
+    arcade: { ...a, lives },
+  };
 }
 
 /**
@@ -127,7 +131,14 @@ export function arcadeStep(world: World): World {
 
   if (!playerAlive(world)) return loseLife(world, a, cfg);
 
+  // Stash the live pilot's rank so a respawn can restore it (see loseLife).
+  const me = world.ships.items.find((s) => s.id === world.controlledShipId);
+  const a2 =
+    me && me.level !== a.playerLevel ? { ...a, playerLevel: me.level } : a;
+
   const enemyCount = countTeams(world.ships.items, new Set(cfg.enemyTeams));
-  // Intermission (a.phase === "intermission") arrives in Phase 2.
-  return a.phase === "fight" ? advanceWave(world, a, cfg, enemyCount) : world;
+  // Intermission (a2.phase === "intermission") arrives in Phase 2.
+  return a2.phase === "fight"
+    ? advanceWave(world, a2, cfg, enemyCount)
+    : { ...world, arcade: a2 };
 }

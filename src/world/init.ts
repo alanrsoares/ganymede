@@ -33,6 +33,7 @@ const initArcadeRun = (cfg: ArcadeConfig): ArcadeState => ({
   kills: 0,
   startAge: 0,
   over: false,
+  playerLevel: 1,
 });
 
 // Half-width of the square each fresh ship spawns in, centred on its team base

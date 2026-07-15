@@ -91,6 +91,9 @@ export interface ArcadeState {
   readonly kills: number; // enemies destroyed this run (run stat)
   readonly startAge: number; // world.age when the run began (for elapsed time)
   readonly over: boolean; // latched once lives hit 0 → game over
+  // Last-known pilot rank, stashed while alive so a respawn keeps it (dying
+  // shouldn't wipe progress); the dead ship is gone by the time we respawn.
+  readonly playerLevel: number;
 }
 
 // Ship class archetypes. Each is a distinct hull silhouette + stat path + weapon

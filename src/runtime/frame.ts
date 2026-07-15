@@ -215,9 +215,7 @@ export const updateScreenShake = (
 const getHudPhaseText = (world: World): string => {
   const a = world.arcade;
   if (a) {
-    return a.over
-      ? "game over"
-      : `wave ${a.wave} · ${a.lives}♥ · ${a.waveRemaining} enemies`;
+    return a.over ? "game over" : `wave ${a.wave} · ${a.waveRemaining} enemies`;
   }
   if (world.winner) return "match over";
   if (world.config.format === "endless") return "endless";
@@ -245,6 +243,8 @@ export const updateHud = (ui: Ui, world: World) => {
     world.controlledShipId !== null
       ? world.ships.items.find((s) => s.id === world.controlledShipId) || null
       : null;
+  ui.arcadeLives.val =
+    world.arcade && !world.arcade.over ? world.arcade.lives : null;
 };
 
 // Track the canvas backing size; when the client box changes, re-derive the grid

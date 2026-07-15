@@ -4,10 +4,62 @@
 // the loop writes each frame — van updates just the bound text node.
 
 import van, { type State } from "vanjs-core";
+import { ARCHETYPE_INFO, rgbCss } from "./shipInfo";
 import type { LightCycle } from "./world";
 import { carriesMissiles } from "./world/factory";
 
 const { div, h1, label, input, p, span, button } = van.tags;
+const svg = van.tags("http://www.w3.org/2000/svg");
+
+// Sonic-Wings-style life stock: a row of little hull-silhouette icons in the
+// pilot's colour, one per remaining life, with a "×N" overflow past MAX.
+const MAX_LIFE_ICONS = 6;
+// Fallback silhouette (a delta) when there's no pilot to read a hull from.
+const FALLBACK_HULL = "M12 2 L21 21 L12 16.5 L3 21 Z";
+
+const shipIcon = (color: string, hull: string) =>
+  svg.svg(
+    { width: "15", height: "15", viewBox: "0 0 24 24" },
+    svg.path({
+      d: hull,
+      fill: color,
+      style: `filter:drop-shadow(0 0 2px ${color})`,
+    }),
+  );
+
+const livesStrip = (
+  lives: State<number | null>,
+  ship: State<LightCycle | null>,
+) =>
+  div(
+    {
+      class: () =>
+        `mt-1.5 items-center gap-1 ${lives.val == null ? "hidden" : "flex"}`,
+    },
+    () => {
+      const n = lives.val ?? 0;
+      const color = ship.val ? rgbCss(ship.val.color) : "#3fd8ff";
+      const hull = ship.val
+        ? ARCHETYPE_INFO[ship.val.archetype].glyph.hull
+        : FALLBACK_HULL;
+      const icons = Array.from({ length: Math.min(n, MAX_LIFE_ICONS) }, () =>
+        shipIcon(color, hull),
+      );
+      return div(
+        { class: "flex items-center gap-1" },
+        ...icons,
+        n > MAX_LIFE_ICONS
+          ? span(
+              {
+                class: "ml-0.5 text-[11px] font-semibold tabular-nums",
+                style: `color:${color}`,
+              },
+              `×${n}`,
+            )
+          : null,
+      );
+    },
+  );
 
 export interface UiConfig {
   /** Teams for the scoreboard: display name + CSS color. */
@@ -25,6 +77,7 @@ export interface Ui {
   banner: State<string>; // center win/draw banner ("" = hidden)
   activeTeamCount: State<number>; // scoreboard shows only the first N teams
   hudTitle: State<string>; // HUD heading — "Autobattle" / "Arcade"
+  arcadeLives: State<number | null>; // life stock strip (null = not arcade)
   showError: (message: string) => void;
   controlledShip: State<LightCycle | null>;
   // Hide/show the persistent chrome (HUD, scoreboard, controls) — used to keep
@@ -158,7 +211,12 @@ const injectScorePopStyle = () => {
   document.head.appendChild(popStyle);
 };
 
-const buildHud = (title: State<string>, status: State<string>) =>
+const buildHud = (
+  title: State<string>,
+  status: State<string>,
+  arcadeLives: State<number | null>,
+  controlledShip: State<LightCycle | null>,
+) =>
   div(
     {
       class:
@@ -172,6 +230,7 @@ const buildHud = (title: State<string>, status: State<string>) =>
       () => title.val,
     ),
     p({ class: HUD_LIVE }, () => status.val),
+    livesStrip(arcadeLives, controlledShip),
   );
 
 const GRID = "grid grid-cols-[auto_1fr_auto] items-center gap-x-2.5 gap-y-1.5";
@@ -620,6 +679,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
   const counts = van.state<Readonly<Record<string, number>>>({});
   const activeTeamCount = van.state(cfg.teams.length);
   const hudTitle = van.state("Autobattle");
+  const arcadeLives = van.state<number | null>(null);
   const controlledShip = van.state<LightCycle | null>(null);
 
   injectScorePopStyle();
@@ -628,7 +688,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
   // Persistent chrome, back to front. The error box overlays but isn't chrome
   // (it shows regardless of the splash), so it's added separately.
   const chrome = [
-    buildHud(hudTitle, status),
+    buildHud(hudTitle, status, arcadeLives, controlledShip),
     controls.el,
     buildScoreBox(cfg, score, bump, counts, activeTeamCount),
     buildBanner(banner),
@@ -645,6 +705,7 @@ export const mountUi = (cfg: UiConfig): Ui => {
     banner,
     activeTeamCount,
     hudTitle,
+    arcadeLives,
     controlledShip,
     showError: (message) => {
       error.val = message;
