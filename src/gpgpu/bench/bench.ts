@@ -17,6 +17,7 @@ import {
   TARGET_VETERAN_BOUNTY,
 } from "../../world/tuning";
 import { acquireComputeDevice } from "../device";
+import { CrossPairKernel } from "../kernels/cross";
 import { FlockKernel, type FlockTuning } from "../kernels/flock";
 import { CandidatePairKernel } from "../kernels/pairs";
 import { PursuitKernel, type PursuitTuning } from "../kernels/pursuit";
@@ -27,6 +28,7 @@ import {
   compare,
   comparePairs,
   cpuCandidatePairs,
+  cpuCrossPairs,
   cpuFlock,
   cpuPursuit,
   cpuSeparation,
@@ -85,6 +87,11 @@ const pairArena = (n: number): Arena => {
   const w = Math.round(Math.sqrt((area * 16) / 9));
   return { w, h: Math.round((w * 9) / 16) };
 };
+
+// Cross-set query radius: BULLET_RADIUS (3.5) + max shipRadius (9.2). Bullets
+// query a grid of ships; the fixed max radius is the broad-phase superset, the
+// CPU narrow-phase applies the exact per-pair radius downstream.
+const CROSS_R = 12.7;
 
 const cpuIters = (n: number) => (n <= 2048 ? 20 : 5);
 const roundtripIters = (n: number) => (n <= 2048 ? 30 : 10);
@@ -315,6 +322,56 @@ const benchPairsSize = async (
   };
 };
 
+// Cross-set broad-phase (P6): bullets (set B) queried against a ship grid (set
+// A). GPU grid vs CPU brute O(B·A). SET equality, no force divergence.
+const benchCrossSize = async (
+  kernel: CrossPairKernel,
+  queue: GPUQueue,
+  n: number,
+) => {
+  const arena = pairArena(n);
+  const ships = makeField(n, arena, 0x2f11);
+  const bullets = makeField(n, arena, 0x7a3d); // set B, same count
+  let cp: Pairs = { count: 0, pairs: new Uint32Array(0) };
+  const cpuMs = meanSyncMs(cpuIters(n), () => {
+    cp = cpuCrossPairs(bullets, ships, n, n, arena, CROSS_R);
+  });
+  const maxPairs = Math.ceil(cp.count * 1.15) + 256;
+
+  kernel.upload(ships, bullets, n, n, arena, CROSS_R, maxPairs);
+  kernel.dispatch();
+  await queue.onSubmittedWorkDone();
+  const iters = 50;
+  let t0 = performance.now();
+  for (let k = 0; k < iters; k++) kernel.dispatch();
+  await queue.onSubmittedWorkDone();
+  const computeMs = (performance.now() - t0) / iters;
+
+  const rt = roundtripIters(n);
+  t0 = performance.now();
+  for (let k = 0; k < rt; k++) {
+    kernel.upload(ships, bullets, n, n, arena, CROSS_R, maxPairs);
+    kernel.dispatch();
+    await kernel.read();
+  }
+  const roundtripMs = (performance.now() - t0) / rt;
+
+  const res = await kernel.read();
+  const cmp = comparePairs(cp, res.pairs, n);
+  return {
+    n,
+    arena: `${arena.w}×${arena.h}`,
+    pairs: cp.count,
+    cpuMs: +cpuMs.toFixed(3),
+    computeMs: +computeMs.toFixed(3),
+    roundtripMs: +roundtripMs.toFixed(3),
+    speedup: +(cpuMs / computeMs).toFixed(1),
+    roundtripSpeedup: +(cpuMs / roundtripMs).toFixed(1),
+    overflow: res.overflow,
+    match: cmp.match,
+  };
+};
+
 const runBench = async () => {
   const gpu = await acquireComputeDevice();
   if (!gpu) return { error: "WebGPU unavailable" };
@@ -323,15 +380,18 @@ const runBench = async () => {
   const flock = new FlockKernel(gpu.device);
   const pursuit = new PursuitKernel(gpu.device);
   const pairs = new CandidatePairKernel(gpu.device);
+  const cross = new CrossPairKernel(gpu.device);
   const separation = [];
   const flockResults = [];
   const pursuitResults = [];
   const pairResults = [];
+  const crossResults = [];
   for (const n of SIZES) {
     separation.push(await benchSize(brute, grid, gpu.device.queue, n));
     flockResults.push(await benchFlockSize(flock, gpu.device.queue, n));
     pursuitResults.push(await benchPursuitSize(pursuit, gpu.device.queue, n));
     pairResults.push(await benchPairsSize(pairs, gpu.device.queue, n));
+    crossResults.push(await benchCrossSize(cross, gpu.device.queue, n));
   }
   return {
     adapter: { vendor: gpu.info.vendor, architecture: gpu.info.architecture },
@@ -340,6 +400,7 @@ const runBench = async () => {
     flock: flockResults,
     pursuit: pursuitResults,
     pairs: pairResults,
+    cross: crossResults,
   };
 };
 

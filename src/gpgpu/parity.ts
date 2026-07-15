@@ -413,6 +413,31 @@ export const cpuCandidatePairs = (
   return { count: out.length / 2, pairs: Uint32Array.from(out) };
 };
 
+// CPU brute cross-set oracle: every pair (bIdx, aIdx) whose toroidal distance is
+// within `r`, in (b,a) lexicographic order. B queries A (bullets vs ships). Same
+// wrapDelta components as cross.wgsl.
+export const cpuCrossPairs = (
+  posB: Float32Array,
+  posA: Float32Array,
+  nB: number,
+  nA: number,
+  arena: Arena,
+  r: number,
+): Pairs => {
+  const r2 = r * r;
+  const out: number[] = [];
+  for (let b = 0; b < nB; b++) {
+    const xb = posB[b * 4];
+    const yb = posB[b * 4 + 1];
+    for (let a = 0; a < nA; a++) {
+      const dx = wrapDelta(xb, posA[a * 4], arena.w);
+      const dy = wrapDelta(yb, posA[a * 4 + 1], arena.h);
+      if (dx * dx + dy * dy < r2) out.push(b, a);
+    }
+  }
+  return { count: out.length / 2, pairs: Uint32Array.from(out) };
+};
+
 // Sort a flat pair list into (i,j) lexicographic order (GPU appends in atomic-
 // cursor order, which is device-nondeterministic).
 const sortPairs = (flat: Uint32Array, n: number): number[] => {
