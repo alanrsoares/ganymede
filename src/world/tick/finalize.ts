@@ -11,7 +11,14 @@ import {
   rollPickup,
 } from "../factory";
 import { resolveLock } from "../lock";
-import type { Burst, LightCycle, MatchConfig, World } from "../types";
+import {
+  ARCADE_PICKUP_KINDS,
+  type Burst,
+  type LightCycle,
+  type MatchConfig,
+  PICKUP_KINDS,
+  type World,
+} from "../types";
 import type { BurstSpec, TickCtx } from "./context";
 import type { HazardState } from "./hazard-collisions";
 import type { InteractionState } from "./interactions";
@@ -141,12 +148,16 @@ export const finalizeTick = (
     sBursts,
     rollAsteroid,
   );
+  // Arcade adds the muster kind (9) to the pool; autobattle keeps kinds 0..8, so
+  // its pickup rolls — and the golden characterization — are unchanged.
+  const pickupKinds =
+    world.config.format === "arcade" ? ARCADE_PICKUP_KINDS : PICKUP_KINDS;
   const [pickups, seed] = refillPool(
     motion.bubbles.filter((p) => !interactions.takenPickups.has(p.id)),
     world.pickups.nextId,
     NUM_PICKUPS,
     sRocks,
-    rollPickup,
+    (sd, id) => rollPickup(sd, id, pickupKinds),
   );
   const nextAge = world.age + steps;
 

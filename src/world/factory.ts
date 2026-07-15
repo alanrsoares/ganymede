@@ -384,12 +384,16 @@ export function spawnBullet(
 }
 
 /** Build a drifting power-up bubble with a random kind + trajectory. */
-export function rollPickup(seed: Seed, id: number): [Pickup, Seed] {
+export function rollPickup(
+  seed: Seed,
+  id: number,
+  kinds: number = PICKUP_KINDS,
+): [Pickup, Seed] {
   const [x, s1] = nextRange(seed, 30, ARENA.w - 30);
   const [y, s2] = nextRange(s1, 30, ARENA.h - 30);
   const [ang, s3] = nextRange(s2, 0, Math.PI * 2);
   const [spd, s4] = nextRange(s3, 0.05, 0.18);
-  const [k, s5] = nextInt(s4, PICKUP_KINDS);
+  const [k, s5] = nextInt(s4, kinds);
   const [bob, s6] = nextRange(s5, 0, Math.PI * 2);
   const pickup: Pickup = {
     id,

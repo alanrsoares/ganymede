@@ -1,6 +1,6 @@
 import { normalize, wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
-import { nextFloat } from "~/engine/rng";
+import { nextFloat, nextInt, nextRange } from "~/engine/rng";
 import {
   AIM_ASSIST_BIAS,
   AIM_ASSIST_CONE_COS,
@@ -66,6 +66,7 @@ import {
   PORTAL_HORIZON,
   PORTAL_PULL,
   RECON_SHARE_RADIUS,
+  rollShip,
   SCORE_KILL,
   SCORE_PICKUP,
   SHIELD_BASE_REGEN,
@@ -92,6 +93,7 @@ import {
   MAX_LEVEL,
   type Mine,
   type Missile,
+  MUSTER_KIND,
   type Mutable,
   type Pickup,
   PORTALS,
@@ -510,6 +512,31 @@ const harvestFuelCell = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
   }
 };
 
+// Reinforcement power-up (arcade only): the collector's team gains 1–2 AI allies
+// mustered at the pickup, queued into ctx.spawned so finalize commits them (still
+// bounded by MAX_SHIPS like any spawn). Seeded off ctx.seed → deterministic.
+const MUSTER_SPREAD = 10;
+const musterAllies = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
+  if (!ctx.world.arcade) return;
+  const [extra, s0] = nextInt(ctx.seed, 2); // 0..1 → 1..2 allies
+  ctx.seed = s0;
+  for (let k = 0; k <= extra; k++) {
+    const [jx, s1] = nextRange(ctx.seed, -MUSTER_SPREAD, MUSTER_SPREAD);
+    const [jy, s2] = nextRange(s1, -MUSTER_SPREAD, MUSTER_SPREAD);
+    const [ally, s3] = rollShip(
+      s2,
+      ctx.nextId,
+      wrap(s.x + jx, ARENA.w),
+      wrap(s.y + jy, ARENA.h),
+      s.level,
+      s.colorName,
+    );
+    ctx.seed = s3;
+    ctx.nextId += 1;
+    ctx.spawned.push(ally);
+  }
+};
+
 /** Apply one collected pickup's effect by kind (heal/shield/boost/.../EMP AoE). */
 const applyPickup = (
   ctx: TickCtx,
@@ -542,6 +569,9 @@ const applyPickup = (
       break;
     case FUEL_CELL_KIND:
       harvestFuelCell(ctx, s);
+      break;
+    case MUSTER_KIND:
+      musterAllies(ctx, s);
       break;
     default:
       return fireEmpMissile(ctx, s, missiles, missileId);

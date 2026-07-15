@@ -296,8 +296,12 @@ export interface Projectile extends Entity {
 // 7 force field (push + melee aura that builds on the shield orb),
 // 8 fuel cell — carrier-only harvest that refills the carrier and pumps nearby
 // allies; the anti-stall valve that keeps a starving field from grinding out.
-export type PickupKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
-export const PICKUP_KINDS = 9;
+// 9 muster — ARCADE ONLY: reinforces the collector's team with a pair of AI
+// allies. Rolled only in arcade (ARCADE_PICKUP_KINDS), so autobattle is unchanged.
+export type PickupKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+export const PICKUP_KINDS = 9; // autobattle roll bound (kinds 0..8)
+export const ARCADE_PICKUP_KINDS = 10; // arcade roll bound (adds 9 = muster)
+export const MUSTER_KIND = 9;
 export interface Pickup extends Entity {
   readonly x: number;
   readonly y: number;
