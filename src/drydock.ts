@@ -759,13 +759,39 @@ const el = (id: string): HTMLElement => {
 // Recipes are deep-mutable arrays, so the panel re-renders wholesale on
 // structural change instead of threading van.state through every field.
 
-const { button, div, input, label, option, output, select } = van.tags;
+const { button, div, h2, input, label, option, output, select } = van.tags;
 
 let selPart = 0;
 
-const hudButton = (text: string, onclick: () => void): HTMLButtonElement =>
-  button({ type: "button", onclick }, text);
+// --- one-deep undo for destructive ops --------------------------------------------
+// Snapshot before delete/reset/import; undoing swaps the snapshot with the
+// current state, so pressing undo again acts as redo.
 
+let undoSlot: { cls: ShipClass; hull: HullDef; label: string } | null = null;
+
+const syncUndo = (): void => {
+  const b = el("undoBtn") as HTMLButtonElement;
+  b.hidden = !undoSlot;
+  if (undoSlot) {
+    b.textContent =
+      undoSlot.label === "redo" ? "redo" : `undo ${undoSlot.label}`;
+  }
+};
+
+const snapshotUndo = (label: string): void => {
+  undoSlot = {
+    cls: state.cls,
+    hull: structuredClone(hulls[state.cls]),
+    label,
+  };
+  syncUndo();
+};
+
+/**
+ * Labelled range with a click-to-edit numeric readout (the Figma/Blender
+ * pattern): click the value, type an exact number, Enter/blur commits,
+ * Escape cancels.
+ */
 const sliderRow = (
   text: string,
   min: number,
@@ -774,23 +800,54 @@ const sliderRow = (
   get: () => number,
   set: (v: number) => void,
 ): HTMLElement => {
-  const out = output(get().toFixed(2));
-  return div(
-    { class: "ctl" },
-    label(text, out),
-    input({
-      type: "range",
-      min,
-      max,
-      step,
-      value: get(),
-      oninput: (e: Event) => {
-        set(Number((e.target as HTMLInputElement).value));
-        out.textContent = get().toFixed(2);
-        touchHull();
-      },
-    }),
+  const out = output(
+    { title: "click to type an exact value" },
+    get().toFixed(2),
   );
+  const range = input({
+    type: "range",
+    min,
+    max,
+    step,
+    value: get(),
+    oninput: (e: Event) => {
+      set(Number((e.target as HTMLInputElement).value));
+      out.textContent = get().toFixed(2);
+      touchHull();
+    },
+  }) as HTMLInputElement;
+  out.onclick = () => {
+    const inp = input({
+      type: "number",
+      step,
+      value: get().toFixed(2),
+    }) as HTMLInputElement;
+    let cancelled = false;
+    const done = (): void => {
+      if (!cancelled) {
+        const v = Math.min(max, Math.max(min, Number(inp.value)));
+        if (!Number.isNaN(v)) {
+          set(v);
+          range.value = String(v);
+          touchHull();
+        }
+      }
+      out.textContent = get().toFixed(2);
+      inp.replaceWith(out);
+    };
+    inp.onblur = done;
+    inp.onkeydown = (e) => {
+      if (e.key === "Enter") inp.blur();
+      if (e.key === "Escape") {
+        cancelled = true;
+        inp.blur();
+      }
+    };
+    out.replaceWith(inp);
+    inp.focus();
+    inp.select();
+  };
+  return div({ class: "ctl" }, label(text, out), range);
 };
 
 const selectRow = (
@@ -896,15 +953,20 @@ const rotRows = (part: PartDef): HTMLElement[] => {
 };
 
 const partControls = (part: PartDef): HTMLElement[] => [
+  h2("shape"),
   selectRow("prim", ["slab", "hex", "orb"], part.prim.kind, (kind) => {
     part.prim = defaultPrim(kind);
     touchHull();
     renderEditor();
   }),
   ...taperRows(part.prim),
+  h2("position"),
   ...vec3Rows("pos", -1.6, 1.6, () => part.pos),
+  h2("scale"),
   ...vec3Rows("scale", 0.02, 2.5, () => part.scale),
+  h2("rotation"),
   ...rotRows(part),
+  h2("look"),
   selectRow("color", PALETTE_KEYS, part.color, (v) => {
     part.color = v as PartDef["color"];
     touchHull();
@@ -925,15 +987,22 @@ const partControls = (part: PartDef): HTMLElement[] => [
 
 const engineControls = (engines: EngineAnchor[], i: number): HTMLElement[] => {
   const eng = engines[i];
-  return [
-    div(
-      { class: "row" },
-      hudButton(`engine ${i} ✕`, () => {
+  const del = button(
+    {
+      type: "button",
+      class: "xbtn",
+      "aria-label": `delete engine ${i}`,
+      onclick: () => {
+        snapshotUndo(`delete engine ${i}`);
         engines.splice(i, 1);
         touchHull();
         renderEditor();
-      }),
-    ),
+      },
+    },
+    "✕",
+  );
+  return [
+    div({ class: "row eng-head" }, h2(`engine ${i}`), del),
     sliderRow(
       "x",
       -1.2,
@@ -1001,21 +1070,52 @@ const renderEditor = (): void => {
   rebuildHighlight(); // keep the viewport glow on the selected part
 };
 
-const exportHullTs = (): void => {
-  const hull = hulls[state.cls];
-  const text = [
-    `// ${state.cls} hull — exported from /drydock designer`,
-    `const PARTS: PartDef[] = ${JSON.stringify(hull.parts, null, 2)};`,
-    `const HULL_ENGINES: EngineAnchor[] = ${JSON.stringify(hull.engines, null, 2)};`,
-    "",
-  ].join("\n");
-  navigator.clipboard?.writeText(text).catch(() => {});
-  console.log(text);
-  const btn = el("exportTs");
-  btn.textContent = "copied ✓";
+/** Flash a transient status on a button, then restore its original label. */
+const flashBtn = (id: string, msg: string): void => {
+  const b = el(id);
+  b.dataset.orig ??= b.textContent ?? "";
+  const orig = b.dataset.orig;
+  b.textContent = msg;
   setTimeout(() => {
-    btn.textContent = "export → clipboard";
-  }, 1200);
+    b.textContent = orig;
+  }, 1400);
+};
+
+// Export/import round-trip: pure `{ parts, engines }` JSON on the clipboard
+// (valid TS literal to paste into ship-parts.ts, parseable by import).
+const exportHull = (): void => {
+  const { parts, engines } = hulls[state.cls];
+  const json = JSON.stringify({ parts, engines }, null, 2);
+  console.log(
+    `// ${state.cls} hull — exported from /drydock designer\n${json}`,
+  );
+  if (!navigator.clipboard) {
+    flashBtn("exportTs", "no clipboard — see console");
+    return;
+  }
+  navigator.clipboard.writeText(json).then(
+    () => flashBtn("exportTs", "copied ✓"),
+    () => flashBtn("exportTs", "copy failed — see console"),
+  );
+};
+
+const importHull = async (): Promise<void> => {
+  try {
+    const parsed = JSON.parse(
+      await navigator.clipboard.readText(),
+    ) as Partial<HullDef>;
+    if (!parsed.parts?.length || !Array.isArray(parsed.engines)) {
+      throw new Error("bad shape");
+    }
+    snapshotUndo("import");
+    hulls[state.cls] = { parts: parsed.parts, engines: parsed.engines };
+    selPart = 0;
+    touchHull();
+    renderEditor();
+    flashBtn("importTs", "imported ✓");
+  } catch {
+    flashBtn("importTs", "clipboard is not hull JSON");
+  }
 };
 
 const wireEditor = (): void => {
@@ -1043,6 +1143,7 @@ const wireEditor = (): void => {
   el("delPart").onclick = () => {
     const hull = hulls[state.cls];
     if (hull.parts.length <= 1) return;
+    snapshotUndo(`delete part ${selPart}`);
     hull.parts.splice(selPart, 1);
     touchHull();
     renderEditor();
@@ -1052,8 +1153,46 @@ const wireEditor = (): void => {
     touchHull();
     renderEditor();
   };
-  el("exportTs").onclick = exportHullTs;
-  el("resetCls").onclick = () => {
+  el("exportTs").onclick = exportHull;
+  el("importTs").onclick = () => void importHull();
+  el("undoBtn").onclick = () => {
+    if (!undoSlot) return;
+    // Swap snapshot and current so undo twice = redo.
+    const redo = {
+      cls: undoSlot.cls,
+      hull: structuredClone(hulls[undoSlot.cls]),
+      label: "redo",
+    };
+    hulls[undoSlot.cls] = undoSlot.hull;
+    state.cls = undoSlot.cls; // jump back to the class the action touched
+    undoSlot = redo;
+    selPart = 0;
+    touchHull();
+    sync();
+    syncUndo();
+  };
+  wireReset();
+};
+
+// Two-step reset: first press arms ("reset — sure?"), second within 2.5s
+// fires; arming times out back to safe. Undoable either way.
+const wireReset = (): void => {
+  const b = el("resetCls");
+  let disarm: ReturnType<typeof setTimeout> | undefined;
+  b.onclick = () => {
+    if (!b.classList.contains("danger")) {
+      b.classList.add("danger");
+      b.textContent = "reset — sure?";
+      disarm = setTimeout(() => {
+        b.classList.remove("danger");
+        b.textContent = "reset class";
+      }, 2500);
+      return;
+    }
+    clearTimeout(disarm);
+    b.classList.remove("danger");
+    b.textContent = "reset class";
+    snapshotUndo("reset");
     hulls[state.cls] = stockHull(state.cls);
     selPart = 0;
     touchHull();
@@ -1088,6 +1227,7 @@ const wireHud = (): void => {
           type: "button",
           onclick: () => {
             state.cls = cls;
+            selPart = 0; // never leave a stale index armed for delete
             sync();
           },
         },
@@ -1139,8 +1279,62 @@ const wireHud = (): void => {
   sync();
 };
 
+// Keyboard shortcuts. Skipped while typing in a field; space is left alone
+// when a button has focus so keyboard activation still works. Each action
+// returns false to decline (leaves the event untouched).
+const KEY_ACTIONS: Record<string, (e: KeyboardEvent) => boolean> = {
+  1: () => selectClass(0),
+  2: () => selectClass(1),
+  3: () => selectClass(2),
+  4: () => selectClass(3),
+  d: () => {
+    state.design = !state.design;
+    return true;
+  },
+  m: () => {
+    state.mono = !state.mono;
+    return true;
+  },
+  b: () => {
+    state.bank = !state.bank;
+    return true;
+  },
+  " ": (e) => {
+    if (e.target instanceof HTMLButtonElement) return false; // keep space = click
+    e.preventDefault();
+    state.paused = !state.paused;
+    return true;
+  },
+  Escape: () => {
+    if (!state.design) return false;
+    state.design = false;
+    return true;
+  },
+};
+
+const selectClass = (i: number): boolean => {
+  state.cls = SHIP_CLASSES[i];
+  selPart = 0;
+  return true;
+};
+
+const wireKeys = (): void => {
+  addEventListener("keydown", (e: KeyboardEvent) => {
+    const t = e.target as HTMLElement;
+    if (
+      t instanceof HTMLInputElement ||
+      t instanceof HTMLSelectElement ||
+      t.isContentEditable
+    ) {
+      return;
+    }
+    if (KEY_ACTIONS[e.key]?.(e)) sync();
+  });
+};
+
 wireHud();
 wireEditor();
+wireKeys();
 main().catch((err) => {
   el("hud").remove();
   van.add(
