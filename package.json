@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
+    "@astryxdesign/theme-gothic": "^0.1.6",
     "@fontsource/press-start-2p": "^5.2.7",
     "@onrails/pattern": "^0.3.2",
     "typegpu": "^0.11.9",

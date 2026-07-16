@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-astryx-theme="gothic">
   <head>
     <meta charset="utf-8" />
     <meta
@@ -9,13 +9,25 @@
     <meta name="theme-color" content="#050b0f" />
     <link rel="icon" href="data:," />
     <title>Ganymede — Drydock</title>
+    <!-- Astryx gothic tokens; local vars below alias onto them. -->
+    <link rel="stylesheet" href="./astryx-theme.css" />
     <style>
+      /* Local vars alias Astryx gothic tokens (imported in drydock.ts,
+         scoped by data-astryx-theme on <html>); fallbacks keep the page
+         alive if the theme ever fails to load. Accent stays portal green —
+         brand override on top of the system, mirrored into --color-accent
+         so Astryx-derived styling agrees. */
       :root {
-        --panel: #0d131dee;
-        --line: #1c2634;
-        --ink: #cfdbe8;
-        --muted: #5f7189;
+        --panel: color-mix(
+          in srgb,
+          var(--color-background-surface, #101314) 93%,
+          transparent
+        );
+        --line: var(--color-border, #1c2634);
+        --ink: var(--color-text-primary, #cfdbe8);
+        --muted: var(--color-text-secondary, #5f7189);
         --accent: #97ce4c;
+        --color-accent: #97ce4c;
       }
       * {
         box-sizing: border-box;
@@ -36,6 +48,14 @@
       }
       .hud[hidden] {
         display: none;
+      }
+      /* Instrument face: mono everywhere in the HUD. The Astryx reset styles
+         element types directly (:where(p, h1..h6) with the theme's body/
+         display faces), which beats inheritance — so pin the family on the
+         elements themselves. */
+      .hud,
+      .hud * {
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       }
       .hud {
         position: fixed;

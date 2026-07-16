@@ -1,6 +1,39 @@
 @import "tailwindcss";
+/* Astryx gothic design tokens (scoped by data-astryx-theme on <html>).
+   Token layer only for now: semantic aliases below expose them to the HUD;
+   utility classes / inline hexes migrate onto these incrementally. */
+@import "./astryx-theme.css";
 /* Pixel-art display face for the title wordmark (self-hosted, bundled offline). */
 @import "@fontsource/press-start-2p/400.css";
+
+/* Semantic bridge from Astryx tokens to the game HUD. Accent is the game's
+   own signal cyan, mirrored into --color-accent so both vocabularies agree.
+   Fallbacks keep the HUD alive without the theme. */
+:root {
+  --hud-surface: var(--color-background-surface, #101314);
+  --hud-card: var(--color-background-card, #1a1d20);
+  --hud-line: var(--color-border, #e8f1f61a);
+  --hud-ink: var(--color-text-primary, #e8f1f6);
+  --hud-muted: var(--color-text-secondary, #96a0ab);
+  --hud-accent: #3fd8ff;
+  --color-accent: #3fd8ff;
+}
+
+/* Contain the Astryx reset to the token layer: its @layer reset styles
+   heading/paragraph type directly (Fustat + the gothic display serif),
+   which would restyle the game HUD. Unlayered rules beat any @layer, so
+   this restores Tailwind-preflight behaviour (inherit from body's mono). */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
 
 /* Splash CTA glow, referenced via animate-[glow_...] utility. */
 @keyframes glow {
