@@ -61,6 +61,57 @@ const slab = (tx: number, tz: number): Prim => {
   return { verts, faces };
 };
 
+/** Octagonal cross-section ring at height y: a box section with corners cut c. */
+const octRing = (verts: V3[], y: number, hx: number, hz: number, c: number) => {
+  const cx = Math.min(c, hx * 0.9);
+  const cz = Math.min(c, hz * 0.9);
+  verts.push(
+    [hx - cx, y, -hz],
+    [hx, y, -hz + cz],
+    [hx, y, hz - cz],
+    [hx - cx, y, hz],
+    [-(hx - cx), y, hz],
+    [-hx, y, hz - cz],
+    [-hx, y, -hz + cz],
+    [-(hx - cx), y, -hz],
+  );
+};
+
+/**
+ * Chamfered slab: the same frustum as `slab`, but the four long edges are cut
+ * to an octagonal section and the base/nose rims are chamfered in. Still
+ * convex, every facet flat — the chamfers exist to catch the key light so a
+ * hull mass reads as machined carapace instead of a box. `bevel` is the cut
+ * width in unit space (useful range ≈ 0.04–0.2).
+ */
+const bevelSlab = (tx: number, tz: number, bevel: number): Prim => {
+  const c = Math.min(Math.max(bevel, 0.01), 0.24);
+  const ext = (y: number): [number, number] => {
+    const t = y + 0.5;
+    return [0.5 * (1 + (tx - 1) * t), 0.5 * (1 + (tz - 1) * t)];
+  };
+  const verts: V3[] = [];
+  const ys = [-0.5, -0.5 + c, 0.5 - c, 0.5];
+  ys.forEach((y, i) => {
+    const [hx, hz] = ext(y);
+    const rim = i === 0 || i === 3 ? c : 0;
+    octRing(verts, y, Math.max(hx - rim, 0.02), Math.max(hz - rim, 0.02), c);
+  });
+  const faces: [number, number, number][] = [];
+  for (let r = 0; r < 3; r++) {
+    for (let i = 0; i < 8; i++) {
+      const j = (i + 1) % 8;
+      const a = r * 8 + i;
+      const b = r * 8 + j;
+      faces.push([a, b, b + 8], [a, b + 8, a + 8]);
+    }
+  }
+  for (let i = 1; i < 7; i++) {
+    faces.push([0, i, i + 1], [24, 24 + i, 24 + i + 1]);
+  }
+  return { verts, faces };
+};
+
 /** Tapered hex prism along Y — engine polyps, barrels, pods, eye stalks. */
 const hexPrism = (taper: number): Prim => {
   const verts: V3[] = [];
@@ -136,14 +187,16 @@ const orb = (): Prim => {
 
 /** Serializable primitive description — what the hull designer edits. */
 export type PrimDef =
-  | { kind: "slab"; tx: number; tz: number }
+  | { kind: "slab"; tx: number; tz: number; bevel?: number }
   | { kind: "hex"; taper: number }
   | { kind: "orb" };
 
 export const buildPrim = (def: PrimDef): Prim => {
   switch (def.kind) {
     case "slab":
-      return slab(def.tx, def.tz);
+      return def.bevel && def.bevel > 0
+        ? bevelSlab(def.tx, def.tz, def.bevel)
+        : slab(def.tx, def.tz);
     case "hex":
       return hexPrism(def.taper);
     case "orb":
@@ -311,21 +364,22 @@ export const assembleShipMesh = (parts: readonly PartDef[]): Mesh => {
 // deliberately NOT mirrored — eldritch things are never quite symmetric.
 
 const deg = (d: number): number => (d * Math.PI) / 180;
-const SLAB = (tx: number, tz: number): PrimDef => ({ kind: "slab", tx, tz });
+const SLAB = (tx: number, tz: number, bevel?: number): PrimDef =>
+  bevel ? { kind: "slab", tx, tz, bevel } : { kind: "slab", tx, tz };
 const HEX = (taper: number): PrimDef => ({ kind: "hex", taper });
 const ORB: PrimDef = { kind: "orb" };
 
 /** scout — "Lamprey": slim recon dart, cyclopean eye, barbed spine. */
 const SCOUT: PartDef[] = [
   {
-    prim: SLAB(0.28, 0.4),
+    prim: SLAB(0.28, 0.4, 0.12),
     scale: [0.38, 1.9, 0.24],
     pos: [0, 0.05, 0],
     color: "bone",
   },
   { prim: ORB, scale: [0.22, 0.22, 0.22], pos: [0, 0.62, 0.1], color: "eye" },
   {
-    prim: SLAB(0.2, 0.5),
+    prim: SLAB(0.2, 0.5, 0.08),
     scale: [0.5, 0.6, 0.06],
     rot: [0, 0, -deg(34)],
     pos: [0.34, -0.3, 0],
@@ -364,7 +418,7 @@ const SCOUT: PartDef[] = [
 /** fighter — "Ossuary": cross-span gunboat, twin fang barrels, rib plates. */
 const FIGHTER: PartDef[] = [
   {
-    prim: SLAB(0.45, 0.5),
+    prim: SLAB(0.45, 0.5, 0.12),
     scale: [0.5, 1.5, 0.3],
     pos: [0, 0, 0],
     color: "carapace",
@@ -372,7 +426,7 @@ const FIGHTER: PartDef[] = [
   { prim: ORB, scale: [0.18, 0.18, 0.18], pos: [0, 0.42, 0.16], color: "eye" },
   // Bone-blade wings: span wider than the hull is long.
   {
-    prim: SLAB(0.12, 0.4),
+    prim: SLAB(0.12, 0.4, 0.08),
     scale: [0.7, 0.55, 0.07],
     rot: [0, 0, -deg(9)],
     pos: [0.62, -0.05, 0],
@@ -381,13 +435,13 @@ const FIGHTER: PartDef[] = [
   },
   // Rib plates across the spine.
   {
-    prim: SLAB(0.7, 0.5),
+    prim: SLAB(0.7, 0.5, 0.06),
     scale: [0.56, 0.16, 0.1],
     pos: [0, 0.1, 0.18],
     color: "bone",
   },
   {
-    prim: SLAB(0.7, 0.5),
+    prim: SLAB(0.7, 0.5, 0.06),
     scale: [0.5, 0.14, 0.1],
     pos: [0, -0.22, 0.2],
     color: "bone",
@@ -420,14 +474,14 @@ const FIGHTER: PartDef[] = [
 /** heavy — "Leviathan": bloated carapace slab, gaping ram maw, mine barnacles. */
 const HEAVY: PartDef[] = [
   {
-    prim: SLAB(0.75, 0.7),
+    prim: SLAB(0.75, 0.7, 0.14),
     scale: [0.95, 1.45, 0.44],
     pos: [0, -0.05, 0],
     color: "carapace",
   },
   // Ram maw: blunt dark mouth ringed by fang wedges.
   {
-    prim: SLAB(0.55, 0.55),
+    prim: SLAB(0.55, 0.55, 0.1),
     scale: [0.66, 0.45, 0.46],
     pos: [0, 0.72, 0],
     color: "maw",
@@ -450,13 +504,13 @@ const HEAVY: PartDef[] = [
   },
   // Dorsal carapace shells.
   {
-    prim: SLAB(0.8, 0.6),
+    prim: SLAB(0.8, 0.6, 0.1),
     scale: [0.68, 0.85, 0.14],
     pos: [0, 0.02, 0.28],
     color: "bone",
   },
   {
-    prim: SLAB(0.7, 0.6),
+    prim: SLAB(0.7, 0.6, 0.1),
     scale: [0.42, 0.5, 0.12],
     pos: [-0.06, -0.42, 0.36],
     color: "bone",
@@ -518,7 +572,7 @@ const HEAVY: PartDef[] = [
 /** interceptor — "Stinger": bone-needle spine, egg-sac missile polyps. */
 const INTERCEPTOR: PartDef[] = [
   {
-    prim: SLAB(0.2, 0.3),
+    prim: SLAB(0.2, 0.3, 0.09),
     scale: [0.26, 2.2, 0.22],
     pos: [0, 0, 0],
     color: "bone",
@@ -526,7 +580,7 @@ const INTERCEPTOR: PartDef[] = [
   { prim: ORB, scale: [0.14, 0.14, 0.14], pos: [0, 0.52, 0.1], color: "eye" },
   // Back-swept spine fins.
   {
-    prim: SLAB(0.08, 0.4),
+    prim: SLAB(0.08, 0.4, 0.06),
     scale: [0.44, 0.42, 0.05],
     rot: [0, 0, -deg(46)],
     pos: [0.22, -0.76, 0],
@@ -534,7 +588,7 @@ const INTERCEPTOR: PartDef[] = [
     mirror: true,
   },
   {
-    prim: SLAB(0.15, 0.3),
+    prim: SLAB(0.15, 0.3, 0.06),
     scale: [0.05, 0.34, 0.28],
     pos: [0, -0.82, 0.14],
     color: "carapace",
