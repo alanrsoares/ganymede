@@ -98,7 +98,6 @@ const revealForMode = (
 const wireTouchControls = (
   dispatch: (msg: Msg) => void,
   ui: Ui,
-  onCodex: () => void,
   onPause: (paused: boolean) => void,
 ) =>
   mountMobileControls({
@@ -106,27 +105,21 @@ const wireTouchControls = (
     onKeys: (k) => dispatch({ kind: "controlKeys", ...k }),
     onAction: (id) => dispatch({ kind: "action", actionId: id }),
     onCycle: (dir) => dispatch({ kind: "cycleTarget", dir }),
-    onCodex,
     onPause,
   });
 
-// Touch has no keyboard, so surface the codex + a real pause as on-screen
-// buttons (no-op on pointer devices), and return the loop's "is the sim frozen?"
-// predicate. The codex already pauses while open; `paused` is a separate freeze.
+// Surface a real pause as an on-screen touch button (no-op on pointer devices)
+// and return the loop's "is the sim frozen?" predicate. The codex already pauses
+// while open (and has its own opener button); `paused` is a separate freeze.
 const wirePause = (
   codex: ReturnType<typeof wireInput>,
   dispatch: (msg: Msg) => void,
   ui: Ui,
 ): (() => boolean) => {
   const paused = { on: false };
-  wireTouchControls(
-    dispatch,
-    ui,
-    () => codex.toggle(),
-    (p) => {
-      paused.on = p;
-    },
-  );
+  wireTouchControls(dispatch, ui, (p) => {
+    paused.on = p;
+  });
   return () => codex.isOpen() || paused.on;
 };
 

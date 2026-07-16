@@ -72,6 +72,17 @@ body {
   height: 100%;
 }
 
+/* Touch-only pause toggle: top-left, tucked under the codex opener (`◈ Ships`)
+   so it shares that safe-area column and never meets the top-right status
+   readout. Only mounted on touch devices, so safe-area insets are always apt. */
+.hud-mobile-pause {
+  position: fixed;
+  z-index: 30;
+  left: max(0.75rem, env(safe-area-inset-left));
+  top: calc(max(0.75rem, env(safe-area-inset-top)) + 2.75rem);
+  pointer-events: auto;
+}
+
 /* --- Mobile / touch HUD reflow ---------------------------------------------
    The in-match chrome is positioned for a wide viewport; on a phone the top
    and bottom clusters pile up and run under a notch / home-indicator. These
