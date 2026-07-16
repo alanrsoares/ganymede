@@ -171,7 +171,7 @@ function collidePair(ctx: TickCtx, i: number, j: number): void {
  * identical visit order and per-pair gate are replayed, so the outcome matches
  * the nested loop bit-for-bit while skipping the far-apart pairs.
  */
-export function resolveShipCollisions(ctx: TickCtx, pairs?: PairList) {
+export function resolveShipCollisions(ctx: TickCtx, pairs?: PairList | null) {
   if (pairs) {
     for (let k = 0; k < pairs.length; k += 2)
       collidePair(ctx, pairs[k], pairs[k + 1]);
@@ -184,8 +184,9 @@ export function resolveShipCollisions(ctx: TickCtx, pairs?: PairList) {
   }
 }
 
-/** Build the ship×ship candidate pairs for the current tick's moved ships. */
-export function shipCollisionPairs(ctx: TickCtx): PairList {
+/** Ship×ship candidate pairs, or null when the arena is too small to grid
+ * (→ resolveShipCollisions runs the brute nested loop). */
+export function shipCollisionPairs(ctx: TickCtx): PairList | null {
   return gridSelfPairs(ctx.moved, ARENA, SHIP_PAIR_BAND);
 }
 

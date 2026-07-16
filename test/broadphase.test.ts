@@ -115,8 +115,40 @@ test("gridSelfPairs matches the brute oracle exactly (set + order)", () => {
       const pts = randomPts(n, seed);
       const grid = gridSelfPairs(pts, ARENA, SHIP_PAIR_BAND);
       const brute = bruteSelfPairs(pts, ARENA, SHIP_PAIR_BAND);
-      expect(Array.from(grid)).toEqual(Array.from(brute));
+      expect(grid).not.toBeNull(); // 480×270 grids fine at band 64
+      expect(Array.from(grid ?? [])).toEqual(Array.from(brute));
     }
+  }
+});
+
+test("grid builders fall back to null on a too-small (narrow) arena", () => {
+  // A portrait/narrow viewport shrinks arena width below 3 cells at the band.
+  const pts = randomPts(40, 1);
+  // band 64 (ship collisions): 120px width → floor(120/64)=1 < 3 → null.
+  expect(gridSelfPairs(pts, { w: 120, h: 270 }, SHIP_PAIR_BAND)).toBeNull();
+  // band 13 (cross): needs a much narrower arena to under-run (30/13=2 < 3).
+  expect(gridCrossPairs(pts, pts, { w: 30, h: 270 }, CROSS_BAND)).toBeNull();
+});
+
+test("narrow arena tick resolves ship collisions via brute (no crash)", () => {
+  // Regression: broadphase used to throw on a narrow arena (portrait window),
+  // crashing the render loop. Now it must fall back to the brute nested loop.
+  setGridBounds(120, 270); // floor(120/64) = 1 < 3 → grid unavailable
+  try {
+    let w = initWorld(3);
+    // Two enemies overlapping so a collision MUST be resolved this tick.
+    const [a] = rollShip(1, 1, 60, 135, 3, "cyan", "fighter");
+    const [b] = rollShip(2, 2, 63, 135, 3, "orange", "fighter");
+    w = { ...w, ships: { items: [a, b], nextId: 3 } };
+    expect(() => {
+      w = update({ kind: "tick", steps: 1, now: 0 }, w);
+    }).not.toThrow();
+    // The overlapping pair was resolved (bounced apart) by the brute path.
+    const sa = w.ships.items.find((s) => s.id === 1);
+    const sb = w.ships.items.find((s) => s.id === 2);
+    expect(Math.abs((sa?.x ?? 0) - (sb?.x ?? 0))).toBeGreaterThan(3);
+  } finally {
+    setGridBounds(480, 270);
   }
 });
 
@@ -126,7 +158,9 @@ test("gridSelfPairs finds clustered pairs across the toroidal seam", () => {
     { x: 2, y: 135 },
     { x: ARENA.w - 2, y: 135 },
   ];
-  expect(Array.from(gridSelfPairs(pts, ARENA, SHIP_PAIR_BAND))).toEqual([0, 1]);
+  expect(Array.from(gridSelfPairs(pts, ARENA, SHIP_PAIR_BAND) ?? [])).toEqual([
+    0, 1,
+  ]);
 });
 
 test("broad-phase resolveShipCollisions is bit-identical to the nested loop", () => {
@@ -168,7 +202,8 @@ test("gridCrossPairs matches the brute oracle exactly (grouped by B, A asc)", ()
       const ptsA = randomPts(nA, seed + 1000);
       const grid = gridCrossPairs(ptsB, ptsA, ARENA, CROSS_BAND);
       const brute = bruteCrossPairs(ptsB, ptsA, ARENA, CROSS_BAND);
-      expect(Array.from(grid)).toEqual(Array.from(brute));
+      expect(grid).not.toBeNull();
+      expect(Array.from(grid ?? [])).toEqual(Array.from(brute));
     }
   }
 });
