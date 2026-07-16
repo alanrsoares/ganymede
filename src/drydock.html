@@ -127,6 +127,50 @@
         font-size: 0.9rem;
         color: var(--muted);
       }
+      .editor {
+        left: auto;
+        right: 0.8rem;
+        width: 300px;
+        max-width: calc(100vw - 1.6rem);
+        max-height: calc(100vh - 1.6rem);
+        overflow-y: auto;
+      }
+      .editor h2 {
+        font-size: 0.66rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0.3rem 0 0;
+        font-weight: 600;
+      }
+      .editor .ctl {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.1rem;
+      }
+      select {
+        font: inherit;
+        font-size: 0.72rem;
+        background: transparent;
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 0.25rem;
+      }
+      select option {
+        background: #0d131d;
+      }
+      .check {
+        display: flex;
+        gap: 0.4rem;
+        align-items: center;
+        font-size: 0.72rem;
+        color: var(--muted);
+      }
+      .part-btn.on {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
     </style>
   </head>
   <body>
@@ -144,9 +188,27 @@
         <button type="button" id="bank">bank sweep</button>
         <button type="button" id="mono">mono tint</button>
         <button type="button" id="pause">pause</button>
+        <button type="button" id="design">design</button>
       </div>
       <p class="gear">drag hull to orbit — x yaw · y pitch</p>
       <p class="gear" id="gear"></p>
+    </div>
+    <div class="hud editor" id="editor" hidden>
+      <h1>hull designer — <span id="edCls"></span></h1>
+      <div class="row" id="partList"></div>
+      <div class="row">
+        <button type="button" id="addPart">+ part</button>
+        <button type="button" id="dupPart">duplicate</button>
+        <button type="button" id="delPart">delete</button>
+      </div>
+      <div id="partCtl"></div>
+      <h2>engines</h2>
+      <div id="engCtl"></div>
+      <div class="row"><button type="button" id="addEng">+ engine</button></div>
+      <div class="row">
+        <button type="button" id="exportTs">export → clipboard</button>
+        <button type="button" id="resetCls">reset class</button>
+      </div>
     </div>
     <script type="module" src="./drydock.ts"></script>
   </body>

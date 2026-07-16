@@ -4,6 +4,9 @@
 // CPU (like mesh.ts) and instanced by the ship mesh pass. Vertex colours are
 // baked per part; values > 1 mark emissive surfaces the shader lets bloom.
 //
+// Recipes are plain data (`PartDef`): declarative prim params + palette keys,
+// so the drydock hull designer can edit, serialize and re-bake them live.
+//
 // Conventions: ship local space has the nose along +Y, +Z toward the viewer,
 // authored roughly within ±1.1 along Y so instance `radius` ≈ half-length px.
 
@@ -129,20 +132,56 @@ const orb = (): Prim => {
   return { verts, faces };
 };
 
-// --- assembler ----------------------------------------------------------------
+// --- declarative prim + part defs ----------------------------------------------
 
-interface PartSpec {
-  prim: Prim;
+/** Serializable primitive description — what the hull designer edits. */
+export type PrimDef =
+  | { kind: "slab"; tx: number; tz: number }
+  | { kind: "hex"; taper: number }
+  | { kind: "orb" };
+
+export const buildPrim = (def: PrimDef): Prim => {
+  switch (def.kind) {
+    case "slab":
+      return slab(def.tx, def.tz);
+    case "hex":
+      return hexPrism(def.taper);
+    case "orb":
+      return orb();
+  }
+};
+
+// --- palette ------------------------------------------------------------------
+// Bone carapace over void-purple sinew, acid-green emissives (values > 1 mark
+// emissive surfaces), iridescent magenta eye. Team tint multiplies on top in
+// the shader (same k=0.55 near-white multiply as sprite hulls used).
+
+export const PALETTE = {
+  bone: [0.78, 0.74, 0.64],
+  carapace: [0.45, 0.38, 0.55], // void purple
+  sinew: [0.28, 0.2, 0.34],
+  fang: [0.88, 0.85, 0.72],
+  acid: [1.4, 2.4, 0.5], // emissive portal green
+  eye: [2.2, 0.5, 2.0], // emissive magenta iris
+  maw: [0.1, 0.06, 0.12],
+} as const satisfies Record<string, V3>;
+export type PaletteKey = keyof typeof PALETTE;
+export const PALETTE_KEYS = Object.keys(PALETTE) as readonly PaletteKey[];
+
+/** One hull part: prim + placement + palette colour. Plain serializable data. */
+export interface PartDef {
+  prim: PrimDef;
   /** Per-axis scale applied before rotation. */
   scale: V3;
-  /** Euler rotation, applied Rz·Ry·Rx. */
+  /** Euler rotation in radians, applied Rz·Ry·Rx. */
   rot?: V3;
   pos: V3;
-  /** Base colour; components > 1 render emissive (see ship.wgsl). */
-  color: V3;
+  color: PaletteKey;
   /** Also bake an x-mirrored copy. */
   mirror?: boolean;
 }
+
+// --- assembler ----------------------------------------------------------------
 
 const rotMat = ([ax, ay, az]: V3): number[] => {
   const cx = Math.cos(ax);
@@ -171,31 +210,32 @@ const mulV = (m: number[], v: V3): V3 => [
 ];
 
 /** Bake one part (and its optional mirror) into flat-shaded triangles. */
-const bakePart = (spec: PartSpec, out: Tri[], colors: V3[]): void => {
-  const m = rotMat(spec.rot ?? [0, 0, 0]);
-  for (const mx of spec.mirror ? [1, -1] : [1]) {
-    const centre: V3 = [spec.pos[0] * mx, spec.pos[1], spec.pos[2]];
-    const verts = spec.prim.verts.map((v): V3 => {
+const bakePart = (def: PartDef, prim: Prim, out: Tri[], colors: V3[]): void => {
+  const m = rotMat(def.rot ?? [0, 0, 0]);
+  const col = PALETTE[def.color];
+  for (const mx of def.mirror ? [1, -1] : [1]) {
+    const centre: V3 = [def.pos[0] * mx, def.pos[1], def.pos[2]];
+    const verts = prim.verts.map((v): V3 => {
       const s = mulV(m, [
-        v[0] * spec.scale[0],
-        v[1] * spec.scale[1],
-        v[2] * spec.scale[2],
+        v[0] * def.scale[0],
+        v[1] * def.scale[1],
+        v[2] * def.scale[2],
       ]);
       return [s[0] * mx + centre[0], s[1] + centre[1], s[2] + centre[2]];
     });
-    for (const [a, b, c] of spec.prim.faces) {
+    for (const [a, b, c] of prim.faces) {
       out.push([verts[a], verts[b], verts[c]]);
-      colors.push(spec.color);
+      colors.push(col);
     }
   }
 };
 
 /** Record each baked tri's part centre (mirror-aware) for the outward fix. */
-const trackCentres = (spec: PartSpec, added: number, centres: V3[]): void => {
-  const half = spec.mirror ? added / 2 : added;
+const trackCentres = (def: PartDef, added: number, centres: V3[]): void => {
+  const half = def.mirror ? added / 2 : added;
   for (let i = 0; i < added; i++) {
-    const mx = spec.mirror && i >= half ? -1 : 1;
-    centres.push([spec.pos[0] * mx, spec.pos[1], spec.pos[2]]);
+    const mx = def.mirror && i >= half ? -1 : 1;
+    centres.push([def.pos[0] * mx, def.pos[1], def.pos[2]]);
   }
 };
 
@@ -240,17 +280,17 @@ const writeTri = (
 };
 
 /**
- * Assemble part specs into a mesh-pass `Mesh`: non-indexed flat-shaded tris,
+ * Assemble part defs into a mesh-pass `Mesh`: non-indexed flat-shaded tris,
  * 9 floats/vertex (pos, outward normal, part rgb), `hasColor` set.
  */
-export const assembleShipMesh = (parts: readonly PartSpec[]): Mesh => {
+export const assembleShipMesh = (parts: readonly PartDef[]): Mesh => {
   const tris: Tri[] = [];
   const colors: V3[] = [];
   const centres: V3[] = [];
-  for (const spec of parts) {
+  for (const def of parts) {
     const before = tris.length;
-    bakePart(spec, tris, colors);
-    trackCentres(spec, tris.length - before, centres);
+    bakePart(def, buildPrim(def.prim), tris, colors);
+    trackCentres(def, tris.length - before, centres);
   }
   const data = new Float32Array(tris.length * 3 * 9);
   let o = 0;
@@ -265,289 +305,279 @@ export const assembleShipMesh = (parts: readonly PartSpec[]): Mesh => {
   };
 };
 
-// --- palette ------------------------------------------------------------------
-// Bone carapace over void-purple sinew, acid-green emissives (values > 1 mark
-// emissive surfaces), iridescent magenta eye. Team tint multiplies on top in
-// the shader (same k=0.55 near-white multiply as sprite hulls used).
-
-const BONE: V3 = [0.78, 0.74, 0.64];
-const CARAPACE: V3 = [0.45, 0.38, 0.55]; // void purple
-const SINEW: V3 = [0.28, 0.2, 0.34];
-const FANG: V3 = [0.88, 0.85, 0.72];
-const ACID: V3 = [1.4, 2.4, 0.5]; // emissive portal green
-const EYE: V3 = [2.2, 0.5, 2.0]; // emissive magenta iris
-const MAW: V3 = [0.1, 0.06, 0.12];
-
 // --- recipes -------------------------------------------------------------------
 // Aspect ratio carries the tiny-scale read (dart / cross / slab / needle);
 // the gear sells the role up close. A couple of parts per hull are
 // deliberately NOT mirrored — eldritch things are never quite symmetric.
 
 const deg = (d: number): number => (d * Math.PI) / 180;
+const SLAB = (tx: number, tz: number): PrimDef => ({ kind: "slab", tx, tz });
+const HEX = (taper: number): PrimDef => ({ kind: "hex", taper });
+const ORB: PrimDef = { kind: "orb" };
 
 /** scout — "Lamprey": slim recon dart, cyclopean eye, barbed spine. */
-const SCOUT: PartSpec[] = [
+const SCOUT: PartDef[] = [
   {
-    prim: slab(0.28, 0.4),
+    prim: SLAB(0.28, 0.4),
     scale: [0.38, 1.9, 0.24],
     pos: [0, 0.05, 0],
-    color: BONE,
+    color: "bone",
   },
-  { prim: orb(), scale: [0.22, 0.22, 0.22], pos: [0, 0.62, 0.1], color: EYE },
+  { prim: ORB, scale: [0.22, 0.22, 0.22], pos: [0, 0.62, 0.1], color: "eye" },
   {
-    prim: slab(0.2, 0.5),
+    prim: SLAB(0.2, 0.5),
     scale: [0.5, 0.6, 0.06],
     rot: [0, 0, -deg(34)],
     pos: [0.34, -0.3, 0],
-    color: CARAPACE,
+    color: "carapace",
     mirror: true,
   },
   // Dorsal barb row — asymmetric, leaning starboard.
   {
-    prim: slab(0.05, 0.05),
+    prim: SLAB(0.05, 0.05),
     scale: [0.06, 0.34, 0.06],
     rot: [deg(-28), 0, deg(12)],
     pos: [0.05, -0.15, 0.18],
-    color: FANG,
+    color: "fang",
   },
   {
-    prim: slab(0.05, 0.05),
+    prim: SLAB(0.05, 0.05),
     scale: [0.05, 0.26, 0.05],
     rot: [deg(-24), 0, deg(18)],
     pos: [0.09, -0.48, 0.16],
-    color: FANG,
+    color: "fang",
   },
   {
-    prim: hexPrism(0.7),
+    prim: HEX(0.7),
     scale: [0.16, 0.5, 0.16],
     pos: [0, -0.92, 0],
-    color: SINEW,
+    color: "sinew",
   },
   {
-    prim: hexPrism(0.9),
+    prim: HEX(0.9),
     scale: [0.1, 0.16, 0.1],
     pos: [0, -1.2, 0],
-    color: ACID,
+    color: "acid",
   },
 ];
 
 /** fighter — "Ossuary": cross-span gunboat, twin fang barrels, rib plates. */
-const FIGHTER: PartSpec[] = [
+const FIGHTER: PartDef[] = [
   {
-    prim: slab(0.45, 0.5),
+    prim: SLAB(0.45, 0.5),
     scale: [0.5, 1.5, 0.3],
     pos: [0, 0, 0],
-    color: CARAPACE,
+    color: "carapace",
   },
-  { prim: orb(), scale: [0.18, 0.18, 0.18], pos: [0, 0.42, 0.16], color: EYE },
+  { prim: ORB, scale: [0.18, 0.18, 0.18], pos: [0, 0.42, 0.16], color: "eye" },
   // Bone-blade wings: span wider than the hull is long.
   {
-    prim: slab(0.12, 0.4),
+    prim: SLAB(0.12, 0.4),
     scale: [0.7, 0.55, 0.07],
     rot: [0, 0, -deg(9)],
     pos: [0.62, -0.05, 0],
-    color: BONE,
+    color: "bone",
     mirror: true,
   },
   // Rib plates across the spine.
   {
-    prim: slab(0.7, 0.5),
+    prim: SLAB(0.7, 0.5),
     scale: [0.56, 0.16, 0.1],
     pos: [0, 0.1, 0.18],
-    color: BONE,
+    color: "bone",
   },
   {
-    prim: slab(0.7, 0.5),
+    prim: SLAB(0.7, 0.5),
     scale: [0.5, 0.14, 0.1],
     pos: [0, -0.22, 0.2],
-    color: BONE,
+    color: "bone",
   },
   // Twin fang barrels — canted slightly like tusks.
   {
-    prim: slab(0.06, 0.06),
+    prim: SLAB(0.06, 0.06),
     scale: [0.08, 0.8, 0.08],
     rot: [0, 0, deg(3)],
     pos: [0.28, 0.62, -0.02],
-    color: FANG,
+    color: "fang",
     mirror: true,
   },
   {
-    prim: hexPrism(0.75),
+    prim: HEX(0.75),
     scale: [0.14, 0.45, 0.14],
     pos: [0.2, -0.84, 0],
-    color: SINEW,
+    color: "sinew",
     mirror: true,
   },
   {
-    prim: hexPrism(0.9),
+    prim: HEX(0.9),
     scale: [0.09, 0.14, 0.09],
     pos: [0.2, -1.1, 0],
-    color: ACID,
+    color: "acid",
     mirror: true,
   },
 ];
 
 /** heavy — "Leviathan": bloated carapace slab, gaping ram maw, mine barnacles. */
-const HEAVY: PartSpec[] = [
+const HEAVY: PartDef[] = [
   {
-    prim: slab(0.75, 0.7),
+    prim: SLAB(0.75, 0.7),
     scale: [0.95, 1.45, 0.44],
     pos: [0, -0.05, 0],
-    color: CARAPACE,
+    color: "carapace",
   },
   // Ram maw: blunt dark mouth ringed by fang wedges.
   {
-    prim: slab(0.55, 0.55),
+    prim: SLAB(0.55, 0.55),
     scale: [0.66, 0.45, 0.46],
     pos: [0, 0.72, 0],
-    color: MAW,
+    color: "maw",
   },
   {
-    prim: slab(0.04, 0.04),
+    prim: SLAB(0.04, 0.04),
     scale: [0.09, 0.3, 0.09],
     rot: [deg(-90), 0, 0],
     pos: [0.22, 0.95, 0.12],
-    color: FANG,
+    color: "fang",
     mirror: true,
   },
   {
-    prim: slab(0.04, 0.04),
+    prim: SLAB(0.04, 0.04),
     scale: [0.09, 0.3, 0.09],
     rot: [deg(-90), 0, 0],
     pos: [0.08, 0.98, -0.14],
-    color: FANG,
+    color: "fang",
     mirror: true,
   },
   // Dorsal carapace shells.
   {
-    prim: slab(0.8, 0.6),
+    prim: SLAB(0.8, 0.6),
     scale: [0.68, 0.85, 0.14],
     pos: [0, 0.02, 0.28],
-    color: BONE,
+    color: "bone",
   },
   {
-    prim: slab(0.7, 0.6),
+    prim: SLAB(0.7, 0.6),
     scale: [0.42, 0.5, 0.12],
     pos: [-0.06, -0.42, 0.36],
-    color: BONE,
+    color: "bone",
   },
   // Cyclopean eye off-centre on the carapace. Not mirrored. It watches.
   {
-    prim: orb(),
+    prim: ORB,
     scale: [0.24, 0.24, 0.24],
     pos: [0.28, 0.18, 0.32],
-    color: EYE,
+    color: "eye",
   },
   // Mine barnacle clusters, underslung.
   {
-    prim: hexPrism(0.5),
+    prim: HEX(0.5),
     scale: [0.16, 0.24, 0.16],
     rot: [deg(180), 0, 0],
     pos: [0.55, -0.5, -0.26],
-    color: ACID,
+    color: "acid",
     mirror: true,
   },
   {
-    prim: hexPrism(0.75),
+    prim: HEX(0.75),
     scale: [0.15, 0.4, 0.15],
     pos: [0.55, -0.92, 0],
-    color: SINEW,
+    color: "sinew",
     mirror: true,
   },
   {
-    prim: hexPrism(0.75),
+    prim: HEX(0.75),
     scale: [0.15, 0.4, 0.15],
     pos: [0.19, -0.92, 0],
-    color: SINEW,
+    color: "sinew",
     mirror: true,
   },
   {
-    prim: hexPrism(0.9),
+    prim: HEX(0.9),
     scale: [0.1, 0.12, 0.1],
     pos: [0.55, -1.14, 0],
-    color: ACID,
+    color: "acid",
     mirror: true,
   },
   {
-    prim: hexPrism(0.9),
+    prim: HEX(0.9),
     scale: [0.1, 0.12, 0.1],
     pos: [0.19, -1.14, 0],
-    color: ACID,
+    color: "acid",
     mirror: true,
   },
   // Flank pods (carrier bulk).
   {
-    prim: hexPrism(0.85),
+    prim: HEX(0.85),
     scale: [0.18, 0.8, 0.18],
     pos: [0.72, -0.1, 0.04],
-    color: CARAPACE,
+    color: "carapace",
     mirror: true,
   },
 ];
 
 /** interceptor — "Stinger": bone-needle spine, egg-sac missile polyps. */
-const INTERCEPTOR: PartSpec[] = [
+const INTERCEPTOR: PartDef[] = [
   {
-    prim: slab(0.2, 0.3),
+    prim: SLAB(0.2, 0.3),
     scale: [0.26, 2.2, 0.22],
     pos: [0, 0, 0],
-    color: BONE,
+    color: "bone",
   },
-  { prim: orb(), scale: [0.14, 0.14, 0.14], pos: [0, 0.52, 0.1], color: EYE },
+  { prim: ORB, scale: [0.14, 0.14, 0.14], pos: [0, 0.52, 0.1], color: "eye" },
   // Back-swept spine fins.
   {
-    prim: slab(0.08, 0.4),
+    prim: SLAB(0.08, 0.4),
     scale: [0.44, 0.42, 0.05],
     rot: [0, 0, -deg(46)],
     pos: [0.22, -0.76, 0],
-    color: CARAPACE,
+    color: "carapace",
     mirror: true,
   },
   {
-    prim: slab(0.15, 0.3),
+    prim: SLAB(0.15, 0.3),
     scale: [0.05, 0.34, 0.28],
     pos: [0, -0.82, 0.14],
-    color: CARAPACE,
+    color: "carapace",
   },
   // Missile polyp sacs with emissive tips — clutch of eggs about to hatch.
   {
-    prim: hexPrism(0.6),
+    prim: HEX(0.6),
     scale: [0.15, 0.5, 0.15],
     pos: [0.28, 0.08, -0.02],
-    color: SINEW,
+    color: "sinew",
     mirror: true,
   },
   {
-    prim: hexPrism(0.15),
+    prim: HEX(0.15),
     scale: [0.07, 0.24, 0.07],
     pos: [0.28, 0.42, -0.02],
-    color: ACID,
+    color: "acid",
     mirror: true,
   },
   {
-    prim: hexPrism(0.15),
+    prim: HEX(0.15),
     scale: [0.05, 0.16, 0.05],
     rot: [0, 0, deg(14)],
     pos: [0.36, 0.3, 0.06],
-    color: ACID,
+    color: "acid",
   },
   {
-    prim: hexPrism(0.7),
+    prim: HEX(0.7),
     scale: [0.12, 0.5, 0.12],
     pos: [0.11, -1.04, 0],
-    color: SINEW,
+    color: "sinew",
     mirror: true,
   },
   {
-    prim: hexPrism(0.9),
+    prim: HEX(0.9),
     scale: [0.08, 0.12, 0.08],
     pos: [0.11, -1.32, 0],
-    color: ACID,
+    color: "acid",
     mirror: true,
   },
 ];
 
-const RECIPES = {
+export const RECIPES = {
   scout: SCOUT,
   fighter: FIGHTER,
   heavy: HEAVY,
@@ -556,11 +586,11 @@ const RECIPES = {
 
 /** One engine anchor: nozzle exit in ship-local units + plume width. */
 export interface EngineAnchor {
-  readonly pos: V3;
-  readonly w: number;
+  pos: V3;
+  w: number;
 }
 
-// Nozzle exits per class, matching each recipe's ACID nozzle parts (mirrored
+// Nozzle exits per class, matching each recipe's acid nozzle parts (mirrored
 // pairs listed explicitly so the plume pass needs no mirror logic).
 export const ENGINES: Record<keyof typeof RECIPES, readonly EngineAnchor[]> = {
   scout: [{ pos: [0, -1.2, 0], w: 0.16 }],
@@ -616,6 +646,6 @@ export const makePlumeMesh = (): Mesh => {
 export type ShipClass = keyof typeof RECIPES;
 export const SHIP_CLASSES = Object.keys(RECIPES) as readonly ShipClass[];
 
-/** Build the baked hull mesh for a ship class. */
+/** Build the baked hull mesh for a ship class from the stock recipe. */
 export const makeShipMesh = (cls: ShipClass): Mesh =>
   assembleShipMesh(RECIPES[cls]);

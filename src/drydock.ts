@@ -5,6 +5,7 @@
 // at true gameplay scale (with two live rocks for the ship-vs-rock read) on
 // the right. Not wired into the game; delete or promote after the verdict.
 
+import van from "vanjs-core";
 import { acquireGpu } from "./gpu-context";
 import { makeAsteroidMesh } from "./mesh";
 import { createMeshPass, instanceLayout, type MeshPass } from "./mesh-pass";
@@ -13,9 +14,14 @@ import plumeWGSL from "./shaders/plume.wgsl" with { type: "text" };
 import rockWGSL from "./shaders/rock.wgsl" with { type: "text" };
 import shipWGSL from "./shaders/ship.wgsl" with { type: "text" };
 import {
+  assembleShipMesh,
   ENGINES,
+  type EngineAnchor,
   makePlumeMesh,
-  makeShipMesh,
+  PALETTE_KEYS,
+  type PartDef,
+  type PrimDef,
+  RECIPES,
   SHIP_CLASSES,
   type ShipClass,
 } from "./ship-parts";
@@ -121,10 +127,56 @@ const state = {
   spinPhase: 0,
   orbitYaw: 0,
   orbitPitch: 0,
+  design: false,
 };
 
 const teamTint = (team: number): readonly [number, number, number] =>
   state.mono ? MONO : TEAMS[team].rgb;
+
+// --- hull designer state --------------------------------------------------------
+// Working copies of the stock recipes, edited live and persisted to
+// localStorage. `rebuildHull` is bound inside main() once the GPU exists.
+
+interface HullDef {
+  parts: PartDef[];
+  engines: EngineAnchor[];
+}
+const STORE_KEY = "drydock-hulls-v1";
+
+const stockHull = (cls: ShipClass): HullDef =>
+  structuredClone({
+    parts: RECIPES[cls] as PartDef[],
+    engines: ENGINES[cls] as EngineAnchor[],
+  });
+
+const loadHulls = (): Record<ShipClass, HullDef> => {
+  const out = {} as Record<ShipClass, HullDef>;
+  for (const cls of SHIP_CLASSES) out[cls] = stockHull(cls);
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<Record<ShipClass, HullDef>>;
+      for (const cls of SHIP_CLASSES) {
+        const h = saved[cls];
+        if (h?.parts?.length && h.engines) out[cls] = h;
+      }
+    }
+  } catch {
+    // corrupt store — fall back to stock
+  }
+  return out;
+};
+
+const hulls = loadHulls();
+let rebuildHull: (cls: ShipClass) => void = () => {};
+let rebuildTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Persist + debounce a mesh re-bake for the class being edited. */
+const touchHull = (): void => {
+  localStorage.setItem(STORE_KEY, JSON.stringify(hulls));
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(() => rebuildHull(state.cls), 80);
+};
 
 // --- GPU setup ----------------------------------------------------------------
 
@@ -135,6 +187,24 @@ interface Passes {
   rockPass: MeshPass;
   plumePass: MeshPass;
 }
+
+const createShipPass = (
+  device: GPUDevice,
+  format: GPUTextureFormat,
+  uniformBuffer: GPUBuffer,
+  cls: ShipClass,
+): MeshPass =>
+  createMeshPass(device, {
+    format,
+    uniformBuffer,
+    mesh: assembleShipMesh(hulls[cls].parts),
+    shader: shipWGSL,
+    layout: SHIP_LAYOUT,
+    maxInstances: MAX_SHIPS,
+    depthFormat: DEPTH_FORMAT,
+    depthWrite: true,
+    depthCompare: "less",
+  });
 
 const createPasses = (
   device: GPUDevice,
@@ -158,17 +228,7 @@ const createPasses = (
   });
   const shipPasses = {} as Record<ShipClass, MeshPass>;
   for (const cls of SHIP_CLASSES) {
-    shipPasses[cls] = createMeshPass(device, {
-      format,
-      uniformBuffer,
-      mesh: makeShipMesh(cls),
-      shader: shipWGSL,
-      layout: SHIP_LAYOUT,
-      maxInstances: MAX_SHIPS,
-      depthFormat: DEPTH_FORMAT,
-      depthWrite: true,
-      depthCompare: "less",
-    });
+    shipPasses[cls] = createShipPass(device, format, uniformBuffer, cls);
   }
   const rockPass = createMeshPass(device, {
     format,
@@ -310,7 +370,7 @@ const packPlumes = (data: Float32Array, ships: ShipInstance[]): number => {
   const P = PLUME_LAYOUT.idx;
   let count = 0;
   for (const ship of ships) {
-    for (const eng of ENGINES[ship.cls]) {
+    for (const eng of hulls[ship.cls].engines) {
       if (count >= MAX_PLUMES) return count;
       const o = count * PLUME_LAYOUT.floats;
       data[o + P.cx] = ship.cx;
@@ -464,6 +524,9 @@ const main = async (): Promise<void> => {
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const passes = createPasses(device, format, uniformBuffer);
+  rebuildHull = (cls) => {
+    passes.shipPasses[cls] = createShipPass(device, format, uniformBuffer, cls);
+  };
 
   let depthTexture: GPUTexture | null = null;
   const resize = (): void => {
@@ -529,6 +592,312 @@ const el = (id: string): HTMLElement => {
   return node;
 };
 
+// --- hull designer UI ------------------------------------------------------------
+// Panel editor over `hulls`, built with van.tags like the rest of the HUD.
+// Recipes are deep-mutable arrays, so the panel re-renders wholesale on
+// structural change instead of threading van.state through every field.
+
+const { button, div, input, label, option, output, select } = van.tags;
+
+let selPart = 0;
+
+const hudButton = (text: string, onclick: () => void): HTMLButtonElement =>
+  button({ type: "button", onclick }, text);
+
+const sliderRow = (
+  text: string,
+  min: number,
+  max: number,
+  step: number,
+  get: () => number,
+  set: (v: number) => void,
+): HTMLElement => {
+  const out = output(get().toFixed(2));
+  return div(
+    { class: "ctl" },
+    label(text, out),
+    input({
+      type: "range",
+      min,
+      max,
+      step,
+      value: get(),
+      oninput: (e: Event) => {
+        set(Number((e.target as HTMLInputElement).value));
+        out.textContent = get().toFixed(2);
+        touchHull();
+      },
+    }),
+  );
+};
+
+const selectRow = (
+  text: string,
+  options: readonly string[],
+  value: string,
+  onChange: (v: string) => void,
+): HTMLElement =>
+  div(
+    { class: "ctl" },
+    label(text),
+    select(
+      {
+        onchange: (e: Event) => onChange((e.target as HTMLSelectElement).value),
+      },
+      ...options.map((o) => option({ value: o, selected: o === value }, o)),
+    ),
+  );
+
+const vec3Rows = (
+  text: string,
+  min: number,
+  max: number,
+  vec: () => [number, number, number],
+): HTMLElement[] =>
+  ["x", "y", "z"].map((axis, i) =>
+    sliderRow(
+      `${text}.${axis}`,
+      min,
+      max,
+      0.01,
+      () => vec()[i],
+      (v) => {
+        vec()[i] = v;
+      },
+    ),
+  );
+
+const defaultPrim = (kind: string): PrimDef =>
+  kind === "hex"
+    ? { kind: "hex", taper: 0.7 }
+    : kind === "orb"
+      ? { kind: "orb" }
+      : { kind: "slab", tx: 0.5, tz: 0.5 };
+
+const taperRows = (p: PrimDef): HTMLElement[] => {
+  if (p.kind === "slab") {
+    return [
+      sliderRow(
+        "taper.x",
+        0.02,
+        1,
+        0.01,
+        () => p.tx,
+        (v) => {
+          p.tx = v;
+        },
+      ),
+      sliderRow(
+        "taper.z",
+        0.02,
+        1,
+        0.01,
+        () => p.tz,
+        (v) => {
+          p.tz = v;
+        },
+      ),
+    ];
+  }
+  if (p.kind === "hex") {
+    return [
+      sliderRow(
+        "taper",
+        0.02,
+        1,
+        0.01,
+        () => p.taper,
+        (v) => {
+          p.taper = v;
+        },
+      ),
+    ];
+  }
+  return [];
+};
+
+const rotRows = (part: PartDef): HTMLElement[] => {
+  part.rot ??= [0, 0, 0];
+  const rot = part.rot;
+  return ["x", "y", "z"].map((axis, i) =>
+    sliderRow(
+      `rot.${axis}°`,
+      -180,
+      180,
+      1,
+      () => (rot[i] * 180) / Math.PI,
+      (v) => {
+        rot[i] = (v * Math.PI) / 180;
+      },
+    ),
+  );
+};
+
+const partControls = (part: PartDef): HTMLElement[] => [
+  selectRow("prim", ["slab", "hex", "orb"], part.prim.kind, (kind) => {
+    part.prim = defaultPrim(kind);
+    touchHull();
+    renderEditor();
+  }),
+  ...taperRows(part.prim),
+  ...vec3Rows("pos", -1.6, 1.6, () => part.pos),
+  ...vec3Rows("scale", 0.02, 2.5, () => part.scale),
+  ...rotRows(part),
+  selectRow("color", PALETTE_KEYS, part.color, (v) => {
+    part.color = v as PartDef["color"];
+    touchHull();
+  }),
+  label(
+    { class: "check" },
+    input({
+      type: "checkbox",
+      checked: !!part.mirror,
+      onchange: (e: Event) => {
+        part.mirror = (e.target as HTMLInputElement).checked;
+        touchHull();
+      },
+    }),
+    "mirror x",
+  ),
+];
+
+const engineControls = (engines: EngineAnchor[], i: number): HTMLElement[] => {
+  const eng = engines[i];
+  return [
+    div(
+      { class: "row" },
+      hudButton(`engine ${i} ✕`, () => {
+        engines.splice(i, 1);
+        touchHull();
+        renderEditor();
+      }),
+    ),
+    sliderRow(
+      "x",
+      -1.2,
+      1.2,
+      0.01,
+      () => eng.pos[0],
+      (v) => {
+        eng.pos[0] = v;
+      },
+    ),
+    sliderRow(
+      "y",
+      -1.8,
+      1.8,
+      0.01,
+      () => eng.pos[1],
+      (v) => {
+        eng.pos[1] = v;
+      },
+    ),
+    sliderRow(
+      "width",
+      0.03,
+      0.4,
+      0.01,
+      () => eng.w,
+      (v) => {
+        eng.w = v;
+      },
+    ),
+  ];
+};
+
+const partListButtons = (parts: PartDef[]): HTMLElement[] =>
+  parts.map((part, i) =>
+    button(
+      {
+        type: "button",
+        class: `part-btn${i === selPart ? " on" : ""}`,
+        title: part.color,
+        onclick: () => {
+          selPart = i;
+          renderEditor();
+        },
+      },
+      `${i}·${part.prim.kind}`,
+    ),
+  );
+
+const renderEditor = (): void => {
+  const hull = hulls[state.cls];
+  selPart = Math.min(selPart, hull.parts.length - 1);
+  el("edCls").textContent = state.cls;
+  const list = el("partList");
+  list.replaceChildren();
+  van.add(list, ...partListButtons(hull.parts));
+  const ctl = el("partCtl");
+  ctl.replaceChildren();
+  if (hull.parts[selPart]) van.add(ctl, ...partControls(hull.parts[selPart]));
+  const eng = el("engCtl");
+  eng.replaceChildren();
+  for (let i = 0; i < hull.engines.length; i++) {
+    van.add(eng, ...engineControls(hull.engines, i));
+  }
+};
+
+const exportHullTs = (): void => {
+  const hull = hulls[state.cls];
+  const text = [
+    `// ${state.cls} hull — exported from /drydock designer`,
+    `const PARTS: PartDef[] = ${JSON.stringify(hull.parts, null, 2)};`,
+    `const HULL_ENGINES: EngineAnchor[] = ${JSON.stringify(hull.engines, null, 2)};`,
+    "",
+  ].join("\n");
+  navigator.clipboard?.writeText(text).catch(() => {});
+  console.log(text);
+  const btn = el("exportTs");
+  btn.textContent = "copied ✓";
+  setTimeout(() => {
+    btn.textContent = "export → clipboard";
+  }, 1200);
+};
+
+const wireEditor = (): void => {
+  el("addPart").onclick = () => {
+    const hull = hulls[state.cls];
+    hull.parts.push({
+      prim: defaultPrim("slab"),
+      scale: [0.3, 0.3, 0.3],
+      pos: [0, 0, 0],
+      color: "bone",
+    });
+    selPart = hull.parts.length - 1;
+    touchHull();
+    renderEditor();
+  };
+  el("dupPart").onclick = () => {
+    const hull = hulls[state.cls];
+    const part = hull.parts[selPart];
+    if (!part) return;
+    hull.parts.splice(selPart + 1, 0, structuredClone(part));
+    selPart++;
+    touchHull();
+    renderEditor();
+  };
+  el("delPart").onclick = () => {
+    const hull = hulls[state.cls];
+    if (hull.parts.length <= 1) return;
+    hull.parts.splice(selPart, 1);
+    touchHull();
+    renderEditor();
+  };
+  el("addEng").onclick = () => {
+    hulls[state.cls].engines.push({ pos: [0, -1.2, 0], w: 0.12 });
+    touchHull();
+    renderEditor();
+  };
+  el("exportTs").onclick = exportHullTs;
+  el("resetCls").onclick = () => {
+    hulls[state.cls] = stockHull(state.cls);
+    selPart = 0;
+    touchHull();
+    renderEditor();
+  };
+};
+
 const sync = (): void => {
   for (const b of el("classRow").children) {
     b.classList.toggle("on", b.textContent === state.cls);
@@ -541,34 +910,43 @@ const sync = (): void => {
   el("mono").classList.toggle("on", state.mono);
   el("pause").classList.toggle("on", state.paused);
   el("pause").textContent = state.paused ? "resume" : "pause";
+  el("design").classList.toggle("on", state.design);
+  (el("editor") as HTMLElement).hidden = !state.design;
   el("gear").innerHTML = GEAR[state.cls];
+  if (state.design) renderEditor();
 };
 
 const wireHud = (): void => {
-  const classRow = el("classRow");
-  for (const cls of SHIP_CLASSES) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.textContent = cls;
-    b.onclick = () => {
-      state.cls = cls;
-      sync();
-    };
-    classRow.appendChild(b);
-  }
-  const teamRow = el("teamRow");
-  TEAMS.forEach((team, i) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "swatch";
-    b.style.background = `rgb(${team.rgb.map((c) => Math.round(c * 255)).join(",")})`;
-    b.setAttribute("aria-label", `team ${team.name}`);
-    b.onclick = () => {
-      state.team = i;
-      sync();
-    };
-    teamRow.appendChild(b);
-  });
+  van.add(
+    el("classRow"),
+    ...SHIP_CLASSES.map((cls) =>
+      button(
+        {
+          type: "button",
+          onclick: () => {
+            state.cls = cls;
+            sync();
+          },
+        },
+        cls,
+      ),
+    ),
+  );
+  van.add(
+    el("teamRow"),
+    ...TEAMS.map((team, i) =>
+      button({
+        type: "button",
+        class: "swatch",
+        style: `background: rgb(${team.rgb.map((c) => Math.round(c * 255)).join(",")})`,
+        "aria-label": `team ${team.name}`,
+        onclick: () => {
+          state.team = i;
+          sync();
+        },
+      }),
+    ),
+  );
   (el("tilt") as HTMLInputElement).oninput = (e) => {
     state.tiltDeg = Number((e.target as HTMLInputElement).value);
     el("tiltOut").textContent = `${state.tiltDeg}°`;
@@ -592,14 +970,21 @@ const wireHud = (): void => {
   toggle("pause", () => {
     state.paused = !state.paused;
   });
+  toggle("design", () => {
+    state.design = !state.design;
+  });
   sync();
 };
 
 wireHud();
+wireEditor();
 main().catch((err) => {
   el("hud").remove();
-  const div = document.createElement("div");
-  div.className = "err";
-  div.textContent = `Drydock needs WebGPU: ${err instanceof Error ? err.message : String(err)}`;
-  document.body.appendChild(div);
+  van.add(
+    document.body,
+    div(
+      { class: "err" },
+      `Drydock needs WebGPU: ${err instanceof Error ? err.message : String(err)}`,
+    ),
+  );
 });
