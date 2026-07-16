@@ -25,6 +25,10 @@ export interface MobileControlsOpts {
   onKeys: (k: Keys) => void;
   onAction: (id: number) => void;
   onCycle: (dir: 1 | -1) => void;
+  // Top-row utilities (touch has no keyboard): open the ship codex and toggle a
+  // real pause. `onPause` receives the new paused state; the loop reads it.
+  onCodex: () => void;
+  onPause: (paused: boolean) => void;
 }
 
 // Touch-primary device: no hover, coarse pointer. Desktops (incl. touchscreen
@@ -178,9 +182,55 @@ const cycleButton = (onCycle: (dir: 1 | -1) => void) =>
     span({}, "Target"),
   );
 
+// A round icon button for the always-on top utility row (codex, pause).
+const UTIL_BTN =
+  "pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-[#3fd8ff]/35 bg-[#040a0e]/70 text-[17px] text-[#cfeee2] [touch-action:manipulation] active:bg-[#3fd8ff]/20";
+
+// Top-right utilities, always visible on touch (even while spectating, so the
+// codex is reachable without piloting): open the ship codex + toggle pause.
+const makeUtilRow = (
+  onCodex: () => void,
+  onPause: (paused: boolean) => void,
+) => {
+  const paused = van.state(false);
+  const codexBtn = button(
+    {
+      type: "button",
+      "aria-label": "Ship codex",
+      class: UTIL_BTN,
+      onclick: onCodex,
+    },
+    "📖",
+  );
+  const pauseBtn = button(
+    {
+      type: "button",
+      "aria-label": () => (paused.val ? "Resume" : "Pause"),
+      "aria-pressed": () => String(paused.val),
+      class: UTIL_BTN,
+      onclick: () => {
+        paused.val = !paused.val;
+        onPause(paused.val);
+      },
+    },
+    () => (paused.val ? "▶" : "⏸"),
+  );
+  return div(
+    {
+      class:
+        "pointer-events-none fixed top-0 right-0 z-40 flex items-center gap-2",
+      style:
+        "padding-top:max(0.5rem,env(safe-area-inset-top));padding-right:max(0.5rem,env(safe-area-inset-right))",
+      "data-mobile-util": "1",
+    },
+    codexBtn,
+    pauseBtn,
+  );
+};
+
 export const mountMobileControls = (opts: MobileControlsOpts) => {
   if (!isTouchPrimary()) return;
-  const { controlledShip, onKeys, onAction, onCycle } = opts;
+  const { controlledShip, onKeys, onAction, onCycle, onCodex, onPause } = opts;
   const keys: Keys = {
     up: false,
     down: false,
@@ -216,6 +266,8 @@ export const mountMobileControls = (opts: MobileControlsOpts) => {
     rightCluster,
   );
   van.add(document.body, root);
+  // Always-on top utilities (codex + pause), independent of the piloting HUD.
+  van.add(document.body, makeUtilRow(onCodex, onPause));
 
   // Piloting flag drives the "cockpit mode" CSS that clears rival chrome, and
   // guarantees keys don't stick when control is dropped mid-press.

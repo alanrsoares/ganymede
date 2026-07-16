@@ -95,13 +95,40 @@ const revealForMode = (
 
 // Wire the post-init runtime: the world port, the two pre-game screens (gated
 // behind the welcome splash), input, and the fixed-timestep loop.
-const wireTouchControls = (dispatch: (msg: Msg) => void, ui: Ui) =>
+const wireTouchControls = (
+  dispatch: (msg: Msg) => void,
+  ui: Ui,
+  onCodex: () => void,
+  onPause: (paused: boolean) => void,
+) =>
   mountMobileControls({
     controlledShip: ui.controlledShip,
     onKeys: (k) => dispatch({ kind: "controlKeys", ...k }),
     onAction: (id) => dispatch({ kind: "action", actionId: id }),
     onCycle: (dir) => dispatch({ kind: "cycleTarget", dir }),
+    onCodex,
+    onPause,
   });
+
+// Touch has no keyboard, so surface the codex + a real pause as on-screen
+// buttons (no-op on pointer devices), and return the loop's "is the sim frozen?"
+// predicate. The codex already pauses while open; `paused` is a separate freeze.
+const wirePause = (
+  codex: ReturnType<typeof wireInput>,
+  dispatch: (msg: Msg) => void,
+  ui: Ui,
+): (() => boolean) => {
+  const paused = { on: false };
+  wireTouchControls(
+    dispatch,
+    ui,
+    () => codex.toggle(),
+    (p) => {
+      paused.on = p;
+    },
+  );
+  return () => codex.isOpen() || paused.on;
+};
 
 const startRuntime = (
   renderer: Renderer,
@@ -130,9 +157,7 @@ const startRuntime = (
     () => setup.isOpen() || lobby.isOpen(),
     audio,
   );
-  // On-screen stick/fire/abilities for touch devices — the same intent the
-  // keyboard emits, so the sim is unchanged. No-op on pointer devices.
-  wireTouchControls(dispatch, ui);
+  const isPaused = wirePause(codex, dispatch, ui);
   // Keep the welcome splash clean; reveal all chrome together on launch.
   codex.setChromeHidden(true);
   // The welcome CTA is the first user gesture — the only moment the browser lets
@@ -147,9 +172,10 @@ const startRuntime = (
   const syncCanvasSize = createResizeSync(renderer, canvas);
   const loop = createLoop((dt, now) => {
     syncCanvasSize();
-    // The codex/guide panel pauses the sim: while it's open we still render the
-    // frozen world (and skip accumulating dt, so resume doesn't fast-forward).
-    if (!codex.isOpen()) {
+    // The codex/guide panel — and the mobile pause button — freeze the sim:
+    // while paused we still render the frozen world (and skip accumulating dt,
+    // so resume doesn't fast-forward).
+    if (!isPaused()) {
       stepDeploy(dispatch, dt, loopState);
       // Suppress trickle reinforcement until the launch fleet finishes mustering.
       const reinforceRate =

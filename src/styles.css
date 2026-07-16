@@ -42,13 +42,23 @@
   }
 }
 
+html {
+  /* Dark-only app: tell the UA so form controls, scrollbars + the mobile
+     browser chrome render dark to match (pairs with the theme-color meta). */
+  color-scheme: dark;
+}
 html,
 body {
   height: 100%;
 }
 body {
   margin: 0;
+  /* Height-locked full-screen canvas: never let the page itself scroll or
+     rubber-band on touch (overlays opt back in with their own scroll). */
   overflow: hidden;
+  overscroll-behavior: none;
+  /* No stray grey/blue flash when tapping the on-screen touch controls. */
+  -webkit-tap-highlight-color: transparent;
   background: #04070a;
   color: #9fd8c8;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
