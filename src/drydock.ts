@@ -1,15 +1,18 @@
-// Drydock: throwaway concept-validation harness for the procedural ship
-// hulls (ship-parts.ts + ship.wgsl), reusing the real engine pieces — GPU
-// context, mesh-pass, asteroid mesh, starfield background — so the verdict
-// transfers. One scene: a big inspector hull on the left, a drifting swarm
-// at true gameplay scale (with two live rocks for the ship-vs-rock read) on
-// the right. Not wired into the game; delete or promote after the verdict.
+// Drydock: the hull-design tool for the procedural ships (ship-parts.ts +
+// ship.wgsl), reusing the real engine pieces — GPU context, mesh-pass,
+// asteroid mesh, starfield background — so what you see is what the game
+// renders. One scene: a big inspector hull on the left (drag to orbit,
+// click a part to select it in the designer), a drifting swarm at true
+// gameplay scale (with two live rocks for the ship-vs-rock read) on the
+// right. Permanent engine tooling; recipes edited here export into
+// ship-parts.ts.
 
 import van from "vanjs-core";
 import { acquireGpu } from "./gpu-context";
 import { makeAsteroidMesh } from "./mesh";
 import { createMeshPass, instanceLayout, type MeshPass } from "./mesh-pass";
 import backgroundWGSL from "./shaders/background.wgsl" with { type: "text" };
+import highlightWGSL from "./shaders/highlight.wgsl" with { type: "text" };
 import plumeWGSL from "./shaders/plume.wgsl" with { type: "text" };
 import rockWGSL from "./shaders/rock.wgsl" with { type: "text" };
 import shipWGSL from "./shaders/ship.wgsl" with { type: "text" };
@@ -21,9 +24,11 @@ import {
   PALETTE_KEYS,
   type PartDef,
   type PrimDef,
+  pickPart,
   RECIPES,
   SHIP_CLASSES,
   type ShipClass,
+  type V3,
 } from "./ship-parts";
 import { TEAMS } from "./world/types";
 
@@ -169,14 +174,73 @@ const loadHulls = (): Record<ShipClass, HullDef> => {
 
 const hulls = loadHulls();
 let rebuildHull: (cls: ShipClass) => void = () => {};
+let rebuildHighlight: () => void = () => {};
 let rebuildTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Persist + debounce a mesh re-bake for the class being edited. */
 const touchHull = (): void => {
   localStorage.setItem(STORE_KEY, JSON.stringify(hulls));
   clearTimeout(rebuildTimer);
-  rebuildTimer = setTimeout(() => rebuildHull(state.cls), 80);
+  rebuildTimer = setTimeout(() => {
+    rebuildHull(state.cls);
+    rebuildHighlight();
+  }, 80);
 };
+
+// --- ship transform (TS mirror of ship.wgsl's shipMat) --------------------------
+// Row-major mat3; used to invert the inspector pose for click-picking.
+
+type Mat3 = readonly number[];
+const matMul = (a: Mat3, b: Mat3): number[] => {
+  const out: number[] = [];
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      out[r * 3 + c] =
+        a[r * 3] * b[c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c];
+    }
+  }
+  return out;
+};
+const mulV = (m: Mat3, v: V3): V3 => [
+  m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+  m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+  m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
+];
+const transpose = (m: Mat3): number[] => [
+  m[0],
+  m[3],
+  m[6],
+  m[1],
+  m[4],
+  m[7],
+  m[2],
+  m[5],
+  m[8],
+];
+
+/** Rz(heading)·Rx(tilt)·Ry(roll) — must match ship.wgsl's shipMat exactly. */
+const shipMat = (heading: number, tilt: number, roll: number): number[] => {
+  const ch = Math.cos(heading);
+  const sh = Math.sin(heading);
+  const ct = Math.cos(tilt);
+  const st = Math.sin(tilt);
+  const cr = Math.cos(roll);
+  const sr = Math.sin(roll);
+  const rz = [ch, -sh, 0, sh, ch, 0, 0, 0, 1];
+  const rx = [1, 0, 0, 0, ct, -st, 0, st, ct];
+  const ry = [cr, 0, sr, 0, 1, 0, -sr, 0, cr];
+  return matMul(rz, matMul(rx, ry));
+};
+
+/** The inspector hull's current pose — shared by draw, pick and highlight. */
+const inspectorPose = (w: number, h: number) => ({
+  cx: w * 0.24,
+  cy: h * 0.5,
+  radius: Math.min(w, h) * 0.19,
+  roll: state.bank ? Math.sin(state.t * 1.6) * 0.55 : 0,
+  heading: Math.PI + state.spinPhase + state.orbitYaw,
+  tilt: (state.tiltDeg * Math.PI) / 180 + state.orbitPitch,
+});
 
 // --- GPU setup ----------------------------------------------------------------
 
@@ -186,6 +250,8 @@ interface Passes {
   shipPasses: Record<ShipClass, MeshPass>;
   rockPass: MeshPass;
   plumePass: MeshPass;
+  /** Selected-part glow shell; rebuilt on selection/edit, null when nothing selected. */
+  highlightPass: MeshPass | null;
 }
 
 const createShipPass = (
@@ -257,8 +323,38 @@ const createPasses = (
       alpha: { srcFactor: "one", dstFactor: "one" },
     },
   });
-  return { bgPipeline, bgBindGroup, shipPasses, rockPass, plumePass };
+  return {
+    bgPipeline,
+    bgBindGroup,
+    shipPasses,
+    rockPass,
+    plumePass,
+    highlightPass: null,
+  };
 };
+
+/** Additive glow shell for the currently selected part (design mode). */
+const createHighlightPass = (
+  device: GPUDevice,
+  format: GPUTextureFormat,
+  uniformBuffer: GPUBuffer,
+  part: PartDef,
+): MeshPass =>
+  createMeshPass(device, {
+    format,
+    uniformBuffer,
+    mesh: assembleShipMesh([part]),
+    shader: highlightWGSL,
+    layout: SHIP_LAYOUT,
+    maxInstances: 1,
+    depthFormat: DEPTH_FORMAT,
+    depthWrite: false,
+    depthCompare: "always", // glow through the hull: occluded parts stay findable
+    blend: {
+      color: { srcFactor: "one", dstFactor: "one" },
+      alpha: { srcFactor: "one", dstFactor: "one" },
+    },
+  });
 
 // --- scene --------------------------------------------------------------------
 
@@ -333,12 +429,7 @@ const collectShips = (
   const ships: ShipInstance[] = [
     {
       cls: state.cls,
-      cx: w * 0.24,
-      cy: h * 0.5,
-      radius: Math.min(w, h) * 0.19,
-      roll: state.bank ? Math.sin(state.t * 1.6) * 0.55 : 0,
-      heading: Math.PI + state.spinPhase + state.orbitYaw,
-      tilt: (state.tiltDeg * Math.PI) / 180 + state.orbitPitch,
+      ...inspectorPose(w, h),
       team: teamTint(state.team),
       throttle: 0.85,
       phase: 1,
@@ -416,6 +507,24 @@ const packRocks = (
   });
 };
 
+/** Selected-part glow rides the inspector's pose; design mode only. */
+const packHighlight = (
+  data: Float32Array,
+  w: number,
+  h: number,
+  passes: Passes,
+): Float32Array | null => {
+  if (!state.design || !passes.highlightPass) return null;
+  packShip(data, 0, {
+    cls: state.cls,
+    ...inspectorPose(w, h),
+    team: MONO,
+    throttle: 0,
+    phase: 0,
+  });
+  return data;
+};
+
 // --- render loop ----------------------------------------------------------------
 
 const encodeFrame = (
@@ -428,6 +537,7 @@ const encodeFrame = (
   rockData: Float32Array,
   plumeData: Float32Array,
   plumeCount: number,
+  highlightData: Float32Array | null,
 ): void => {
   const encoder = device.createCommandEncoder();
   const pass = encoder.beginRenderPass({
@@ -455,6 +565,9 @@ const encodeFrame = (
       passes.shipPasses[cls].draw(pass, buf[cls], counts[cls]);
   }
   if (plumeCount > 0) passes.plumePass.draw(pass, plumeData, plumeCount);
+  if (highlightData && passes.highlightPass) {
+    passes.highlightPass.draw(pass, highlightData, 1);
+  }
   pass.end();
   device.queue.submit([encoder.finish()]);
 };
@@ -474,6 +587,7 @@ const runLoop = (
   }
   const rockData = new Float32Array(8 * ROCK_LAYOUT.floats);
   const plumeData = new Float32Array(MAX_PLUMES * PLUME_LAYOUT.floats);
+  const highlightData = new Float32Array(SHIP_LAYOUT.floats);
 
   let last = performance.now();
   const frame = (now: number): void => {
@@ -500,6 +614,7 @@ const runLoop = (
     }
     const plumeCount = packPlumes(plumeData, ships);
     packRocks(rockData, w, h, cellPx);
+    const hlData = packHighlight(highlightData, w, h, passes);
     encodeFrame(
       device,
       context,
@@ -510,6 +625,7 @@ const runLoop = (
       rockData,
       plumeData,
       plumeCount,
+      hlData,
     );
     requestAnimationFrame(frame);
   };
@@ -527,6 +643,13 @@ const main = async (): Promise<void> => {
   rebuildHull = (cls) => {
     passes.shipPasses[cls] = createShipPass(device, format, uniformBuffer, cls);
   };
+  rebuildHighlight = () => {
+    const part = hulls[state.cls].parts[selPart];
+    passes.highlightPass = part
+      ? createHighlightPass(device, format, uniformBuffer, part)
+      : null;
+  };
+  rebuildHighlight();
 
   let depthTexture: GPUTexture | null = null;
   const resize = (): void => {
@@ -549,33 +672,72 @@ const main = async (): Promise<void> => {
   });
 };
 
-// --- orbit drag -----------------------------------------------------------------
+// --- orbit drag + part picking ---------------------------------------------------
 // Drag anywhere on the canvas to orbit the inspector hull: x = yaw, y = pitch
-// (added on top of the tilt slider). Grabbing stops the auto-spin.
+// (added on top of the tilt slider). Grabbing stops the auto-spin. In design
+// mode, a click (< 5px travel) on the inspector hull ray-picks the part under
+// the cursor and selects it in the designer panel.
+
+/** Screen px -> part index on the inspector hull, or null on miss. */
+const pickInspectorPart = (
+  canvas: HTMLCanvasElement,
+  clientX: number,
+  clientY: number,
+): number | null => {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  const px = clientX * dpr;
+  const py = clientY * dpr;
+  const pose = inspectorPose(canvas.width, canvas.height);
+  // Invert the orthographic instance transform: world = c + R·(local·radius),
+  // so local = Rᵀ·((world − c)/radius). The pick ray runs along +z (viewer).
+  const rt = transpose(shipMat(pose.heading, pose.tilt, pose.roll));
+  const origin = mulV(rt, [
+    (px - pose.cx) / pose.radius,
+    (py - pose.cy) / pose.radius,
+    0,
+  ]);
+  const dir = mulV(rt, [0, 0, 1]);
+  return pickPart(hulls[state.cls].parts, origin, dir);
+};
 
 const wireOrbitDrag = (canvas: HTMLCanvasElement): void => {
   let dragging = false;
   let lastX = 0;
   let lastY = 0;
+  let travel = 0;
   canvas.style.cursor = "grab";
   canvas.style.touchAction = "none";
   canvas.onpointerdown = (e) => {
     dragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
-    state.spin = false;
+    travel = 0;
     canvas.setPointerCapture(e.pointerId);
     canvas.style.cursor = "grabbing";
-    sync();
   };
   canvas.onpointermove = (e) => {
     if (!dragging) return;
-    state.orbitYaw += (e.clientX - lastX) * 0.008;
-    state.orbitPitch += (e.clientY - lastY) * 0.006;
+    travel += Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY);
+    if (travel >= 5 && state.spin) {
+      state.spin = false; // a real drag takes over from auto-spin
+      sync();
+    }
+    if (travel >= 5) {
+      state.orbitYaw += (e.clientX - lastX) * 0.008;
+      state.orbitPitch += (e.clientY - lastY) * 0.006;
+    }
     lastX = e.clientX;
     lastY = e.clientY;
   };
   const release = (e: PointerEvent): void => {
+    if (dragging && travel < 5 && state.design) {
+      const hit = pickInspectorPart(canvas, e.clientX, e.clientY);
+      if (hit !== null) {
+        selPart = hit;
+        renderEditor();
+        rebuildHighlight();
+      }
+    }
     dragging = false;
     canvas.releasePointerCapture(e.pointerId);
     canvas.style.cursor = "grab";
@@ -836,6 +998,7 @@ const renderEditor = (): void => {
   for (let i = 0; i < hull.engines.length; i++) {
     van.add(eng, ...engineControls(hull.engines, i));
   }
+  rebuildHighlight(); // keep the viewport glow on the selected part
 };
 
 const exportHullTs = (): void => {

@@ -12,7 +12,7 @@
 
 import type { Mesh } from "./mesh";
 
-type V3 = [number, number, number];
+export type V3 = [number, number, number];
 type Tri = [V3, V3, V3];
 
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -641,6 +641,56 @@ export const makePlumeMesh = (): Mesh => {
     }
   }
   return { data: data.subarray(0, o) as Float32Array, vertexCount: o / 6 };
+};
+
+// --- picking --------------------------------------------------------------------
+
+/** Möller–Trumbore ray/triangle: returns t along `dir` or null on miss. */
+const rayTri = (o: V3, d: V3, t0: V3, t1: V3, t2: V3): number | null => {
+  const e1 = sub(t1, t0);
+  const e2 = sub(t2, t0);
+  const p = cross(d, e2);
+  const det = dot(e1, p);
+  if (Math.abs(det) < 1e-9) return null;
+  const inv = 1 / det;
+  const s = sub(o, t0);
+  const u = dot(s, p) * inv;
+  if (u < 0 || u > 1) return null;
+  const q = cross(s, e1);
+  const v = dot(d, q) * inv;
+  if (v < 0 || u + v > 1) return null;
+  return dot(e2, q) * inv;
+};
+
+/** Bake one part's triangles (mirror copies included) in ship-local space. */
+const bakePartTris = (def: PartDef): Tri[] => {
+  const tris: Tri[] = [];
+  bakePart(def, buildPrim(def.prim), tris, []);
+  return tris;
+};
+
+/**
+ * Pick the part hit by a ship-local ray (`dir` toward the viewer): the
+ * intersection closest to the viewer wins. Editor click-to-select — clicking
+ * a mirrored copy selects the same PartDef. Returns the part index or null.
+ */
+export const pickPart = (
+  parts: readonly PartDef[],
+  origin: V3,
+  dir: V3,
+): number | null => {
+  let bestT = Number.NEGATIVE_INFINITY;
+  let hit: number | null = null;
+  parts.forEach((def, i) => {
+    for (const [a, b, c] of bakePartTris(def)) {
+      const t = rayTri(origin, dir, a, b, c);
+      if (t !== null && t > bestT) {
+        bestT = t;
+        hit = i;
+      }
+    }
+  });
+  return hit;
 };
 
 export type ShipClass = keyof typeof RECIPES;
