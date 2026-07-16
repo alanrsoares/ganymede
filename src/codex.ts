@@ -452,7 +452,7 @@ const buildPanel = (level: State<number>, onClose: () => void) =>
       "aria-modal": "true",
       "aria-label": "Ship codex",
       class:
-        "flex max-h-[90vh] w-[min(760px,92vw)] flex-col gap-4 overflow-auto rounded-xl border border-[#3fd8ff]/30 bg-[#050b0f]/95 p-5 font-mono text-[#cfeee2] shadow-[0_20px_60px_-12px_#000] backdrop-blur-[8px]",
+        "flex max-h-[90dvh] w-[min(760px,92vw)] flex-col gap-4 overflow-auto overscroll-contain rounded-xl border border-[#3fd8ff]/30 bg-[#050b0f]/95 p-5 font-mono text-[#cfeee2] shadow-[0_20px_60px_-12px_#000] backdrop-blur-[8px]",
       // Clicks inside the panel must not fall through to the scrim (closes).
       onclick: (e: Event) => e.stopPropagation(),
     },
