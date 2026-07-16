@@ -12,14 +12,22 @@ const { div, h1, h2, span, button, p } = van.tags;
 export const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
 
-/** Micro-label that opens a section; owns the section's top rhythm. */
+/**
+ * Micro-label that opens a section; owns the section's top rhythm. The
+ * trailing hairline makes it read as structure (a labeled rule), so it
+ * can't be confused with the subtitle a few pixels above it.
+ */
 export const sectionHeading = (text: string): HTMLElement =>
-  h2(
-    {
-      class:
-        "mt-6 mb-2 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted",
-    },
-    text,
+  div(
+    { class: "mt-7 mb-2.5 flex items-center gap-3" },
+    h2(
+      {
+        class:
+          "shrink-0 text-[10px] font-semibold uppercase tracking-[0.28em] text-muted",
+      },
+      text,
+    ),
+    div({ class: "h-px flex-1 bg-line", "aria-hidden": "true" }),
   );
 
 export interface ChoiceCardSpec {
@@ -90,10 +98,11 @@ export const dialogPanel = (
         "w-full max-w-[440px] max-h-[90dvh] overflow-y-auto overscroll-contain rounded-2xl border border-line bg-surface/95 p-6 shadow-[0_20px_60px_-20px_#000]",
     },
     div(
-      { class: "flex items-start justify-between gap-4" },
+      { class: "flex items-center justify-between gap-4" },
       h1(
         {
-          class: "text-[20px] font-bold uppercase tracking-[0.14em] text-ink",
+          class:
+            "text-[22px] font-black uppercase leading-none tracking-[0.16em] text-ink",
         },
         spec.title,
       ),
@@ -101,13 +110,19 @@ export const dialogPanel = (
         {
           type: "button",
           "aria-label": "Close",
-          class: `-mr-1 -mt-1 rounded-md border border-line px-2 py-0.5 text-[12px] text-muted transition-colors hover:border-line-strong hover:text-ink ${FOCUS_RING}`,
+          class: `grid size-6 shrink-0 place-items-center rounded-md border border-line text-[11px] leading-none text-muted transition-colors hover:border-line-strong hover:text-ink ${FOCUS_RING}`,
           onclick: spec.onClose,
         },
         "✕",
       ),
     ),
-    p({ class: "mt-1 text-[11px] text-muted" }, spec.subtitle),
+    p(
+      {
+        class:
+          "mt-3 max-w-[44ch] text-[12px] leading-relaxed text-muted [text-wrap:pretty]",
+      },
+      spec.subtitle,
+    ),
     ...children,
   );
 
@@ -120,18 +135,19 @@ export const dialogRoot = (
   panelEl: HTMLElement,
   onClose: () => void,
 ): HTMLElement => {
+  // Escape must close regardless of where focus sits (clicking the veil or
+  // the sim leaves focus on <body>, outside the root's own key handler).
+  document.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key === "Escape" && open.val) {
+      e.stopPropagation();
+      onClose();
+    }
+  });
   const root: HTMLElement = div(
     {
       class: () =>
         `absolute inset-0 z-40 place-items-center bg-veil p-6 font-mono text-ink backdrop-blur-[6px] ${open.val ? "grid" : "hidden"}`,
-      onkeydown: (e: KeyboardEvent) => {
-        if (e.key === "Escape") {
-          e.stopPropagation();
-          onClose();
-          return;
-        }
-        trapTab(root, e);
-      },
+      onkeydown: (e: KeyboardEvent) => trapTab(root, e),
       onclick: (e: MouseEvent) => {
         if (e.target === root) onClose();
       },
@@ -139,6 +155,23 @@ export const dialogRoot = (
     panelEl,
   );
   return root;
+};
+
+/**
+ * Land focus on the dialog's current selection (or its first real control) —
+ * never the close button, which is first in the DOM but the least likely
+ * intent, and Enter there would dismiss the dialog.
+ */
+export const focusDefault = (panel: HTMLElement): void => {
+  // Deferred a frame: VanJS batches state updates, so at show() time the
+  // dialog root is still display:none and .focus() would silently no-op.
+  requestAnimationFrame(() => {
+    const target =
+      panel.querySelector<HTMLElement>('button[aria-pressed="true"]') ??
+      panel.querySelector<HTMLElement>('button:not([aria-label="Close"])');
+    if (target) target.focus();
+    else focusFirst(panel);
+  });
 };
 
 export { focusFirst };

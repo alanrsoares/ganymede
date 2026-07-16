@@ -8,7 +8,7 @@ import {
   ctaButton,
   dialogPanel,
   dialogRoot,
-  focusFirst,
+  focusDefault,
   sectionHeading,
 } from "./dialog";
 import {
@@ -156,7 +156,7 @@ export const mountArcadeLobby = (
 
   const show = () => {
     open.val = true;
-    focusFirst(panelEl);
+    focusDefault(panelEl);
   };
   if (!opts.startHidden) show();
 

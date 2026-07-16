@@ -10,7 +10,7 @@ import {
   dialogPanel,
   dialogRoot,
   FOCUS_RING,
-  focusFirst,
+  focusDefault,
   sectionHeading,
 } from "./dialog";
 import { MAX_TEAMS, type MatchConfig } from "./world";
@@ -246,7 +246,7 @@ export const mountSetup = (
 
   const show = () => {
     open.val = true;
-    focusFirst(panelEl); // land focus on the first preset, not behind the modal
+    focusDefault(panelEl); // current selection, never the close button
   };
   if (!opts.startHidden) show(); // boot straight into setup unless the welcome gates it
 
