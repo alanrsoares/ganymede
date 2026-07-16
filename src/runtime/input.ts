@@ -145,7 +145,12 @@ const handleKeyDown = (
 ) => {
   if (typingInField(e)) return;
   const key = e.key.toLowerCase();
-  if (key === "c") return codex.toggle();
+  if (key === "c") {
+    // Closing is always allowed; opening is gated so the codex can't cover
+    // the welcome splash or a pre-game dialog.
+    if (codex.isOpen() || !isSetupOpen()) codex.toggle();
+    return;
+  }
   if (codex.isOpen() || isSetupOpen()) return;
 
   const dir = getDirectionKey(key);

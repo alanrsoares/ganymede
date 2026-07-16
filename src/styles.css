@@ -19,6 +19,21 @@
   --color-accent: #3fd8ff;
 }
 
+/* Astryx tokens as Tailwind v4 utilities (bg-surface, border-line, text-ink,
+   text-muted, bg-signal/15, ring-signal, bg-veil …). `inline` keeps the var
+   indirection so a theme swap re-skins every utility. `signal` is the game's
+   cyan accent — selection + primary actions only. */
+@theme inline {
+  --color-surface: var(--hud-surface);
+  --color-card: var(--hud-card);
+  --color-line: var(--hud-line);
+  --color-line-strong: var(--color-border-emphasized, #495056);
+  --color-ink: var(--hud-ink);
+  --color-muted: var(--hud-muted);
+  --color-signal: var(--hud-accent);
+  --color-veil: var(--color-overlay, #101314cc);
+}
+
 /* Contain the Astryx reset to the token layer: its @layer reset styles
    heading/paragraph type directly (Fustat + the gothic display serif),
    which would restyle the game HUD. Unlayered rules beat any @layer, so

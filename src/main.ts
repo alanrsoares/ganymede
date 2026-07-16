@@ -24,7 +24,7 @@ import {
   updateScreenShake,
 } from "./runtime/frame";
 import { updateGridDimensions, wireInput } from "./runtime/input";
-import { mountSetup } from "./setup";
+import { mountSetup, type Setup } from "./setup";
 import { rgbCss } from "./shipInfo";
 import { mountUi, type Ui } from "./ui";
 import { mountWelcome, type Welcome } from "./welcome";
@@ -123,6 +123,80 @@ const wirePause = (
   return () => codex.isOpen() || paused.on;
 };
 
+interface PreGameFlow {
+  setup: Setup;
+  lobby: Lobby;
+  codex: ReturnType<typeof wireInput>;
+  /** Live welcome splash across remounts; `up` gates game input under it. */
+  welcomeRef: { current: Welcome; up: boolean };
+  /** True once a mode was chosen and no pre-game dialog is covering the sim. */
+  inMatch: () => boolean;
+}
+
+// Pre-game surfaces and their lifecycle: welcome splash → mode dialog →
+// launch. Closing a dialog (✕ / Escape / backdrop) returns to a freshly
+// mounted welcome splash (the old one removed itself); the ref keeps the
+// render loop pointed at the live splash's camera across remounts.
+const wirePreGame = (
+  renderer: Renderer,
+  dispatch: (msg: Msg) => void,
+  ui: Ui,
+  sim: Sim,
+  audio: Audio,
+  welcome: Welcome,
+  startMatch: (config: MatchConfig) => void,
+  startArcadeMatch: (config: MatchConfig) => void,
+): PreGameFlow => {
+  const welcomeRef = { current: welcome, up: true };
+  let begun = false;
+  const onDialogClose = () => {
+    begun = false;
+    ui.setChromeHidden(true);
+    codex.setChromeHidden(true);
+    welcomeRef.current = mountWelcome();
+    welcomeRef.up = true;
+    wireBegun(welcomeRef.current);
+  };
+  const setup = mountSetup(startMatch, {
+    startHidden: true,
+    onClose: onDialogClose,
+  });
+  const lobby = mountArcadeLobby(startArcadeMatch, {
+    startHidden: true,
+    onClose: onDialogClose,
+  });
+  const codex = wireInput(
+    canvas,
+    renderer,
+    dispatch,
+    ui,
+    () => sim.world,
+    // Gate game input while any full-screen surface is up — the pre-game
+    // dialogs or the welcome splash (stops C opening the codex over the title).
+    () => setup.isOpen() || lobby.isOpen() || welcomeRef.up,
+    audio,
+  );
+  // Keep the welcome splash clean; reveal all chrome together on launch.
+  codex.setChromeHidden(true);
+  // The welcome CTA is the first user gesture — the only moment the browser
+  // lets us start the AudioContext.
+  const wireBegun = (w: Welcome) =>
+    w.begun.then((mode) => {
+      begun = true;
+      welcomeRef.up = false;
+      audio.resume();
+      revealForMode(mode, lobby, setup, ui, codex);
+    });
+  wireBegun(welcome);
+  return {
+    setup,
+    lobby,
+    codex,
+    welcomeRef,
+    inMatch: () => begun && !setup.isOpen() && !lobby.isOpen(),
+  };
+};
+
 const startRuntime = (
   renderer: Renderer,
   overlay: Overlay,
@@ -139,28 +213,18 @@ const startRuntime = (
   const loopState = initLoopState();
   const { startMatch, startArcadeMatch } = createStarters(sim, ui, loopState);
 
-  const setup = mountSetup(startMatch, { startHidden: true });
-  const lobby = mountArcadeLobby(startArcadeMatch, { startHidden: true });
-  const codex = wireInput(
-    canvas,
+  const flow = wirePreGame(
     renderer,
     dispatch,
     ui,
-    () => sim.world,
-    () => setup.isOpen() || lobby.isOpen(),
+    sim,
     audio,
+    welcome,
+    startMatch,
+    startArcadeMatch,
   );
+  const { setup, lobby, codex, welcomeRef } = flow;
   const isPaused = wirePause(codex, dispatch, ui);
-  // Keep the welcome splash clean; reveal all chrome together on launch.
-  codex.setChromeHidden(true);
-  // The welcome CTA is the first user gesture — the only moment the browser lets
-  // us start the AudioContext.
-  let begun = false;
-  welcome.begun.then((mode) => {
-    begun = true;
-    audio.resume();
-    revealForMode(mode, lobby, setup, ui, codex);
-  });
 
   const syncCanvasSize = createResizeSync(renderer, canvas);
   const loop = createLoop((dt, now) => {
@@ -187,13 +251,12 @@ const startRuntime = (
       sim.world,
       now,
       ui.hpOn.val,
-      welcome.camera,
+      welcomeRef.current.camera,
     );
     updateScreenShake(canvas, sim.world, now, loopState);
     updateHud(ui, sim.world);
     // setScene is idempotent, so calling it each frame is fine.
-    const inMatch = begun && !setup.isOpen() && !lobby.isOpen();
-    audio.setScene(sceneFor(sim.world, inMatch));
+    audio.setScene(sceneFor(sim.world, flow.inMatch()));
     audio.frame(sim.world, now);
   });
   loop.start();

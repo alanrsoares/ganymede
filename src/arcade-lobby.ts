@@ -3,7 +3,14 @@
 // shares the same dark cyan/mint chrome. The high-score table lands in Phase 3.
 
 import van, { type State } from "vanjs-core";
-import { focusFirst, trapTab } from "./a11y";
+import {
+  choiceCard,
+  ctaButton,
+  dialogPanel,
+  dialogRoot,
+  focusFirst,
+  sectionHeading,
+} from "./dialog";
 import {
   ARCHETYPES,
   type ArcadeDifficulty,
@@ -12,10 +19,7 @@ import {
 } from "./world";
 import { ARCADE_TIERS } from "./world/factory";
 
-const { div, h1, h2, span, button, p } = van.tags;
-
-const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3fd8ff] focus-visible:ring-offset-2 focus-visible:ring-offset-[#050b0f]";
+const { div } = van.tags;
 
 // Arcade tempo runs a touch faster than the autobattle default — one ship, so
 // the field can move quicker without becoming unreadable.
@@ -56,6 +60,12 @@ export interface Lobby {
   isOpen: () => boolean;
 }
 
+export interface LobbyOpts {
+  startHidden?: boolean;
+  /** Called when the player dismisses the dialog (✕ / Escape / backdrop). */
+  onClose?: () => void;
+}
+
 interface HullBlurb {
   readonly key: Archetype;
   readonly title: string;
@@ -73,28 +83,6 @@ const HULLS: readonly HullBlurb[] = [
   },
 ];
 
-const hullCard = (hull: HullBlurb, selected: State<Archetype>) =>
-  button(
-    {
-      type: "button",
-      "aria-pressed": () => String(selected.val === hull.key),
-      class: () =>
-        "flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors " +
-        FOCUS_RING +
-        (selected.val === hull.key
-          ? " border-[#3fd8ff] bg-[#3fd8ff]/15"
-          : " border-[#3fd8ff]/25 bg-[#3fd8ff]/[0.04] hover:border-[#3fd8ff]/60 hover:bg-[#3fd8ff]/10"),
-      onclick: () => {
-        selected.val = hull.key;
-      },
-    },
-    span(
-      { class: "text-[12px] font-semibold uppercase tracking-[0.1em]" },
-      hull.title,
-    ),
-    span({ class: "text-[10px] opacity-55" }, hull.blurb),
-  );
-
 const DIFFICULTIES: readonly ArcadeDifficulty[] = [
   "easy",
   "normal",
@@ -102,86 +90,53 @@ const DIFFICULTIES: readonly ArcadeDifficulty[] = [
   "endless",
 ];
 
-const diffCard = (key: ArcadeDifficulty, selected: State<ArcadeDifficulty>) => {
-  const tier = ARCADE_TIERS[key];
-  return button(
-    {
-      type: "button",
-      "aria-pressed": () => String(selected.val === key),
-      class: () =>
-        "flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors " +
-        FOCUS_RING +
-        (selected.val === key
-          ? " border-[#3fd8ff] bg-[#3fd8ff]/15"
-          : " border-[#3fd8ff]/25 bg-[#3fd8ff]/[0.04] hover:border-[#3fd8ff]/60 hover:bg-[#3fd8ff]/10"),
-      onclick: () => {
-        selected.val = key;
-      },
-    },
-    span(
-      { class: "text-[12px] font-semibold uppercase tracking-[0.1em]" },
-      tier.label,
-    ),
-    span({ class: "text-[10px] opacity-55" }, tier.blurb),
-  );
-};
-
-const heading = (text: string) =>
-  h2(
-    {
-      class:
-        "mt-4 mb-1.5 text-[9px] font-semibold uppercase tracking-[0.3em] text-[#7fc4b1]",
-    },
-    text,
-  );
-
 const panel = (
   selected: State<Archetype>,
   difficulty: State<ArcadeDifficulty>,
   start: () => void,
+  close: () => void,
 ) =>
-  div(
+  dialogPanel(
     {
-      role: "dialog",
-      "aria-modal": "true",
-      "aria-label": "Arcade lobby",
-      class:
-        "w-full max-w-[440px] max-h-[90dvh] overflow-y-auto overscroll-contain rounded-2xl border border-[#3fd8ff]/25 bg-[#050b0f]/90 p-5 shadow-[0_20px_60px_-20px_#000]",
+      label: "Arcade lobby",
+      title: "Arcade",
+      subtitle: "Fly one ship. Survive escalating waves. Chase a high score.",
+      onClose: close,
     },
-    h1(
-      {
-        class:
-          "text-[18px] font-bold uppercase tracking-[0.14em] text-[#d3f5e9]",
-      },
-      "Arcade",
-    ),
-    p(
-      { class: "mt-0.5 text-[11px] opacity-55" },
-      "Fly one ship. Survive escalating waves. Chase a high score.",
-    ),
-    heading("choose your hull"),
+    sectionHeading("choose your hull"),
     div(
-      { class: "grid grid-cols-2 gap-2" },
-      ...HULLS.map((hull) => hullCard(hull, selected)),
+      { class: "grid grid-cols-2 gap-2.5" },
+      ...HULLS.map((hull) =>
+        choiceCard({
+          title: hull.title,
+          blurb: hull.blurb,
+          pressed: () => selected.val === hull.key,
+          onclick: () => {
+            selected.val = hull.key;
+          },
+        }),
+      ),
     ),
-    heading("difficulty"),
+    sectionHeading("difficulty"),
     div(
-      { class: "grid grid-cols-2 gap-2" },
-      ...DIFFICULTIES.map((key) => diffCard(key, difficulty)),
+      { class: "grid grid-cols-2 gap-2.5" },
+      ...DIFFICULTIES.map((key) =>
+        choiceCard({
+          title: ARCADE_TIERS[key].label,
+          blurb: ARCADE_TIERS[key].blurb,
+          pressed: () => difficulty.val === key,
+          onclick: () => {
+            difficulty.val = key;
+          },
+        }),
+      ),
     ),
-    button(
-      {
-        type: "button",
-        class: `mt-5 w-full cursor-pointer rounded-xl border border-[#3fd8ff]/50 bg-[#3fd8ff]/15 py-2.5 text-[13px] font-bold uppercase tracking-[0.16em] text-[#d3f5e9] transition-colors hover:bg-[#3fd8ff]/25 ${FOCUS_RING}`,
-        onclick: start,
-      },
-      "Launch run",
-    ),
+    ctaButton("Launch run", start),
   );
 
 export const mountArcadeLobby = (
   onStart: (config: MatchConfig) => void,
-  opts: { startHidden?: boolean } = {},
+  opts: LobbyOpts = {},
 ): Lobby => {
   const open = van.state(!opts.startHidden);
   const selected = van.state<Archetype>(ARCHETYPES[1]); // fighter — friendly default
@@ -190,16 +145,13 @@ export const mountArcadeLobby = (
     open.val = false;
     onStart(buildArcadeConfig(selected.val, difficulty.val));
   };
+  const close = () => {
+    open.val = false;
+    opts.onClose?.();
+  };
 
-  const panelEl = panel(selected, difficulty, start);
-  const root = div(
-    {
-      class: () =>
-        `absolute inset-0 z-40 place-items-center bg-[#040a0e]/70 p-6 font-mono text-[#cfeee2] backdrop-blur-[6px] ${open.val ? "grid" : "hidden"}`,
-      onkeydown: (e: KeyboardEvent) => trapTab(root, e),
-    },
-    panelEl,
-  );
+  const panelEl = panel(selected, difficulty, start, close);
+  const root = dialogRoot(open, panelEl, close);
   van.add(document.body, root);
 
   const show = () => {
