@@ -2,6 +2,8 @@ import { normalize, wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
 import {
+  ARCADE_DOCK_HEAL_MULT,
+  ARCADE_REPAIR_PING_GENS,
   BASE_HEAL_RATE,
   BASE_HORIZON,
   BASE_MAX_HP,
@@ -32,7 +34,9 @@ import { within } from "../../math";
 import {
   ARENA,
   type Asteroid,
+  type Base,
   BURST_DETONATION,
+  BURST_SHIELD,
   baseByName,
   CENTER_PAD,
   HEAL_PADS,
@@ -172,6 +176,40 @@ export const dropMine = (
   return [mineId + 1, nextSeed];
 };
 
+/**
+ * Docking repairs a damaged home base, but never revives a razed one (hp 0):
+ * a destroyed base stays destroyed and its team is eliminated. Arcade differs
+ * on both ends: it ignores the sudden-death cutoff (arcade configs set
+ * reinforceGens to 0, which would otherwise disable repair from tick one) and
+ * patches faster — the pilot is the only mechanic on staff, so a pit stop must
+ * be seconds, not a wave. A periodic shield-ring pulse makes the repair
+ * visible while HP is actually climbing.
+ */
+const repairHomeBase = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  home: Base,
+  steps: number,
+): void => {
+  const arcade = ctx.world.arcade !== null;
+  if ((!arcade && ctx.suddenDeath) || ctx.baseHp[s.colorName] <= 0) return;
+  const before = ctx.baseHp[s.colorName];
+  const rate = BASE_HEAL_RATE * (arcade ? ARCADE_DOCK_HEAL_MULT : 1);
+  ctx.baseHp[s.colorName] = Math.min(BASE_MAX_HP, before + rate * steps);
+  if (
+    arcade &&
+    ctx.baseHp[s.colorName] > before &&
+    ctx.world.age % ARCADE_REPAIR_PING_GENS < steps
+  ) {
+    ctx.burstAt.push({
+      x: home.x,
+      y: home.y,
+      kind: BURST_SHIELD,
+      rgb: s.color,
+    });
+  }
+};
+
 /** Refill shield/mines/fuel and top up the home base while docked. */
 export const dockAtHomeBase = (
   ctx: TickCtx,
@@ -188,14 +226,7 @@ export const dockAtHomeBase = (
   );
   s.mines = s.maxMines;
   s.fuel = Math.min(s.maxFuel, s.fuel + FUEL_REFILL * steps);
-  // Docking repairs a damaged home base, but never revives a razed one (hp 0):
-  // a destroyed base stays destroyed and its team is eliminated.
-  if (!ctx.suddenDeath && ctx.baseHp[s.colorName] > 0) {
-    ctx.baseHp[s.colorName] = Math.min(
-      BASE_MAX_HP,
-      ctx.baseHp[s.colorName] + BASE_HEAL_RATE * steps,
-    );
-  }
+  repairHomeBase(ctx, s, home, steps);
 };
 
 /**

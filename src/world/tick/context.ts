@@ -1,6 +1,7 @@
 import type { Seed } from "~/engine/rng";
 import { nextInt } from "~/engine/rng";
 import {
+  ARCADE_BASE_HP_FLOOR,
   ARCHETYPE_MODS,
   arcadeHandicap,
   armorFor,
@@ -245,6 +246,18 @@ export function maybeRamShock(ctx: TickCtx, s: Mutable<LightCycle>): void {
     RAM_SHOCK_RADIUS,
     s.id,
   );
+}
+
+/**
+ * Chip a base's integrity. In arcade the player's home base floors at
+ * ARCADE_BASE_HP_FLOOR instead of 0 — it can be battered to the brink but never
+ * razed, so repair (docking / wave-clear) always has something to restore and
+ * the run never loses its spawn field permanently.
+ */
+export function damageBase(ctx: TickCtx, baseName: string, amount: number) {
+  const floor =
+    baseName === ctx.world.config.arcade?.playerTeam ? ARCADE_BASE_HP_FLOOR : 0;
+  ctx.baseHp[baseName] = Math.max(floor, ctx.baseHp[baseName] - amount);
 }
 
 /**

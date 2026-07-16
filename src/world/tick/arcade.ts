@@ -6,6 +6,7 @@
 import { nextRange } from "../../engine/rng";
 import { activeTeams, rollShip } from "../factory";
 import {
+  BASE_MAX_HP,
   HANDICAP_ADAPT_MAX,
   HANDICAP_CLEAN_STEP,
   HANDICAP_DEATH_STEP,
@@ -134,6 +135,9 @@ function advanceWave(
       : Math.max(0, a.adapt - HANDICAP_CLEAN_STEP);
     return {
       ...world,
+      // The lull between waves is a yard-crew moment: whatever the wave chipped
+      // off the home base is patched back to full before the next muster.
+      baseHp: { ...world.baseHp, [cfg.playerTeam]: BASE_MAX_HP },
       arcade: {
         ...a,
         wave: a.wave + 1,

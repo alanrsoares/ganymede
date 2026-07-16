@@ -29,6 +29,7 @@ import { gridCrossPairs, type PairList, runCrossPairs } from "./broadphase";
 import {
   awardXp,
   creditBaseHit,
+  damageBase,
   detonateBlast,
   hit,
   killShip,
@@ -169,7 +170,7 @@ const munitionVsBase = (
   if (base.name === team || ctx.baseHp[base.name] <= 0) return "next";
   if (!within(base.x, base.y, m.x, m.y, BASE_RADIUS)) return "next";
   removedSet.add(m.id);
-  ctx.baseHp[base.name] = Math.max(0, ctx.baseHp[base.name] - m.damage);
+  damageBase(ctx, base.name, m.damage);
   creditBaseHit(ctx, m.owner, base.name);
   ctx.burstAt.push({ x: Math.floor(m.x), y: Math.floor(m.y), kind, rgb, rot });
   return "break";

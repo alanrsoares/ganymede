@@ -148,6 +148,12 @@ export const HOME_RADIUS = 12; // over own base -> chance to promote
 export const BASE_MAX_HP = 24; // base integrity; 0 = team eliminated
 export const BASE_RADIUS = 11; // solid collision radius of a base
 export const BASE_HEAL_RATE = 0.05; // base HP/gen while an ally sits on it
+// Arcade base-repair: the pilot is the only ally, so parking on the pad must be
+// a quick triage stop (~2.5s to full), not a 10s idle. The floor keeps the home
+// base raidable-but-never-razed — repair is always possible mid-run.
+export const ARCADE_DOCK_HEAL_MULT = 4; // dock repair rate multiplier in arcade
+export const ARCADE_BASE_HP_FLOOR = 1; // arcade player base never drops below this
+export const ARCADE_REPAIR_PING_GENS = 26; // gens between repair-pulse FX pings
 export const BASE_RAM_DAMAGE = 1; // base HP lost per enemy ram (behind i-frames)
 // Base gravity well: an intact base pulls its own ships home and repels
 // intruders. Reach tracks the inward force-field visual; both scale with the
