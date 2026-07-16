@@ -9,9 +9,16 @@ import { acquireGpu } from "./gpu-context";
 import { makeAsteroidMesh } from "./mesh";
 import { createMeshPass, instanceLayout, type MeshPass } from "./mesh-pass";
 import backgroundWGSL from "./shaders/background.wgsl" with { type: "text" };
+import plumeWGSL from "./shaders/plume.wgsl" with { type: "text" };
 import rockWGSL from "./shaders/rock.wgsl" with { type: "text" };
 import shipWGSL from "./shaders/ship.wgsl" with { type: "text" };
-import { makeShipMesh, SHIP_CLASSES, type ShipClass } from "./ship-parts";
+import {
+  ENGINES,
+  makePlumeMesh,
+  makeShipMesh,
+  SHIP_CLASSES,
+  type ShipClass,
+} from "./ship-parts";
 import { TEAMS } from "./world/types";
 
 const DEPTH_FORMAT: GPUTextureFormat = "depth24plus";
@@ -19,6 +26,7 @@ const DEPTH_SCALE = 0.0016; // same z compression as gpu.ts
 const SHIP_LEVEL_SIZES = [4.5, 5.9, 7.0, 8.1, 9.2]; // overlay/ships.ts
 const MONO: readonly [number, number, number] = [0.72, 0.74, 0.78];
 const MAX_SHIPS = 64;
+const MAX_PLUMES = 192;
 
 // prettier-ignore
 const SHIP_LAYOUT = instanceLayout([
@@ -30,6 +38,25 @@ const SHIP_LAYOUT = instanceLayout([
   "tilt",
   "_a",
   "_b",
+  "r",
+  "g",
+  "b",
+  "alpha",
+]);
+// prettier-ignore
+const PLUME_LAYOUT = instanceLayout([
+  "cx",
+  "cy",
+  "radius",
+  "roll",
+  "heading",
+  "tilt",
+  "throttle",
+  "phase",
+  "nx",
+  "ny",
+  "nz",
+  "w",
   "r",
   "g",
   "b",
@@ -106,6 +133,7 @@ interface Passes {
   bgBindGroup: GPUBindGroup;
   shipPasses: Record<ShipClass, MeshPass>;
   rockPass: MeshPass;
+  plumePass: MeshPass;
 }
 
 const createPasses = (
@@ -153,7 +181,23 @@ const createPasses = (
     depthWrite: true,
     depthCompare: "less",
   });
-  return { bgPipeline, bgBindGroup, shipPasses, rockPass };
+  // Additive plume cones: no depth write (glow), still occluded by hulls.
+  const plumePass = createMeshPass(device, {
+    format,
+    uniformBuffer,
+    mesh: makePlumeMesh(),
+    shader: plumeWGSL,
+    layout: PLUME_LAYOUT,
+    maxInstances: MAX_PLUMES,
+    depthFormat: DEPTH_FORMAT,
+    depthWrite: false,
+    depthCompare: "less",
+    blend: {
+      color: { srcFactor: "one", dstFactor: "one" },
+      alpha: { srcFactor: "one", dstFactor: "one" },
+    },
+  });
+  return { bgPipeline, bgBindGroup, shipPasses, rockPass, plumePass };
 };
 
 // --- scene --------------------------------------------------------------------
@@ -199,6 +243,10 @@ interface ShipInstance {
   team: readonly [number, number, number];
   /** Per-ship tilt override (inspector orbit); defaults to the slider. */
   tilt?: number;
+  /** Engine output 0..1 — plume length/brightness. */
+  throttle: number;
+  /** Per-ship flicker phase so plumes never strobe in unison. */
+  phase: number;
 }
 
 const packShip = (data: Float32Array, i: number, ship: ShipInstance): void => {
@@ -232,6 +280,8 @@ const collectShips = (
       heading: Math.PI + state.spinPhase + state.orbitYaw,
       tilt: (state.tiltDeg * Math.PI) / 180 + state.orbitPitch,
       team: teamTint(state.team),
+      throttle: 0.85,
+      phase: 1,
     },
   ];
   for (const s of swarm) {
@@ -244,9 +294,45 @@ const collectShips = (
       roll: Math.sin(state.t * 1.3 + s.phase) * 0.3 + s.turn * 0.8,
       heading: s.heading,
       team: teamTint(s.team),
+      throttle:
+        0.35 +
+        0.5 *
+          ARCH_SPEED[s.cls] *
+          (0.7 + 0.3 * Math.sin(state.t * 0.7 + s.phase)),
+      phase: s.phase * 7,
     });
   }
   return ships;
+};
+
+/** One plume instance per engine anchor per ship. Returns instance count. */
+const packPlumes = (data: Float32Array, ships: ShipInstance[]): number => {
+  const P = PLUME_LAYOUT.idx;
+  let count = 0;
+  for (const ship of ships) {
+    for (const eng of ENGINES[ship.cls]) {
+      if (count >= MAX_PLUMES) return count;
+      const o = count * PLUME_LAYOUT.floats;
+      data[o + P.cx] = ship.cx;
+      data[o + P.cy] = ship.cy;
+      data[o + P.radius] = ship.radius;
+      data[o + P.roll] = ship.roll;
+      data[o + P.heading] = ship.heading;
+      data[o + P.tilt] = ship.tilt ?? (state.tiltDeg * Math.PI) / 180;
+      data[o + P.throttle] = ship.throttle;
+      data[o + P.phase] = ship.phase + count;
+      data[o + P.nx] = eng.pos[0];
+      data[o + P.ny] = eng.pos[1];
+      data[o + P.nz] = eng.pos[2];
+      data[o + P.w] = eng.w;
+      data[o + P.r] = ship.team[0];
+      data[o + P.g] = ship.team[1];
+      data[o + P.b] = ship.team[2];
+      data[o + P.alpha] = 1;
+      count++;
+    }
+  }
+  return count;
 };
 
 const packRocks = (
@@ -280,6 +366,8 @@ const encodeFrame = (
   buf: Record<ShipClass, Float32Array>,
   counts: Record<ShipClass, number>,
   rockData: Float32Array,
+  plumeData: Float32Array,
+  plumeCount: number,
 ): void => {
   const encoder = device.createCommandEncoder();
   const pass = encoder.beginRenderPass({
@@ -306,6 +394,7 @@ const encodeFrame = (
     if (counts[cls] > 0)
       passes.shipPasses[cls].draw(pass, buf[cls], counts[cls]);
   }
+  if (plumeCount > 0) passes.plumePass.draw(pass, plumeData, plumeCount);
   pass.end();
   device.queue.submit([encoder.finish()]);
 };
@@ -324,6 +413,7 @@ const runLoop = (
     buf[cls] = new Float32Array(MAX_SHIPS * SHIP_LAYOUT.floats);
   }
   const rockData = new Float32Array(8 * ROCK_LAYOUT.floats);
+  const plumeData = new Float32Array(MAX_PLUMES * PLUME_LAYOUT.floats);
 
   let last = performance.now();
   const frame = (now: number): void => {
@@ -344,11 +434,23 @@ const runLoop = (
     );
     const counts = {} as Record<ShipClass, number>;
     for (const cls of SHIP_CLASSES) counts[cls] = 0;
-    for (const ship of collectShips(swarm, w, h, cellPx)) {
+    const ships = collectShips(swarm, w, h, cellPx);
+    for (const ship of ships) {
       packShip(buf[ship.cls], counts[ship.cls]++, ship);
     }
+    const plumeCount = packPlumes(plumeData, ships);
     packRocks(rockData, w, h, cellPx);
-    encodeFrame(device, context, passes, depth, buf, counts, rockData);
+    encodeFrame(
+      device,
+      context,
+      passes,
+      depth,
+      buf,
+      counts,
+      rockData,
+      plumeData,
+      plumeCount,
+    );
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);

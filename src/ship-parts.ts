@@ -554,6 +554,65 @@ const RECIPES = {
   interceptor: INTERCEPTOR,
 } as const;
 
+/** One engine anchor: nozzle exit in ship-local units + plume width. */
+export interface EngineAnchor {
+  readonly pos: V3;
+  readonly w: number;
+}
+
+// Nozzle exits per class, matching each recipe's ACID nozzle parts (mirrored
+// pairs listed explicitly so the plume pass needs no mirror logic).
+export const ENGINES: Record<keyof typeof RECIPES, readonly EngineAnchor[]> = {
+  scout: [{ pos: [0, -1.2, 0], w: 0.16 }],
+  fighter: [
+    { pos: [0.2, -1.1, 0], w: 0.14 },
+    { pos: [-0.2, -1.1, 0], w: 0.14 },
+  ],
+  heavy: [
+    { pos: [0.55, -1.14, 0], w: 0.15 },
+    { pos: [-0.55, -1.14, 0], w: 0.15 },
+    { pos: [0.19, -1.14, 0], w: 0.15 },
+    { pos: [-0.19, -1.14, 0], w: 0.15 },
+  ],
+  interceptor: [
+    { pos: [0.11, -1.32, 0], w: 0.12 },
+    { pos: [-0.11, -1.32, 0], w: 0.12 },
+  ],
+};
+
+/**
+ * Plume cone for the additive engine pass: hex cross-section, nozzle ring at
+ * y=0 (radius 1) tapering to a tip at y=-1. Unit-sized; the shader scales by
+ * anchor width / plume length. Normals point outward (unused for lighting,
+ * mesh-pass just requires the interleave).
+ */
+export const makePlumeMesh = (): Mesh => {
+  const prim = hexPrism(0.15);
+  // Reposition: hexPrism spans y in [-0.5, 0.5] with the taper at +y; the
+  // plume wants its wide ring at y=0 and the tip trailing to y=-1.
+  const verts = prim.verts.map((v): V3 => [v[0] * 2, -(v[1] + 0.5), v[2] * 2]);
+  const tris: Tri[] = prim.faces.map(([a, b, c]) => [
+    verts[a],
+    verts[b],
+    verts[c],
+  ]);
+  const data = new Float32Array(tris.length * 3 * 6);
+  let o = 0;
+  for (const tri of tris) {
+    const n = outwardNormal(tri, [0, -0.5, 0]);
+    if (!n) continue;
+    for (const p of tri) {
+      data[o++] = p[0];
+      data[o++] = p[1];
+      data[o++] = p[2];
+      data[o++] = n[0];
+      data[o++] = n[1];
+      data[o++] = n[2];
+    }
+  }
+  return { data: data.subarray(0, o) as Float32Array, vertexCount: o / 6 };
+};
+
 export type ShipClass = keyof typeof RECIPES;
 export const SHIP_CLASSES = Object.keys(RECIPES) as readonly ShipClass[];
 
