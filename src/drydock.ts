@@ -88,6 +88,12 @@ const state = {
   mono: false,
   paused: matchMedia("(prefers-reduced-motion: reduce)").matches,
   t: 0,
+  // Inspector orbit: drag adds yaw/pitch on top of the slider tilt; dragging
+  // stops the auto-spin (spinPhase freezes), the `spin` button resumes it.
+  spin: true,
+  spinPhase: 0,
+  orbitYaw: 0,
+  orbitPitch: 0,
 };
 
 const teamTint = (team: number): readonly [number, number, number] =>
@@ -191,6 +197,8 @@ interface ShipInstance {
   roll: number;
   heading: number;
   team: readonly [number, number, number];
+  /** Per-ship tilt override (inspector orbit); defaults to the slider. */
+  tilt?: number;
 }
 
 const packShip = (data: Float32Array, i: number, ship: ShipInstance): void => {
@@ -200,7 +208,7 @@ const packShip = (data: Float32Array, i: number, ship: ShipInstance): void => {
   data[o + S.radius] = ship.radius;
   data[o + S.roll] = ship.roll;
   data[o + S.heading] = ship.heading;
-  data[o + S.tilt] = (state.tiltDeg * Math.PI) / 180;
+  data[o + S.tilt] = ship.tilt ?? (state.tiltDeg * Math.PI) / 180;
   data[o + S.r] = ship.team[0];
   data[o + S.g] = ship.team[1];
   data[o + S.b] = ship.team[2];
@@ -221,7 +229,8 @@ const collectShips = (
       cy: h * 0.5,
       radius: Math.min(w, h) * 0.19,
       roll: state.bank ? Math.sin(state.t * 1.6) * 0.55 : 0,
-      heading: Math.PI + state.t * 0.5,
+      heading: Math.PI + state.spinPhase + state.orbitYaw,
+      tilt: (state.tiltDeg * Math.PI) / 180 + state.orbitPitch,
       team: teamTint(state.team),
     },
   ];
@@ -322,6 +331,7 @@ const runLoop = (
     last = now;
     if (!state.paused) {
       state.t += dt;
+      if (state.spin) state.spinPhase += dt * 0.5;
       stepSwarm(swarm, dt);
     }
     const w = canvas.width;
@@ -367,10 +377,46 @@ const main = async (): Promise<void> => {
   };
   resize();
   addEventListener("resize", resize);
+  wireOrbitDrag(canvas);
   runLoop(device, context, canvas, uniformBuffer, passes, () => {
     if (!depthTexture) throw new Error("depth texture missing");
     return depthTexture;
   });
+};
+
+// --- orbit drag -----------------------------------------------------------------
+// Drag anywhere on the canvas to orbit the inspector hull: x = yaw, y = pitch
+// (added on top of the tilt slider). Grabbing stops the auto-spin.
+
+const wireOrbitDrag = (canvas: HTMLCanvasElement): void => {
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  canvas.style.cursor = "grab";
+  canvas.style.touchAction = "none";
+  canvas.onpointerdown = (e) => {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    state.spin = false;
+    canvas.setPointerCapture(e.pointerId);
+    canvas.style.cursor = "grabbing";
+    sync();
+  };
+  canvas.onpointermove = (e) => {
+    if (!dragging) return;
+    state.orbitYaw += (e.clientX - lastX) * 0.008;
+    state.orbitPitch += (e.clientY - lastY) * 0.006;
+    lastX = e.clientX;
+    lastY = e.clientY;
+  };
+  const release = (e: PointerEvent): void => {
+    dragging = false;
+    canvas.releasePointerCapture(e.pointerId);
+    canvas.style.cursor = "grab";
+  };
+  canvas.onpointerup = release;
+  canvas.onpointercancel = release;
 };
 
 // --- HUD wiring ----------------------------------------------------------------
@@ -388,6 +434,7 @@ const sync = (): void => {
   [...el("teamRow").children].forEach((b, i) => {
     b.classList.toggle("on", i === state.team);
   });
+  el("spin").classList.toggle("on", state.spin);
   el("bank").classList.toggle("on", state.bank);
   el("mono").classList.toggle("on", state.mono);
   el("pause").classList.toggle("on", state.paused);
@@ -430,6 +477,10 @@ const wireHud = (): void => {
       sync();
     };
   };
+  toggle("spin", () => {
+    state.spin = !state.spin;
+    if (state.spin) state.orbitYaw = 0; // resume clean auto-yaw
+  });
   toggle("bank", () => {
     state.bank = !state.bank;
   });
