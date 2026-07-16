@@ -133,6 +133,12 @@ const tryCycleTarget = (
   return true;
 };
 
+// Codex toggle: closing is always allowed; opening is gated so the codex
+// can't cover the welcome splash or a pre-game dialog.
+const toggleCodex = (codex: Codex, isSetupOpen: () => boolean): void => {
+  if (codex.isOpen() || !isSetupOpen()) codex.toggle();
+};
+
 const handleKeyDown = (
   e: KeyboardEvent,
   codex: Codex,
@@ -145,7 +151,7 @@ const handleKeyDown = (
 ) => {
   if (typingInField(e)) return;
   const key = e.key.toLowerCase();
-  if (key === "c") return codex.toggle();
+  if (key === "c") return toggleCodex(codex, isSetupOpen);
   if (codex.isOpen() || isSetupOpen()) return;
 
   const dir = getDirectionKey(key);

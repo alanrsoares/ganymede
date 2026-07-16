@@ -28,5 +28,10 @@
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 80
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
   }
 }

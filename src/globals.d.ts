@@ -3,6 +3,10 @@
 // live dimensions even across bundle boundaries. Declaring it here gives those
 // access sites a real type instead of an `as any` cast (see world/types.ts).
 
+// CSS imported for side effects (Bun bundles it into the page); the package's
+// declared theme.css.d.ts is missing from the published tarball.
+declare module "*.css";
+
 declare global {
   // `var` (not const/let) is required for a global augmentation to attach to
   // `globalThis`.

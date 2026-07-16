@@ -1,0 +1,7 @@
+/*
+ * Astryx gothic design tokens (CSS custom properties scoped by
+ * data-astryx-theme on <html>). Wrapper exists because the package's
+ * published theme.css.d.ts is missing, which breaks a direct TS
+ * side-effect import; a CSS-level @import sidesteps the types condition.
+ */
+@import "@astryxdesign/theme-gothic/theme.css";
