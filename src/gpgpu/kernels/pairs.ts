@@ -28,44 +28,44 @@ export interface PairResult {
 }
 
 export class CandidatePairKernel {
-  private readonly grid: SpatialGrid;
-  private readonly query: Kernel;
-  private readonly cap: GPUBuffer;
-  private pos: GPUBuffer | null = null;
-  private pairCount: GPUBuffer | null = null;
-  private pairs: GPUBuffer | null = null;
-  private countStaging: GPUBuffer | null = null;
-  private pairStaging: GPUBuffer | null = null;
-  private bind: GPUBindGroup | null = null;
-  private n = 0;
-  private capacity = 0;
+  readonly #grid: SpatialGrid;
+  readonly #query: Kernel;
+  readonly #cap: GPUBuffer;
+  #pos: GPUBuffer | null = null;
+  #pairCount: GPUBuffer | null = null;
+  #pairs: GPUBuffer | null = null;
+  #countStaging: GPUBuffer | null = null;
+  #pairStaging: GPUBuffer | null = null;
+  #bind: GPUBindGroup | null = null;
+  #n = 0;
+  #capacity = 0;
 
   constructor(private readonly device: GPUDevice) {
-    this.grid = new SpatialGrid(device);
-    this.query = new Kernel(device, {
+    this.#grid = new SpatialGrid(device);
+    this.#query = new Kernel(device, {
       label: "pairs",
       code: compose(lib, pairsWgsl),
     });
-    this.cap = uniformBuffer(device, 16); // u32 maxPairs + pad
+    this.#cap = uniformBuffer(device, 16); // u32 maxPairs + pad
   }
 
   private realloc(n: number, capacity: number): void {
-    this.pos?.destroy();
-    this.pos = storageBuffer(this.device, n * 4 * 4);
-    this.n = n;
-    this.bind = null;
-    if (capacity !== this.capacity) {
-      this.pairCount?.destroy();
-      this.pairs?.destroy();
-      this.countStaging?.destroy();
-      this.pairStaging?.destroy();
-      this.pairCount = storageBuffer(this.device, 4, { readable: true });
-      this.pairs = storageBuffer(this.device, capacity * 2 * 4, {
+    this.#pos?.destroy();
+    this.#pos = storageBuffer(this.device, n * 4 * 4);
+    this.#n = n;
+    this.#bind = null;
+    if (capacity !== this.#capacity) {
+      this.#pairCount?.destroy();
+      this.#pairs?.destroy();
+      this.#countStaging?.destroy();
+      this.#pairStaging?.destroy();
+      this.#pairCount = storageBuffer(this.device, 4, { readable: true });
+      this.#pairs = storageBuffer(this.device, capacity * 2 * 4, {
         readable: true,
       });
-      this.countStaging = readbackBuffer(this.device, 4);
-      this.pairStaging = readbackBuffer(this.device, capacity * 2 * 4);
-      this.capacity = capacity;
+      this.#countStaging = readbackBuffer(this.device, 4);
+      this.#pairStaging = readbackBuffer(this.device, capacity * 2 * 4);
+      this.#capacity = capacity;
     }
   }
 
@@ -78,52 +78,52 @@ export class CandidatePairKernel {
     r: number,
     maxPairs: number,
   ): void {
-    if (n !== this.n || maxPairs !== this.capacity) this.realloc(n, maxPairs);
-    this.grid.configure(n, arena, r);
-    this.device.queue.writeBuffer(this.cap, 0, new Uint32Array([maxPairs]));
-    if (this.pos) this.device.queue.writeBuffer(this.pos, 0, positions);
-    if (!this.bind && this.pos && this.pairCount && this.pairs) {
-      this.bind = this.query.bindGroup(this.device, [
-        this.grid.params,
-        this.pos,
-        this.grid.cellStart,
-        this.grid.counts,
-        this.grid.sorted,
-        this.pairCount,
-        this.pairs,
-        this.cap,
+    if (n !== this.#n || maxPairs !== this.#capacity) this.realloc(n, maxPairs);
+    this.#grid.configure(n, arena, r);
+    this.device.queue.writeBuffer(this.#cap, 0, new Uint32Array([maxPairs]));
+    if (this.#pos) this.device.queue.writeBuffer(this.#pos, 0, positions);
+    if (!this.#bind && this.#pos && this.#pairCount && this.#pairs) {
+      this.#bind = this.#query.bindGroup(this.device, [
+        this.#grid.params,
+        this.#pos,
+        this.#grid.cellStart,
+        this.#grid.counts,
+        this.#grid.sorted,
+        this.#pairCount,
+        this.#pairs,
+        this.#cap,
       ]);
     }
   }
 
   dispatch(): void {
-    if (!this.bind || !this.pos || !this.pairCount) return;
-    this.device.queue.writeBuffer(this.pairCount, 0, new Uint32Array([0])); // reset
+    if (!this.#bind || !this.#pos || !this.#pairCount) return;
+    this.device.queue.writeBuffer(this.#pairCount, 0, new Uint32Array([0])); // reset
     const enc = this.device.createCommandEncoder();
-    this.grid.encode(enc, this.pos);
+    this.#grid.encode(enc, this.#pos);
     const pass = enc.beginComputePass();
-    this.query.dispatch(pass, this.bind, this.n);
+    this.#query.dispatch(pass, this.#bind, this.#n);
     pass.end();
     this.device.queue.submit([enc.finish()]);
   }
 
   async read(): Promise<PairResult> {
     if (
-      !this.pairCount ||
-      !this.pairs ||
-      !this.countStaging ||
-      !this.pairStaging
+      !this.#pairCount ||
+      !this.#pairs ||
+      !this.#countStaging ||
+      !this.#pairStaging
     )
       return { count: 0, pairs: new Uint32Array(0), overflow: false };
-    const c = await readU32(this.device, this.pairCount, this.countStaging, 4);
+    const c = await readU32(this.device, this.#pairCount, this.#countStaging, 4);
     const count = c[0];
-    const kept = Math.min(count, this.capacity);
+    const kept = Math.min(count, this.#capacity);
     const pairs = await readU32(
       this.device,
-      this.pairs,
-      this.pairStaging,
+      this.#pairs,
+      this.#pairStaging,
       kept * 2 * 4,
     );
-    return { count, pairs, overflow: count > this.capacity };
+    return { count, pairs, overflow: count > this.#capacity };
   }
 }

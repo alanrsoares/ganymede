@@ -11,3 +11,4 @@ bun-cache
 .env.development
 .env.test
 .env.production
+.impeccable/
