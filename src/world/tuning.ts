@@ -57,6 +57,12 @@ export const DRONE_FIRE_COOLDOWN = 40; // gens between a drone's bolts
 export const DRONE_DAMAGE = 1; // bolt damage
 export const DRONE_BOLT_LIFE = 80; // gens a drone bolt flies before fizzling
 export const DRONE_RADIUS = 2.5; // render size (drones don't collide)
+// Muster pickup (arcade): spawns a fixed pair of scout-hull drone ships — real
+// AI wingmen, but visually pint-sized and deliberately short-reach so they read
+// as escorts, not extra heroes.
+export const MUSTER_DRONE_COUNT = 2; // wingmen mustered per pickup
+export const MUSTER_DRONE_SIZE_MULT = 0.5; // render scale of a drone-ship hull
+export const MUSTER_DRONE_RANGE_MULT = 0.5; // fire-range + bolt-life scale
 export const PORTAL_COOLDOWN = 40; // gens before a ship can re-enter a portal
 export const PORTAL_PULL = 0.02; // event-horizon accel toward a nearby gate
 export const PORTAL_HORIZON = 2.6; // pull reaches this × the gate radius

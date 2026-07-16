@@ -29,6 +29,7 @@ import {
   MISSILE_LIFE,
   MISSILE_SPEED,
   MISSILE_TURN,
+  MUSTER_DRONE_RANGE_MULT,
   maxFuelFor,
   maxHpFor,
   minesFor,
@@ -379,7 +380,11 @@ export function spawnBullet(
     rgb: s.color,
     angle: angleTo([ax, ay]),
     damage: bulletDamageFor(s.level),
-    life: bulletLifeFor(s.level, s.archetype),
+    // Muster drone ships fire deliberately short — escorts, not extra heroes.
+    life: Math.round(
+      bulletLifeFor(s.level, s.archetype) *
+        (s.droneShip ? MUSTER_DRONE_RANGE_MULT : 1),
+    ),
     owner: s.id,
     bounces: BULLET_RICOCHETS,
     kind: boltKindFor(s.archetype),

@@ -21,6 +21,7 @@ import {
   MISSILE_FIRE_CHANCE,
   MISSILE_MIN_LEVEL,
   MISSILE_RANGE,
+  MUSTER_DRONE_RANGE_MULT,
   OVERCHARGE_MULT,
   PILOT_FIRE_MULT,
   SCORE_KILL,
@@ -48,12 +49,18 @@ import { hit, killShip, type TickCtx } from "../context";
 
 type Aim = { x: number; y: number };
 
+// Engagement reach for a ship: muster drone ships fire deliberately short (the
+// bolt-life half of the nerf is applied in spawnBullet).
+const shipFireRange = (s: Mutable<LightCycle>): number =>
+  fireRangeFor(s.level, s.archetype) *
+  (s.droneShip ? MUSTER_DRONE_RANGE_MULT : 1);
+
 /** Nearest alive enemy base within fire range (the raid target when no ship is closer). */
 const nearestEnemyBaseAim = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
 ): Aim | null => {
-  const range = fireRangeFor(s.level, s.archetype);
+  const range = shipFireRange(s);
   let best = range * range;
   let tx: number | null = null;
   let ty: number | null = null;
@@ -241,7 +248,7 @@ export const fireWeapon = (
   const { moved, removed } = ctx;
   if (!(s.fuel > 0 && s.fireCooldown <= 0)) return bulletId;
 
-  const range = fireRangeFor(s.level, s.archetype);
+  const range = shipFireRange(s);
   const target = acquireTarget(s, moved, range, removed);
   // No enemy ship in range → strafe the nearest alive enemy base (the raid).
   const aim: Aim | null =

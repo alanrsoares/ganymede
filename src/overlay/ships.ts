@@ -5,7 +5,11 @@ import { clamp01 } from "../engine/physics";
 import { MAX_SHIELDS, SHIELD_LAYOUT } from "../gpu";
 import { bankLayer, SHAPE, type ShipRole, shipSprite } from "../sprites";
 import type { LightCycle, World } from "../world";
-import { hasRaidedAllEnemyBases, SHIELD_FLASH } from "../world/factory";
+import {
+  hasRaidedAllEnemyBases,
+  MUSTER_DRONE_SIZE_MULT,
+  SHIELD_FLASH,
+} from "../world/factory";
 import type { PushFn, Rgba } from "./push";
 
 const SHIP_LEVEL_SIZES = [4.5, 5.9, 7.0, 8.1, 9.2];
@@ -39,7 +43,11 @@ export function computeShipVisual(
   const scy =
     (cycle.y + 0.5) * cellPy +
     (drifting ? Math.sin(now / 420 + cycle.id * 1.7) * 1.4 * cellPy : 0);
-  const size = shipSize(cycle.level);
+  // Muster drone ships render pint-sized: every size-keyed layer (shadow,
+  // exhaust, shield, body) scales together so the escort reads as a wingman,
+  // not a fifth hero. Sim hitbox (shipRadius) is unchanged.
+  const size =
+    shipSize(cycle.level) * (cycle.droneShip ? MUSTER_DRONE_SIZE_MULT : 1);
 
   // Hull sprite + banking frame (shared by the shadow and the body). Banking
   // FX: the hull angle lags its heading while turning, so the residual is
@@ -644,10 +652,14 @@ export function drawShips(
   const arcade = world.arcade !== null;
   for (const cycle of world.ships.items) {
     const isControlled = cycle.id === world.controlledShipId;
+    // Muster drone ships keep the scout hull (they fly with the hero, so the
+    // foe silhouette would read as an enemy in formation).
     const role: ShipRole | undefined = arcade
       ? isControlled
         ? "hero"
-        : "foe"
+        : cycle.droneShip
+          ? "drone"
+          : "foe"
       : undefined;
     shieldCount = drawShip(
       push,

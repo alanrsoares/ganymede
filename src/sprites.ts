@@ -132,15 +132,16 @@ export interface SpriteRef {
 
 // In Arcade, ships read as hero-vs-foe rather than by class: the piloted ship
 // always wears the player hull, and every enemy wears an enemy hull (light
-// classes → enemy_1, heavy → enemy_2). Autobattle passes no role, keeping the
-// class = silhouette mapping.
-export type ShipRole = "hero" | "foe";
+// classes → enemy_1, heavy → enemy_2). Muster escorts are "drone" — the scout
+// hull again, so a wingman in formation doesn't read as an enemy silhouette.
+// Autobattle passes no role, keeping the class = silhouette mapping.
+export type ShipRole = "hero" | "foe" | "drone";
 
 // Hull for a ship's class archetype (team = tint, level = size, applied in the
 // overlay). Archetype names are the hull keys; fall back to scout if unknown.
 export const shipSprite = (archetype: string, role?: ShipRole): SpriteRef => {
   let key: HullKey = archetype in HULLS ? (archetype as HullKey) : "scout";
-  if (role === "hero") {
+  if (role === "hero" || role === "drone") {
     key = "scout"; // player_b silhouette
   } else if (role === "foe") {
     key = key === "heavy" || key === "fighter" ? "heavy" : "fighter"; // enemy hulls
