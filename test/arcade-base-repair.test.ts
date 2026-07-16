@@ -4,6 +4,7 @@ import { initArcadeWorld } from "~/world";
 import { tick } from "~/world/tick";
 import { createTickCtx, damageBase } from "~/world/tick/context";
 import { ARCADE_TIERS, BASE_MAX_HP } from "~/world/tuning";
+import { MUSTER_KIND } from "~/world/types";
 
 const arcadeConfig = (): MatchConfig => {
   const tier = ARCADE_TIERS.normal;
@@ -71,4 +72,29 @@ test("wave clear restores the player base to full", () => {
 
   expect(w.arcade?.wave).toBe(wave + 1);
   expect(w.baseHp.cyan).toBe(BASE_MAX_HP);
+});
+
+test("muster pickup spawns two pint-sized scout drone ships", () => {
+  let w = initArcadeWorld(42, arcadeConfig());
+  const me = w.ships.items[0];
+  w = {
+    ...w,
+    pickups: {
+      items: [
+        { id: 1, x: me.x, y: me.y, vx: 0, vy: 0, kind: MUSTER_KIND, bob: 0 },
+      ],
+      nextId: 2,
+    },
+  };
+
+  w = tick(w, 1, 16);
+
+  const escorts = w.ships.items.filter(
+    (s) => s.colorName === "cyan" && s.id !== w.controlledShipId,
+  );
+  expect(escorts.length).toBe(2);
+  for (const e of escorts) {
+    expect(e.archetype).toBe("scout");
+    expect(e.droneShip).toBe(true);
+  }
 });

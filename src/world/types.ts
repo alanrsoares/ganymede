@@ -145,6 +145,10 @@ export interface LightCycle extends Entity {
   readonly burstCount: number; // shots already fired in the current burst salvo
   readonly fuel: number; // remaining tank; 0 = no thrust, no weapons (drifts)
   readonly maxFuel: number; // tank capacity (archetype × level); refilled at home
+  // Muster-pickup escort (arcade): a pint-sized scout wingman — scout hull at
+  // reduced render size, short-reach bolts (MUSTER_DRONE_SIZE_MULT /
+  // MUSTER_DRONE_RANGE_MULT). Unset on regular ships.
+  readonly droneShip?: boolean;
   // Hits landed on each enemy base since the last level, keyed by base name.
   // Hit every alive enemy base `level` times → level up, then this resets.
   readonly baseHits: Readonly<Record<string, number>>;

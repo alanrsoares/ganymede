@@ -1,4 +1,4 @@
-import { nextInt, nextRange } from "~/engine/rng";
+import { nextRange } from "~/engine/rng";
 import {
   BOOST_DURATION,
   CLOAK_DURATION,
@@ -12,6 +12,7 @@ import {
   FUEL_CELL_PUMP_RADIUS,
   FUEL_CELL_YIELD,
   isCarrier,
+  MUSTER_DRONE_COUNT,
   OVERCHARGE_DURATION,
   PICKUP_RADIUS,
   rollShip,
@@ -48,15 +49,15 @@ const harvestFuelCell = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
   }
 };
 
-// Reinforcement power-up (arcade only): collector's team gains 1–2 AI allies
-// mustered at pickup, queued into ctx.spawned so finalize commits them (still
-// bounded by MAX_SHIPS like any spawn). Seeded off ctx.seed → deterministic.
+// Reinforcement power-up (arcade only): the collector's team gains a fixed pair
+// of scout drone ships mustered at the pickup — real AI wingmen, but flagged
+// `droneShip` so they render pint-sized and fire short (see MUSTER_DRONE_*).
+// Queued into ctx.spawned so finalize commits them (still bounded by MAX_SHIPS
+// like any spawn). Seeded off ctx.seed → deterministic.
 const MUSTER_SPREAD = 10;
 const musterAllies = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
   if (!ctx.world.arcade) return;
-  const [extra, s0] = nextInt(ctx.seed, 2); // 0..1 → 1..2 allies
-  ctx.seed = s0;
-  for (let k = 0; k <= extra; k++) {
+  for (let k = 0; k < MUSTER_DRONE_COUNT; k++) {
     const [jx, s1] = nextRange(ctx.seed, -MUSTER_SPREAD, MUSTER_SPREAD);
     const [jy, s2] = nextRange(s1, -MUSTER_SPREAD, MUSTER_SPREAD);
     const [ally, s3] = rollShip(
@@ -66,10 +67,11 @@ const musterAllies = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
       wrap(s.y + jy, ARENA.h),
       s.level,
       s.colorName,
+      "scout",
     );
     ctx.seed = s3;
     ctx.nextId += 1;
-    ctx.spawned.push(ally);
+    ctx.spawned.push({ ...ally, droneShip: true });
   }
 };
 
