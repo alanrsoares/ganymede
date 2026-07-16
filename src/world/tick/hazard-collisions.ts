@@ -32,6 +32,7 @@ import {
 import { gridCrossPairs, type PairList, runCrossPairs } from "./broadphase";
 import {
   creditBaseHit,
+  damageBase,
   hit,
   killShip,
   maybeRamShock,
@@ -59,7 +60,7 @@ const ramBase = (
   base: Base,
   amount: number = BASE_RAM_DAMAGE,
 ): void => {
-  ctx.baseHp[base.name] = Math.max(0, ctx.baseHp[base.name] - amount);
+  damageBase(ctx, base.name, amount);
   ctx.burstAt.push({
     x: Math.floor(base.x),
     y: Math.floor(base.y),
