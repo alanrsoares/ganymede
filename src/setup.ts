@@ -104,12 +104,31 @@ const slider = (
     ),
   );
 
-const presetButton = (preset: Preset, apply: (c: MatchConfig) => void) =>
+// A preset is "selected" when the live fields still match every value it sets —
+// so clicking it highlights it, and nudging any slider afterward auto-deselects.
+const matchesPreset = (f: Fields, c: MatchConfig): boolean =>
+  f.teams.val === c.teams &&
+  f.ships.val === c.initialShips &&
+  f.tempo.val === c.tempo &&
+  f.reinforce.val === c.reinforceRate &&
+  f.lengthSec.val === Math.round(c.reinforceGens / SIM_NOMINAL_FPS) &&
+  f.endless.val === (c.format === "endless");
+
+const PRESET_BASE =
+  "flex flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors";
+const PRESET_ON =
+  "border-[#3fd8ff] bg-[#3fd8ff]/15 shadow-[0_0_12px_#3fd8ff55]";
+const PRESET_OFF =
+  "border-[#3fd8ff]/25 bg-[#3fd8ff]/[0.04] hover:border-[#3fd8ff]/60 hover:bg-[#3fd8ff]/10";
+
+const presetButton = (preset: Preset, f: Fields) =>
   button(
     {
       type: "button",
-      class: `flex flex-col items-start rounded-lg border border-[#3fd8ff]/25 bg-[#3fd8ff]/[0.04] px-3 py-2 text-left transition-colors hover:border-[#3fd8ff]/60 hover:bg-[#3fd8ff]/10 ${FOCUS_RING}`,
-      onclick: () => apply(preset.config),
+      "aria-pressed": () => String(matchesPreset(f, preset.config)),
+      class: () =>
+        `${PRESET_BASE} ${FOCUS_RING} ${matchesPreset(f, preset.config) ? PRESET_ON : PRESET_OFF}`,
+      onclick: () => applyConfig(f, preset.config),
     },
     span(
       { class: "text-[12px] font-semibold uppercase tracking-[0.1em]" },
@@ -226,9 +245,7 @@ const panel = (f: Fields, start: () => void) =>
     heading("presets"),
     div(
       { class: "grid grid-cols-2 gap-2" },
-      ...PRESETS.map((preset) =>
-        presetButton(preset, (c) => applyConfig(f, c)),
-      ),
+      ...PRESETS.map((preset) => presetButton(preset, f)),
     ),
     heading("match"),
     matchControls(f),
