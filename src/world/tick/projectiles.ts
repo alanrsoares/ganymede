@@ -208,7 +208,10 @@ const missileVsShip = (
 const BULLET_SHIP_BAND = BULLET_RADIUS + shipRadius(MAX_LEVEL);
 
 /** Candidate bullet×ship pairs for this tick (grouped by bullet, ship asc). */
-export const bulletShipPairs = (ctx: TickCtx, motion: MotionState): PairList =>
+export const bulletShipPairs = (
+  ctx: TickCtx,
+  motion: MotionState,
+): PairList | null =>
   gridCrossPairs(motion.bullets, ctx.moved, ARENA, BULLET_SHIP_BAND);
 
 // With `pairs`, replay only the candidate bullet×ship pairs (broad-phase); the
@@ -218,7 +221,7 @@ export const bulletsVsShips = (
   ctx: TickCtx,
   motion: MotionState,
   projectiles: ProjectileState,
-  pairs?: PairList,
+  pairs?: PairList | null,
 ): void => {
   if (pairs) {
     runCrossPairs(pairs, (bi, ai) => {
@@ -278,7 +281,10 @@ const bulletsVsBases = (
 const MISSILE_SHIP_BAND = MISSILE_RADIUS + shipRadius(MAX_LEVEL);
 
 /** Candidate missile×ship pairs for this tick (grouped by missile, ship asc). */
-export const missileShipPairs = (ctx: TickCtx, motion: MotionState): PairList =>
+export const missileShipPairs = (
+  ctx: TickCtx,
+  motion: MotionState,
+): PairList | null =>
   gridCrossPairs(motion.missiles, ctx.moved, ARENA, MISSILE_SHIP_BAND);
 
 // Broad-phase (with `pairs`) or brute nested scan — bit-identical (see bulletsVsShips).
@@ -286,7 +292,7 @@ export const missilesVsShips = (
   ctx: TickCtx,
   motion: MotionState,
   projectiles: ProjectileState,
-  pairs?: PairList,
+  pairs?: PairList | null,
 ): void => {
   if (pairs) {
     runCrossPairs(pairs, (bi, ai) => {

@@ -37,22 +37,14 @@ interface Grid {
 const wrapCell = (c: number, n: number): number => ((c % n) + n) % n;
 
 // Grid dims, or null when the arena is smaller than 3 cells/axis at this band (the
-// toroidal 3×3 would wrap onto itself). Callers either fall back to brute (null)
-// or treat it as a hard error (cellDims).
+// toroidal 3×3 would wrap onto itself). Every grid builder returns null here so
+// its caller falls back to the brute loop — a narrow/portrait viewport shrinks
+// the arena width, so this must never throw on the live render path.
 function tryCellDims(w: number, h: number, band: number): Grid | null {
   const ncx = Math.floor(w / band);
   const ncy = Math.floor(h / band);
   if (ncx < 3 || ncy < 3) return null;
   return { ncx, ncy, cellW: w / ncx, cellH: h / ncy };
-}
-
-function cellDims(w: number, h: number, band: number): Grid {
-  const g = tryCellDims(w, h, band);
-  if (!g)
-    throw new Error(
-      `arena too small for broadphase at band ${band} (need ≥3 cells/axis)`,
-    );
-  return g;
 }
 
 const cellXOf = (x: number, g: Grid): number =>
@@ -115,15 +107,18 @@ function sortPairs(flat: number[], n: number): PairList {
 // Grid-accelerated self-pairing (ship×ship): emit candidate index pairs (i,j),
 // j > i, within `band` on the given snapshot positions, sorted lexicographically.
 // Each unordered pair is emitted exactly once (only i's walk that finds j>i keeps
-// it), so no dedup pass is needed.
+// it), so no dedup pass is needed. Returns null when the arena is too small to
+// grid (< 3 cells/axis at this band, e.g. a narrow/portrait window) — the caller
+// then falls back to the brute nested loop. (empty array = gridded, zero pairs.)
 export function gridSelfPairs(
   pts: readonly Pt[],
   arena: { w: number; h: number },
   band: number,
-): PairList {
+): PairList | null {
   const n = pts.length;
   if (n < 2) return new Int32Array(0);
-  const g = cellDims(arena.w, arena.h, band);
+  const g = tryCellDims(arena.w, arena.h, band);
+  if (!g) return null;
   const buckets: number[][] = Array.from({ length: g.ncx * g.ncy }, () => []);
   for (let i = 0; i < n; i++) {
     const p = pts[i];
@@ -189,16 +184,18 @@ function emitCrossPairs(
 // Grid-accelerated cross pairing: candidate (bIdx, aIdx) pairs within `band`,
 // grouped by bIdx with aIdx ascending. `band` must cover the widest per-pair hit
 // radius so the list stays a superset of what the resolver's narrow-phase accepts.
+// Returns null when the arena is too small to grid at this band → caller brutes.
 export function gridCrossPairs(
   ptsB: readonly Pt[],
   ptsA: readonly Pt[],
   arena: { w: number; h: number },
   band: number,
-): PairList {
+): PairList | null {
   const nA = ptsA.length;
   const nB = ptsB.length;
   if (nA === 0 || nB === 0) return new Int32Array(0);
-  const g = cellDims(arena.w, arena.h, band);
+  const g = tryCellDims(arena.w, arena.h, band);
+  if (!g) return null;
   const buckets: number[][] = Array.from({ length: g.ncx * g.ncy }, () => []);
   for (let a = 0; a < nA; a++) {
     const p = ptsA[a];

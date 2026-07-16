@@ -291,7 +291,10 @@ const shardVsShip = (
 const SHARD_SHIP_BAND = SHRAPNEL_RADIUS + shipRadius(MAX_LEVEL);
 
 /** Candidate shard×ship pairs for this tick (grouped by shard, ship asc). */
-export const shardShipPairs = (ctx: TickCtx, motion: MotionState): PairList =>
+export const shardShipPairs = (
+  ctx: TickCtx,
+  motion: MotionState,
+): PairList | null =>
   gridCrossPairs(motion.shards, ctx.moved, ARENA, SHARD_SHIP_BAND);
 
 // Broad-phase (with `pairs`) or brute nested scan — bit-identical. A removed ship
@@ -301,7 +304,7 @@ export const collideShardsShips = (
   ctx: TickCtx,
   motion: MotionState,
   hazards: HazardState,
-  pairs?: PairList,
+  pairs?: PairList | null,
 ): void => {
   if (pairs) {
     runCrossPairs(pairs, (bi, ai) => {
