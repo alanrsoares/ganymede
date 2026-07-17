@@ -1,5 +1,6 @@
 import { assertNever } from "@onrails/pattern";
-import { nextInt } from "../engine/rng";
+import { nextInt } from "~/engine/rng";
+import { spawnWhip } from "~/world/tick/whips";
 import {
   carriesMissiles,
   fireCooldownFor,
@@ -21,7 +22,6 @@ import {
 import { initArcadeWorld, initWorld, spawnShip } from "./init";
 import { cycleLock } from "./lock";
 import { tick } from "./tick";
-import { spawnWhip } from "./tick/whips";
 import {
   ARENA,
   BURST_MUZZLE,

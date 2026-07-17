@@ -4,9 +4,9 @@
 // the loop writes each frame — van updates just the bound text node.
 
 import van, { type State } from "vanjs-core";
+import type { LightCycle } from "~/world";
+import { carriesMissiles } from "~/world/factory";
 import { ARCHETYPE_INFO, rgbCss } from "./shipInfo";
-import type { LightCycle } from "./world";
-import { carriesMissiles } from "./world/factory";
 
 const { div, h1, label, input, p, span, button } = van.tags;
 const svg = van.tags("http://www.w3.org/2000/svg");

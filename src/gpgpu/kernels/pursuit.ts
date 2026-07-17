@@ -10,10 +10,10 @@ import {
   readFloats,
   storageBuffer,
   uniformBuffer,
-} from "../buffers";
-import { compose, Kernel } from "../kernel";
-import lib from "../wgsl/lib.wgsl" with { type: "text" };
-import pursuit from "../wgsl/pursuit.wgsl" with { type: "text" };
+} from "~/gpgpu/buffers";
+import { compose, Kernel } from "~/gpgpu/kernel";
+import lib from "~/gpgpu/wgsl/lib.wgsl" with { type: "text" };
+import pursuit from "~/gpgpu/wgsl/pursuit.wgsl" with { type: "text" };
 import type { Arena } from "./separation";
 
 // 12 scalars (48 B) + 5×vec4 level table (80 B).

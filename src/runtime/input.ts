@@ -2,10 +2,10 @@
 // World via a single `dispatch` port. Owns the ship-pick hit-test and the live
 // grid-dimension sync. No sim logic lives here — every handler just emits a Msg.
 
-import { type Codex, mountCodex } from "../codex";
-import type { Renderer } from "../gpu";
-import { mountShipCard } from "../shipCard";
-import type { Ui } from "../ui";
+import type { Renderer } from "~/render/gpu";
+import { type Codex, mountCodex } from "~/ui/codex";
+import { mountShipCard } from "~/ui/shipCard";
+import type { Ui } from "~/ui/ui";
 import {
   ARENA,
   DEFAULT_GRID_H,
@@ -13,8 +13,8 @@ import {
   type Msg,
   setGridBounds,
   type World,
-} from "../world";
-import { shipRadius, WHIP_ENABLED } from "../world/factory";
+} from "~/world";
+import { shipRadius, WHIP_ENABLED } from "~/world/factory";
 
 type PressedKeys = {
   up: boolean;

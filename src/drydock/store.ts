@@ -12,7 +12,7 @@ import {
   RECIPES,
   SHIP_CLASSES,
   type ShipClass,
-} from "../ship-parts";
+} from "~/ship-parts";
 
 export interface HullDef {
   parts: PartDef[];

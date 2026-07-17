@@ -15,16 +15,16 @@ import {
   isRecon,
   RECON_SHARE_RADIUS,
   SCORE_KILL,
-} from "../../factory";
-import { within } from "../../math";
+} from "~/world/factory";
+import { within } from "~/world/math";
+import { hit, killShip, type TickCtx } from "~/world/tick/context";
 import {
   ARENA,
   type LightCycle,
   MAX_LEVEL,
   type Mutable,
   TEAM_BASES,
-} from "../../types";
-import { hit, killShip, type TickCtx } from "../context";
+} from "~/world/types";
 
 // Broad-phase band for the ship×ship aura passes = the widest aura reach. The
 // auras run after every ship has moved and none of them changes a ship's

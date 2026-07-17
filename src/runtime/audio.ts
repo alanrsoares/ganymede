@@ -18,7 +18,7 @@ import {
   BURST_MUZZLE,
   BURST_SHIELD,
   type World,
-} from "../world";
+} from "~/world";
 
 const MUTE_KEY = "ganymede.muted";
 const SFX_DIR = "assets/audio/sfx";

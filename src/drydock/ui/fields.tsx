@@ -6,7 +6,7 @@ import { NumberInput } from "@astryxdesign/core/NumberInput";
 import { Slider } from "@astryxdesign/core/Slider";
 import { HStack, StackItem } from "@astryxdesign/core/Stack";
 import type { ReactElement } from "react";
-import { touchHull } from "../store";
+import { touchHull } from "~/drydock/store";
 
 export interface SliderFieldProps {
   label: string;

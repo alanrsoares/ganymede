@@ -3,8 +3,8 @@
 // helpers — no live World state, no DOM. Keeping it here is the single source
 // of truth for class flavor, the L1→L5 tier notes, and the stat-bar scaling.
 
-import type { Archetype, Rgb } from "./world";
-import { ARCHETYPE_MODS } from "./world/factory";
+import type { Archetype, Rgb } from "~/world";
+import { ARCHETYPE_MODS } from "~/world/factory";
 
 // --- Per-class flavor -------------------------------------------------------
 // A glyph is a schematic top-down hull (nose up) in a 24×24 viewBox: `hull` is

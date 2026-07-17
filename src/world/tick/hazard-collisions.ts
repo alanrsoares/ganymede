@@ -14,8 +14,8 @@ import {
   shipRadius,
   spawnShrapnel,
   wrap,
-} from "../factory";
-import { within } from "../math";
+} from "~/world/factory";
+import { within } from "~/world/math";
 import {
   ARENA,
   type Asteroid,
@@ -28,7 +28,7 @@ import {
   type Mutable,
   type Projectile,
   TEAM_BASES,
-} from "../types";
+} from "~/world/types";
 import { gridCrossPairs, type PairList, runCrossPairs } from "./broadphase";
 import {
   creditBaseHit,

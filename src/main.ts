@@ -2,14 +2,11 @@
 // loop that ports the pure World into the renderer. The imperative edges live in
 // runtime/input.ts (DOM events) and runtime/frame.ts (stepping + render/HUD).
 
-import { type Lobby, mountArcadeLobby } from "./arcade-lobby";
-import { createAccumulator, createLoop } from "./engine/loop";
-import { createRenderer, loadCycleTextures, type Renderer } from "./gpu";
-import { acquireGpu } from "./gpu-context";
-import { mountMixer } from "./mixer";
-import { mountMobileControls } from "./mobileControls";
-import { createOverlay, type Overlay } from "./overlay";
-import { type Audio, createAudio, type Scene } from "./runtime/audio";
+import { createAccumulator, createLoop } from "~/engine/loop";
+import { createRenderer, loadCycleTextures, type Renderer } from "~/render/gpu";
+import { acquireGpu } from "~/render/gpu-context";
+import { createOverlay, type Overlay } from "~/render/overlay";
+import { type Audio, createAudio, type Scene } from "~/runtime/audio";
 import {
   buildAndRender,
   createResizeSync,
@@ -22,12 +19,16 @@ import {
   stepSimulation,
   updateHud,
   updateScreenShake,
-} from "./runtime/frame";
-import { updateGridDimensions, wireInput } from "./runtime/input";
-import { mountSetup, type Setup } from "./setup";
-import { rgbCss } from "./shipInfo";
-import { mountUi, type Ui } from "./ui";
-import { mountWelcome, type Welcome } from "./welcome";
+} from "~/runtime/frame";
+import { updateGridDimensions, wireInput } from "~/runtime/input";
+import { type Lobby, mountArcadeLobby } from "~/ui/arcade-lobby";
+import { mountMixer } from "~/ui/mixer";
+import { mountMobileControls } from "~/ui/mobileControls";
+import { mountSetup, type Setup } from "~/ui/setup";
+import { rgbCss } from "~/ui/shipInfo";
+import { mountUi, type Ui } from "~/ui/ui";
+import { mountWelcome, type Welcome } from "~/ui/welcome";
+import { DEFAULT_CONFIG } from "~/world/factory";
 import {
   initWorld,
   type MatchConfig,
@@ -36,7 +37,6 @@ import {
   update,
   type World,
 } from "./world";
-import { DEFAULT_CONFIG } from "./world/factory";
 
 // Team colors (0..1 rgb) → CSS strings for the scoreboard.
 const TEAM_SWATCHES = TEAMS.map((t) => ({

@@ -23,7 +23,7 @@ import {
   shipRadius,
   TURN_EASE_LVL,
   wrap,
-} from "../factory";
+} from "~/world/factory";
 import {
   ARENA,
   type Asteroid,
@@ -37,7 +37,7 @@ import {
   type Projectile,
   type Whip,
   type World,
-} from "../types";
+} from "~/world/types";
 import { gridNeighbors } from "./broadphase";
 import type { TickCtx } from "./context";
 import { advanceWhips } from "./whips";

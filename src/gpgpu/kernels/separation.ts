@@ -10,10 +10,10 @@ import {
   readFloats,
   storageBuffer,
   uniformBuffer,
-} from "../buffers";
-import { compose, Kernel } from "../kernel";
-import lib from "../wgsl/lib.wgsl" with { type: "text" };
-import separation from "../wgsl/separation.wgsl" with { type: "text" };
+} from "~/gpgpu/buffers";
+import { compose, Kernel } from "~/gpgpu/kernel";
+import lib from "~/gpgpu/wgsl/lib.wgsl" with { type: "text" };
+import separation from "~/gpgpu/wgsl/separation.wgsl" with { type: "text" };
 
 export interface Arena {
   readonly w: number;

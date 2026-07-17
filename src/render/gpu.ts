@@ -2,6 +2,22 @@
 // game sprites (ships, asteroids, mines, pickups, explosions, HUD rings).
 
 import * as d from "typegpu/data";
+// WGSL lives in .wgsl files (real syntax highlighting) and is imported as text.
+import backgroundWGSL from "~/shaders/background.wgsl" with { type: "text" };
+import baseWGSL from "~/shaders/base.wgsl" with { type: "text" };
+import bloomWGSL from "~/shaders/bloom.wgsl" with { type: "text" };
+import orbWGSL from "~/shaders/orb.wgsl" with { type: "text" };
+import overlayWGSL from "~/shaders/overlay.wgsl" with { type: "text" };
+import plumeWGSL from "~/shaders/plume.wgsl" with { type: "text" };
+import rockWGSL from "~/shaders/rock.wgsl" with { type: "text" };
+import shieldWGSL from "~/shaders/shield.wgsl" with { type: "text" };
+import shipWGSL from "~/shaders/ship.wgsl" with { type: "text" };
+import {
+  makePlumeMesh,
+  makeShipMesh,
+  SHIP_CLASSES,
+  type ShipClass,
+} from "~/ship-parts";
 import type { GpuContext } from "./gpu-context";
 import {
   type Mesh,
@@ -15,22 +31,6 @@ import {
   instanceLayout,
   type MeshPass,
 } from "./mesh-pass";
-// WGSL lives in .wgsl files (real syntax highlighting) and is imported as text.
-import backgroundWGSL from "./shaders/background.wgsl" with { type: "text" };
-import baseWGSL from "./shaders/base.wgsl" with { type: "text" };
-import bloomWGSL from "./shaders/bloom.wgsl" with { type: "text" };
-import orbWGSL from "./shaders/orb.wgsl" with { type: "text" };
-import overlayWGSL from "./shaders/overlay.wgsl" with { type: "text" };
-import plumeWGSL from "./shaders/plume.wgsl" with { type: "text" };
-import rockWGSL from "./shaders/rock.wgsl" with { type: "text" };
-import shieldWGSL from "./shaders/shield.wgsl" with { type: "text" };
-import shipWGSL from "./shaders/ship.wgsl" with { type: "text" };
-import {
-  makePlumeMesh,
-  makeShipMesh,
-  SHIP_CLASSES,
-  type ShipClass,
-} from "./ship-parts";
 import { SPRITE_LAYER_COUNT, SPRITE_URLS } from "./sprites";
 
 // --- Sprite/Overlay pipeline (space shooter sprites and vector rings) ---

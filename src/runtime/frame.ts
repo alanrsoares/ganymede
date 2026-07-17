@@ -2,11 +2,11 @@
 // stepping + staggered deploy, match/run end handling, and the render + HUD
 // sync. Pure glue between the immutable World and the imperative renderer/DOM.
 
-import type { Lobby } from "../arcade-lobby";
-import type { CameraView, Renderer } from "../gpu";
-import type { Overlay } from "../overlay";
-import type { Setup } from "../setup";
-import type { Ui } from "../ui";
+import type { CameraView, Renderer } from "~/render/gpu";
+import type { Overlay } from "~/render/overlay";
+import type { Lobby } from "~/ui/arcade-lobby";
+import type { Setup } from "~/ui/setup";
+import type { Ui } from "~/ui/ui";
 import {
   ARENA,
   BURST_EXPLOSION,
@@ -16,7 +16,7 @@ import {
   type Msg,
   setOrbitPhase,
   type World,
-} from "../world";
+} from "~/world";
 import { updateGridDimensions } from "./input";
 
 // Staggered launch muster: a new match starts with an empty arena and deploys

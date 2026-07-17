@@ -22,7 +22,7 @@ import {
   undo,
   undoSlot,
   view,
-} from "../store";
+} from "~/drydock/store";
 import { EngineList } from "./EngineControls";
 import { PartControls } from "./PartControls";
 

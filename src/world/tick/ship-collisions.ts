@@ -5,13 +5,13 @@ import {
   SCORE_KILL,
   toroidalDist,
   wrap,
-} from "../factory";
+} from "~/world/factory";
 import {
   ARENA,
   BURST_EXPLOSION,
   type LightCycle,
   type Mutable,
-} from "../types";
+} from "~/world/types";
 import { gridSelfPairs, type PairList, SHIP_PAIR_BAND } from "./broadphase";
 import { hit, killShip, maybeRamShock, replace, type TickCtx } from "./context";
 

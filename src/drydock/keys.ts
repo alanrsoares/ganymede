@@ -2,7 +2,7 @@
 // when a button has focus so keyboard activation still works. Each action
 // returns false to decline (leaves the event untouched).
 
-import { SHIP_CLASSES } from "../ship-parts";
+import { SHIP_CLASSES } from "~/ship-parts";
 import {
   setCls,
   setDesign,

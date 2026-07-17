@@ -1,5 +1,5 @@
-import { empty } from "../engine/entities";
-import { nextRange, type Seed } from "../engine/rng";
+import { empty } from "~/engine/entities";
+import { nextRange, type Seed } from "~/engine/rng";
 import {
   ARCADE_LIVES,
   activeTeams,

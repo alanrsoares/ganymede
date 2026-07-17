@@ -16,7 +16,10 @@ import {
   SHIELD_LAYOUT,
   SHIP_LAYOUT,
   type ShipBuckets,
-} from "./gpu";
+} from "~/render/gpu";
+import { CLIP, clipLayer } from "~/render/sprites";
+import { SHIP_CLASSES, type ShipClass } from "~/ship-parts";
+import type { World } from "~/world";
 import {
   drawBases,
   drawCenterPad,
@@ -24,25 +27,12 @@ import {
   drawLockReticle,
   drawPortals,
   drawRallyBeacon,
-} from "./overlay/field";
-import {
-  drawMines,
-  drawPickupOrbs,
-  drawRocks,
-  drawShrapnel,
-} from "./overlay/hazards";
-import {
-  drawBolts,
-  drawBursts,
-  drawDrones,
-  drawMissiles,
-} from "./overlay/projectiles";
-import { createPusher, type PushFn } from "./overlay/push";
-import { drawShips } from "./overlay/ships";
-import { drawWhips } from "./overlay/whips";
-import { SHIP_CLASSES, type ShipClass } from "./ship-parts";
-import { CLIP, clipLayer } from "./sprites";
-import type { World } from "./world";
+} from "./field";
+import { drawMines, drawPickupOrbs, drawRocks, drawShrapnel } from "./hazards";
+import { drawBolts, drawBursts, drawDrones, drawMissiles } from "./projectiles";
+import { createPusher, type PushFn } from "./push";
+import { drawShips } from "./ships";
+import { drawWhips } from "./whips";
 
 export interface OverlayFrame {
   w: number;

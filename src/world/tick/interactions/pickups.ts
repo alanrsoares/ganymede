@@ -19,8 +19,9 @@ import {
   SCORE_PICKUP,
   shipRadius,
   wrap,
-} from "../../factory";
-import { distSq, within } from "../../math";
+} from "~/world/factory";
+import { distSq, within } from "~/world/math";
+import { promote, type TickCtx } from "~/world/tick/context";
 import {
   ARENA,
   DRONE_KIND,
@@ -30,8 +31,7 @@ import {
   MUSTER_KIND,
   type Mutable,
   type Pickup,
-} from "../../types";
-import { promote, type TickCtx } from "../context";
+} from "~/world/types";
 import { fireEmpMissile } from "./weapons";
 
 /**

@@ -1,4 +1,4 @@
-import { durationOf, EXPLOSION_CLIPS } from "../sprites";
+import { durationOf, EXPLOSION_CLIPS } from "~/render/sprites";
 import {
   type ArcadeDifficulty,
   type Archetype,

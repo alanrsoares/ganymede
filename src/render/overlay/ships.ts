@@ -3,7 +3,7 @@
 // Hull bodies are 3D part-assemblies (ship-parts.ts) drawn by gpu.ts's
 // instanced ship passes; everything else stays on the sprite/solid layer.
 
-import { clamp01 } from "../engine/physics";
+import { clamp01 } from "~/engine/physics";
 import {
   MAX_MESH_SHIPS,
   MAX_PLUMES,
@@ -12,15 +12,15 @@ import {
   SHIELD_LAYOUT,
   SHIP_LAYOUT,
   type ShipBuckets,
-} from "../gpu";
-import { ENGINES, SHIP_CLASSES, type ShipClass } from "../ship-parts";
-import { SHAPE, shipSprite } from "../sprites";
-import type { LightCycle, World } from "../world";
+} from "~/render/gpu";
+import { SHAPE, shipSprite } from "~/render/sprites";
+import { ENGINES, SHIP_CLASSES, type ShipClass } from "~/ship-parts";
+import type { LightCycle, World } from "~/world";
 import {
   hasRaidedAllEnemyBases,
   MUSTER_DRONE_SIZE_MULT,
   SHIELD_FLASH,
-} from "../world/factory";
+} from "~/world/factory";
 import type { PushFn, Rgba } from "./push";
 
 const SHIP_LEVEL_SIZES = [4.5, 5.9, 7.0, 8.1, 9.2];

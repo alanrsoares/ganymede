@@ -4,8 +4,8 @@
 // fine tip, and a white-hot flash at the lash point. Pure: reads world.whips;
 // the motion is already baked into the node positions the sim advanced.
 
-import { SHAPE } from "../sprites";
-import type { World } from "../world";
+import { SHAPE } from "~/render/sprites";
+import type { World } from "~/world";
 import type { PushFn, Rgba } from "./push";
 
 // Chain width (grid cells): fat near the ship, whip-thin at the tip.

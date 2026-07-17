@@ -21,7 +21,7 @@ import {
   shieldForLevel,
   toroidalDist,
   xpForLevel,
-} from "../factory";
+} from "~/world/factory";
 import {
   ARENA,
   BURST_COUNTER,
@@ -36,7 +36,7 @@ import {
   type Rgb,
   TEAMS,
   type World,
-} from "../types";
+} from "~/world/types";
 
 export type BurstSpec = {
   x: number;

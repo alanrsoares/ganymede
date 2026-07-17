@@ -3,27 +3,14 @@
 // playwright driver (scripts/gpgpu-bench.ts) to await and print. Kept out of
 // `bun test` because it needs a real GPU adapter.
 
-import {
-  AGGRO_FAVOR,
-  AGGRO_FEAR,
-  AGGRO_MAX,
-  AGGRO_MIN,
-  CONCAVE_COMMIT_DIST,
-  CONCAVE_GAIN,
-  COORDINATE_MIN_LEVEL,
-  ENGAGE_GAIN,
-  ENGAGE_RADIUS,
-  KITE_DIST,
-  TARGET_VETERAN_BOUNTY,
-} from "../../world/tuning";
-import { acquireComputeDevice } from "../device";
-import { CrossPairKernel } from "../kernels/cross";
-import { FlockKernel, type FlockTuning } from "../kernels/flock";
-import { CandidatePairKernel } from "../kernels/pairs";
-import { PursuitKernel, type PursuitTuning } from "../kernels/pursuit";
-import type { Arena } from "../kernels/separation";
-import { SeparationKernel } from "../kernels/separation";
-import { SeparationGridKernel } from "../kernels/separation-grid";
+import { acquireComputeDevice } from "~/gpgpu/device";
+import { CrossPairKernel } from "~/gpgpu/kernels/cross";
+import { FlockKernel, type FlockTuning } from "~/gpgpu/kernels/flock";
+import { CandidatePairKernel } from "~/gpgpu/kernels/pairs";
+import { PursuitKernel, type PursuitTuning } from "~/gpgpu/kernels/pursuit";
+import type { Arena } from "~/gpgpu/kernels/separation";
+import { SeparationKernel } from "~/gpgpu/kernels/separation";
+import { SeparationGridKernel } from "~/gpgpu/kernels/separation-grid";
 import {
   compare,
   comparePairs,
@@ -37,7 +24,20 @@ import {
   makeFlockField,
   makePursuitField,
   type Pairs,
-} from "../parity";
+} from "~/gpgpu/parity";
+import {
+  AGGRO_FAVOR,
+  AGGRO_FEAR,
+  AGGRO_MAX,
+  AGGRO_MIN,
+  CONCAVE_COMMIT_DIST,
+  CONCAVE_GAIN,
+  COORDINATE_MIN_LEVEL,
+  ENGAGE_GAIN,
+  ENGAGE_RADIUS,
+  KITE_DIST,
+  TARGET_VETERAN_BOUNTY,
+} from "~/world/tuning";
 
 // Both kernels expose this shape, so the timing helpers are kernel-agnostic.
 interface SepKernel {

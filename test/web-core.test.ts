@@ -10,16 +10,16 @@ import {
   wrapDelta,
 } from "~/engine/physics";
 import { nextFloat } from "~/engine/rng";
-import { makeAsteroidMesh, makeSphereMesh } from "~/mesh";
-import { instanceLayout } from "~/mesh-pass";
-import { shipSize } from "~/overlay/ships";
+import { makeAsteroidMesh, makeSphereMesh } from "~/render/mesh";
+import { instanceLayout } from "~/render/mesh-pass";
+import { shipSize } from "~/render/overlay/ships";
 import {
   BOLT_CLIPS,
   CLIP,
   clipLayer,
   SPRITE_LAYER_COUNT,
   SPRITE_URLS,
-} from "~/sprites";
+} from "~/render/sprites";
 import {
   ARENA,
   CENTER_PAD,

@@ -32,8 +32,9 @@ import {
   type WeaponProfile,
   weaponFor,
   wrap,
-} from "../../factory";
-import { distSq } from "../../math";
+} from "~/world/factory";
+import { distSq } from "~/world/math";
+import { hit, killShip, type TickCtx } from "~/world/tick/context";
 import {
   ARENA,
   BURST_ARC,
@@ -44,8 +45,7 @@ import {
   type Missile,
   type Mutable,
   TEAM_BASES,
-} from "../../types";
-import { hit, killShip, type TickCtx } from "../context";
+} from "~/world/types";
 
 type Aim = { x: number; y: number };
 

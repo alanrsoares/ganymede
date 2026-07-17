@@ -6,8 +6,8 @@ import { Divider } from "@astryxdesign/core/Divider";
 import { Selector } from "@astryxdesign/core/Selector";
 import { Switch } from "@astryxdesign/core/Switch";
 import type { ReactElement } from "react";
-import { PALETTE_KEYS, type PartDef, type PrimDef } from "../../ship-parts";
-import { defaultPrim, touchHull } from "../store";
+import { defaultPrim, touchHull } from "~/drydock/store";
+import { PALETTE_KEYS, type PartDef, type PrimDef } from "~/ship-parts";
 import { SliderField, Vec3Fields } from "./fields";
 
 const TaperFields = ({ prim }: { prim: PrimDef }): ReactElement | null => {

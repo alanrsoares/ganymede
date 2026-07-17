@@ -4,6 +4,13 @@
 
 import van, { type State } from "vanjs-core";
 import {
+  ARCHETYPES,
+  type ArcadeDifficulty,
+  type Archetype,
+  type MatchConfig,
+} from "~/world";
+import { ARCADE_TIERS } from "~/world/factory";
+import {
   choiceCard,
   ctaButton,
   dialogPanel,
@@ -11,13 +18,6 @@ import {
   focusDefault,
   sectionHeading,
 } from "./dialog";
-import {
-  ARCHETYPES,
-  type ArcadeDifficulty,
-  type Archetype,
-  type MatchConfig,
-} from "./world";
-import { ARCADE_TIERS } from "./world/factory";
 
 const { div } = van.tags;
 

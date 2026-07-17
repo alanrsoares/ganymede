@@ -1,9 +1,9 @@
 // view: background furniture — bases, portals, heal pads, the center pad and
 // the rally beacon. Pure — reads world, animation is derived from `now`.
 
-import { clamp01 } from "../engine/physics";
-import { MAX_BASES, ROCK_LAYOUT } from "../gpu";
-import { SHAPE } from "../sprites";
+import { clamp01 } from "~/engine/physics";
+import { MAX_BASES, ROCK_LAYOUT } from "~/render/gpu";
+import { SHAPE } from "~/render/sprites";
 import {
   CENTER_PAD,
   HEAL_PADS,
@@ -11,12 +11,12 @@ import {
   TEAM_BASES,
   teamByName,
   type World,
-} from "../world";
+} from "~/world";
 import {
   BASE_MAX_HP,
   type CenterPadPhase,
   centerPadPhase,
-} from "../world/factory";
+} from "~/world/factory";
 import { drawForceField, type FieldDir } from "./effects";
 import type { PushFn, Rgba } from "./push";
 

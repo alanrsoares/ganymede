@@ -1,4 +1,4 @@
-import { toroidalDist, wrap } from "../engine/physics";
+import { toroidalDist, wrap } from "~/engine/physics";
 import { BASE_MAX_HP, baseHitsRequired, DEFAULT_CONFIG } from "./tuning";
 import {
   ARENA,

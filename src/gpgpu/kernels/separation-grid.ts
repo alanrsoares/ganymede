@@ -4,10 +4,10 @@
 // around each ship. One command encoder drives build + query in a single submit
 // (separate passes → guaranteed write-before-read ordering across stages).
 
-import { readbackBuffer, readFloats, storageBuffer } from "../buffers";
-import { compose, Kernel } from "../kernel";
-import lib from "../wgsl/lib.wgsl" with { type: "text" };
-import sepGrid from "../wgsl/separation-grid.wgsl" with { type: "text" };
+import { readbackBuffer, readFloats, storageBuffer } from "~/gpgpu/buffers";
+import { compose, Kernel } from "~/gpgpu/kernel";
+import lib from "~/gpgpu/wgsl/lib.wgsl" with { type: "text" };
+import sepGrid from "~/gpgpu/wgsl/separation-grid.wgsl" with { type: "text" };
 import { SpatialGrid } from "./grid";
 import type { Arena } from "./separation";
 

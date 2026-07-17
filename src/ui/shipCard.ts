@@ -5,16 +5,8 @@
 // and feeds it here; this module only renders.
 
 import van from "vanjs-core";
-import { clamp01 } from "./engine/physics";
-import {
-  ARCHETYPE_INFO,
-  type ArchetypeInfo,
-  PEAK,
-  rgbCss,
-  TIERS,
-  type Tier,
-} from "./shipInfo";
-import { type LightCycle, MAX_LEVEL } from "./world";
+import { clamp01 } from "~/engine/physics";
+import { type LightCycle, MAX_LEVEL } from "~/world";
 import {
   ARC_MIN_LEVEL,
   ARCHETYPE_MODS,
@@ -28,7 +20,15 @@ import {
   maxFuelFor,
   maxHpFor,
   minesFor,
-} from "./world/factory";
+} from "~/world/factory";
+import {
+  ARCHETYPE_INFO,
+  type ArchetypeInfo,
+  PEAK,
+  rgbCss,
+  TIERS,
+  type Tier,
+} from "./shipInfo";
 
 const { div, span } = van.tags;
 const svg = van.tags("http://www.w3.org/2000/svg");

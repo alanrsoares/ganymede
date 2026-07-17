@@ -6,14 +6,18 @@
 // read) on the right. Reads the shared store every frame; registers mesh
 // rebuild hooks so designer edits re-bake the hull.
 
-import { acquireGpu } from "../gpu-context";
-import { makeAsteroidMesh } from "../mesh";
-import { createMeshPass, instanceLayout, type MeshPass } from "../mesh-pass";
-import backgroundWGSL from "../shaders/background.wgsl" with { type: "text" };
-import highlightWGSL from "../shaders/highlight.wgsl" with { type: "text" };
-import plumeWGSL from "../shaders/plume.wgsl" with { type: "text" };
-import rockWGSL from "../shaders/rock.wgsl" with { type: "text" };
-import shipWGSL from "../shaders/ship.wgsl" with { type: "text" };
+import { acquireGpu } from "~/render/gpu-context";
+import { makeAsteroidMesh } from "~/render/mesh";
+import {
+  createMeshPass,
+  instanceLayout,
+  type MeshPass,
+} from "~/render/mesh-pass";
+import backgroundWGSL from "~/shaders/background.wgsl" with { type: "text" };
+import highlightWGSL from "~/shaders/highlight.wgsl" with { type: "text" };
+import plumeWGSL from "~/shaders/plume.wgsl" with { type: "text" };
+import rockWGSL from "~/shaders/rock.wgsl" with { type: "text" };
+import shipWGSL from "~/shaders/ship.wgsl" with { type: "text" };
 import {
   assembleShipMesh,
   makePlumeMesh,
@@ -22,8 +26,8 @@ import {
   SHIP_CLASSES,
   type ShipClass,
   type V3,
-} from "../ship-parts";
-import { TEAMS } from "../world/types";
+} from "~/ship-parts";
+import { TEAMS } from "~/world/types";
 import {
   hulls,
   registerRebuild,

@@ -2,8 +2,9 @@
 // acquires the nearest in-range enemy and auto-advances when it dies or leaves
 // range (resolveLock); the player cycles manually (cycleLock). Fire hard-locks
 // onto the result. All deterministic — pure functions of world + positions.
+
+import type { EntityList } from "~/engine/entities";
 import { wrapDelta } from "~/engine/physics";
-import type { EntityList } from "../engine/entities";
 import { ARENA, type LightCycle, type World } from "./types";
 
 export const LOCK_RANGE = 260; // px; only enemies this close can be locked

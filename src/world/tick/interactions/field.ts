@@ -29,8 +29,11 @@ import {
   SHIELD_BASE_REGEN,
   shipRadius,
   wrap,
-} from "../../factory";
-import { within } from "../../math";
+} from "~/world/factory";
+import { within } from "~/world/math";
+import { hit, killShip, promote, type TickCtx } from "~/world/tick/context";
+import type { HazardState } from "~/world/tick/hazard-collisions";
+import type { MotionState } from "~/world/tick/motion";
 import {
   ARENA,
   type Asteroid,
@@ -46,10 +49,7 @@ import {
   type Mutable,
   PORTALS,
   TEAM_BASES,
-} from "../../types";
-import { hit, killShip, promote, type TickCtx } from "../context";
-import type { HazardState } from "../hazard-collisions";
-import type { MotionState } from "../motion";
+} from "~/world/types";
 import type { InteractionState } from "./state";
 
 /** Heal from the first overlapping heal pad, if any. */

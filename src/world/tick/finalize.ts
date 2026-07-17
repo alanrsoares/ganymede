@@ -1,6 +1,6 @@
 import { cap, type EntityList, retain, spawn } from "~/engine/entities";
 import { nextInt, type Seed } from "~/engine/rng";
-import { EXPLOSION_VARIANTS } from "~/sprites";
+import { EXPLOSION_VARIANTS } from "~/render/sprites";
 import {
   EXPLOSION_DURATION,
   MAX_SHIPS,
@@ -9,8 +9,8 @@ import {
   rollAsteroid,
   rollMany,
   rollPickup,
-} from "../factory";
-import { resolveLock } from "../lock";
+} from "~/world/factory";
+import { resolveLock } from "~/world/lock";
 import {
   ARCADE_PICKUP_KINDS,
   type Burst,
@@ -19,7 +19,7 @@ import {
   type MatchConfig,
   PICKUP_KINDS,
   type World,
-} from "../types";
+} from "~/world/types";
 import type { BurstSpec, TickCtx } from "./context";
 import type { HazardState } from "./hazard-collisions";
 import type { InteractionState } from "./interactions";

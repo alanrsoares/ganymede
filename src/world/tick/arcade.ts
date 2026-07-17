@@ -3,22 +3,22 @@
 // spawning, wave-clear detection, and player death → lives/respawn/game-over.
 // No-op unless `world.config.format === "arcade"`. See docs/arcade-mode-plan.md.
 
-import { nextRange } from "../../engine/rng";
-import { activeTeams, rollShip } from "../factory";
+import { nextRange } from "~/engine/rng";
+import { activeTeams, rollShip } from "~/world/factory";
 import {
   BASE_MAX_HP,
   HANDICAP_ADAPT_MAX,
   HANDICAP_CLEAN_STEP,
   HANDICAP_DEATH_STEP,
   SPAWN_INVULN_GENS,
-} from "../tuning";
+} from "~/world/tuning";
 import {
   type ArcadeConfig,
   type ArcadeState,
   baseByName,
   type LightCycle,
   type World,
-} from "../types";
+} from "~/world/types";
 
 // Half-width of the square a spawned ship scatters in around its base (cells).
 const SPAWN_SPREAD = 7;

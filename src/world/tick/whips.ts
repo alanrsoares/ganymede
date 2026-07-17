@@ -8,7 +8,7 @@
 // deterministic, no RNG, no `now`.
 
 import { wrapDelta } from "~/engine/physics";
-import { SCORE_KILL, toroidalDist, wrap } from "../factory";
+import { SCORE_KILL, toroidalDist, wrap } from "~/world/factory";
 import {
   WHIP_ARC,
   WHIP_DAMP,
@@ -18,7 +18,7 @@ import {
   WHIP_SEEK,
   WHIP_SEG_LEN,
   WHIP_STIFF,
-} from "../tuning";
+} from "~/world/tuning";
 import {
   ARENA,
   BURST_COUNTER,
@@ -27,7 +27,7 @@ import {
   type Whip,
   type WhipNode,
   type World,
-} from "../types";
+} from "~/world/types";
 import { hit, killShip, type TickCtx } from "./context";
 
 type MutWhip = Mutable<Whip>;

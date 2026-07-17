@@ -1,4 +1,4 @@
-import type { World } from "../types";
+import type { World } from "~/world/types";
 import { arcadeStep } from "./arcade";
 import { createTickCtx } from "./context";
 import { finalizeTick } from "./finalize";

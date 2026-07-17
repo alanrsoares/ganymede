@@ -9,8 +9,8 @@ import {
   wrap,
   XP_LEVEL_CAP,
   XP_PER_ROCK,
-} from "../factory";
-import { within } from "../math";
+} from "~/world/factory";
+import { within } from "~/world/math";
 import {
   ARENA,
   type Asteroid,
@@ -24,7 +24,7 @@ import {
   PORTALS,
   type Rgb,
   TEAM_BASES,
-} from "../types";
+} from "~/world/types";
 import { gridCrossPairs, type PairList, runCrossPairs } from "./broadphase";
 import {
   awardXp,

@@ -8,9 +8,9 @@ import {
   normalize,
   rotate,
   wrapDelta,
-} from "../engine/physics";
-import { nextInt, nextRange, pick, rollMany, type Seed } from "../engine/rng";
-import { ASTEROID_VARIANTS } from "../sprites";
+} from "~/engine/physics";
+import { nextInt, nextRange, pick, rollMany, type Seed } from "~/engine/rng";
+import { ASTEROID_VARIANTS } from "~/render/sprites";
 import { applyHit, distSq, wrap } from "./math";
 import {
   asteroidHp,

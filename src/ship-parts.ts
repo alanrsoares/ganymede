@@ -10,7 +10,7 @@
 // Conventions: ship local space has the nose along +Y, +Z toward the viewer,
 // authored roughly within ±1.1 along Y so instance `radius` ≈ half-length px.
 
-import type { Mesh } from "./mesh";
+import type { Mesh } from "~/render/mesh";
 
 export type V3 = [number, number, number];
 type Tri = [V3, V3, V3];

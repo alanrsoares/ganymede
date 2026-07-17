@@ -4,7 +4,9 @@
 // bit-exact: GPU floats differ from JS (Metal sqrt/div, non-associativity), so
 // we assert relative error stays under a gameplay-safe threshold, not zero.
 
-import { normalize, wrapDelta } from "../engine/physics";
+import { normalize, wrapDelta } from "~/engine/physics";
+import type { FlockTuning } from "~/gpgpu/kernels/flock";
+import type { Arena } from "~/gpgpu/kernels/separation";
 import {
   ARCHETYPE_MODS,
   CONCAVE_COMMIT_DIST,
@@ -17,10 +19,8 @@ import {
   KITE_DIST,
   maxHpForLevel,
   targetPriority,
-} from "../world/tuning";
-import { ARCHETYPES, type Archetype, type LightCycle } from "../world/types";
-import type { FlockTuning } from "./kernels/flock";
-import type { Arena } from "./kernels/separation";
+} from "~/world/tuning";
+import { ARCHETYPES, type Archetype, type LightCycle } from "~/world/types";
 
 // Deterministic seeded field (mulberry32, same family as engine/rng). Packs
 // n ships as [x, y, 0, 0] per stride-4 slot — the vec4 SoA the GPU reads.

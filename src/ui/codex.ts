@@ -7,10 +7,8 @@
 // scaling from shipInfo.ts so the two views never drift.
 
 import van, { type State } from "vanjs-core";
-import { focusFirst, trapTab } from "./a11y";
-import { clamp01 } from "./engine/physics";
-import { ARCHETYPE_INFO, PEAK, TIERS } from "./shipInfo";
-import { ARCHETYPES, type Archetype, MAX_LEVEL } from "./world";
+import { clamp01 } from "~/engine/physics";
+import { ARCHETYPES, type Archetype, MAX_LEVEL } from "~/world";
 import {
   ARC_MIN_LEVEL,
   ARCHETYPE_MODS,
@@ -24,7 +22,9 @@ import {
   maxFuelFor,
   maxHpFor,
   minesFor,
-} from "./world/factory";
+} from "~/world/factory";
+import { focusFirst, trapTab } from "./a11y";
+import { ARCHETYPE_INFO, PEAK, TIERS } from "./shipInfo";
 
 const { div, span, button } = van.tags;
 const svg = van.tags("http://www.w3.org/2000/svg");
