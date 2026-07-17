@@ -1,4 +1,7 @@
 import { nextRange } from "~/engine/rng";
+import { rollShip } from "~/world/factory";
+import { distSq, within, wrap } from "~/world/math";
+import { promote, type TickCtx } from "~/world/tick/context";
 import {
   BOOST_DURATION,
   CLOAK_DURATION,
@@ -15,12 +18,9 @@ import {
   MUSTER_DRONE_COUNT,
   OVERCHARGE_DURATION,
   PICKUP_RADIUS,
-  rollShip,
   SCORE_PICKUP,
   shipRadius,
-  wrap,
-} from "../../factory";
-import { distSq, within } from "../../math";
+} from "~/world/tuning";
 import {
   ARENA,
   DRONE_KIND,
@@ -30,8 +30,7 @@ import {
   MUSTER_KIND,
   type Mutable,
   type Pickup,
-} from "../../types";
-import { promote, type TickCtx } from "../context";
+} from "~/world/types";
 import { fireEmpMissile } from "./weapons";
 
 /**

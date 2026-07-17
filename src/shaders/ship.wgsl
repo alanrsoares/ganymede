@@ -1,5 +1,5 @@
 // 3D ship-hull mesh pass. Hulls are instanced procedural part-assemblies
-// (ship-parts.ts) positioned in screen pixels like rocks, with three ship
+// (hull/bake.ts) positioned in screen pixels like rocks, with three ship
 // rotations: heading (screen-plane), a fixed camera tilt that leans the hull
 // so its 3D form reads under the top-down camera, and roll for continuous
 // banking (replaces the 5-frame sprite bank flip). Shares the frame uniform

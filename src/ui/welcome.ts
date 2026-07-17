@@ -8,9 +8,9 @@
 // launch) and hands off to the setup screen. It never touches the sim.
 
 import van from "vanjs-core";
+import { clamp01, lerp } from "~/engine/physics";
+import { CAMERA_IDENTITY, type CameraView } from "~/render/gpu";
 import { trapTab } from "./a11y";
-import { clamp01, lerp } from "./engine/physics";
-import { CAMERA_IDENTITY, type CameraView } from "./gpu";
 
 const CYAN = "#3fd8ff";
 const MINT = "#e6fbf1";

@@ -10,16 +10,16 @@ import {
   wrapDelta,
 } from "~/engine/physics";
 import { nextFloat } from "~/engine/rng";
-import { makeAsteroidMesh, makeSphereMesh } from "~/mesh";
-import { instanceLayout } from "~/mesh-pass";
-import { shipSize } from "~/overlay/ships";
+import { makeAsteroidMesh, makeSphereMesh } from "~/render/mesh";
+import { instanceLayout } from "~/render/mesh-pass";
+import { shipSize } from "~/render/overlay/ships";
 import {
   BOLT_CLIPS,
   CLIP,
   clipLayer,
   SPRITE_LAYER_COUNT,
   SPRITE_URLS,
-} from "~/sprites";
+} from "~/render/sprites";
 import {
   ARENA,
   CENTER_PAD,
@@ -33,17 +33,17 @@ import {
 } from "~/world";
 import {
   acquireTarget,
-  applyHit,
-  fireCooldownForLevel,
   focusEnemy,
   hurtShip,
-  maxHpForLevel,
   nearestEnemy,
   rollShip,
-  shipRadius,
-  toroidalDist,
-  wrap,
 } from "~/world/factory";
+import { applyHit, toroidalDist, wrap } from "~/world/math";
+import {
+  fireCooldownForLevel,
+  maxHpForLevel,
+  shipRadius,
+} from "~/world/tuning";
 
 const close = (a: number, b: number, eps = 1e-6) =>
   expect(Math.abs(a - b)).toBeLessThan(eps);

@@ -1,16 +1,15 @@
 import { angleTo, normalize, wrapDelta } from "~/engine/physics";
+import { spawnShrapnel } from "~/world/factory";
+import { within, wrap } from "~/world/math";
 import {
   BASE_RADIUS,
   BULLET_RADIUS,
   MISSILE_RADIUS,
   SCORE_KILL,
   shipRadius,
-  spawnShrapnel,
-  wrap,
   XP_LEVEL_CAP,
   XP_PER_ROCK,
-} from "../factory";
-import { within } from "../math";
+} from "~/world/tuning";
 import {
   ARENA,
   type Asteroid,
@@ -24,7 +23,7 @@ import {
   PORTALS,
   type Rgb,
   TEAM_BASES,
-} from "../types";
+} from "~/world/types";
 import { gridCrossPairs, type PairList, runCrossPairs } from "./broadphase";
 import {
   awardXp,

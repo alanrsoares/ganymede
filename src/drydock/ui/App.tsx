@@ -4,7 +4,7 @@
 import { Theme } from "@astryxdesign/core/theme";
 import { gothicTheme } from "@astryxdesign/theme-gothic/built";
 import type { ReactElement } from "react";
-import { view } from "../store";
+import { view } from "~/drydock/store";
 import { ControlPanel } from "./ControlPanel";
 import { DesignerPanel } from "./DesignerPanel";
 import { useDrydock } from "./hooks";

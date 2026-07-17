@@ -9,10 +9,10 @@
 // axis (else the toroidal 3x3 wraps onto itself and double-counts) — holds for
 // any arena at least 3r wide/tall.
 
-import { storageBuffer, uniformBuffer } from "../buffers";
-import { compose, Kernel } from "../kernel";
-import gridWgsl from "../wgsl/grid.wgsl" with { type: "text" };
-import lib from "../wgsl/lib.wgsl" with { type: "text" };
+import { storageBuffer, uniformBuffer } from "~/gpgpu/buffers";
+import { compose, Kernel } from "~/gpgpu/kernel";
+import gridWgsl from "~/gpgpu/wgsl/grid.wgsl" with { type: "text" };
+import lib from "~/gpgpu/wgsl/lib.wgsl" with { type: "text" };
 import type { Arena } from "./separation";
 
 const GRID_PARAMS_BYTES = 32; // u32 n + f32×2 arena + f32×2 cell + u32×2 cells + f32 r

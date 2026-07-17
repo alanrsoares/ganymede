@@ -1,27 +1,29 @@
 import { assertNever } from "@onrails/pattern";
-import { nextInt } from "../engine/rng";
+import { nextInt } from "~/engine/rng";
+import { spawnWhip } from "~/world/tick/whips";
+import {
+  rollShip,
+  spawnBullet,
+  spawnEmpMissile,
+  spawnMissile,
+} from "./factory";
+import { initArcadeWorld, initWorld, spawnShip } from "./init";
+import { cycleLock } from "./lock";
+import { wrap } from "./math";
+import { tick } from "./tick";
 import {
   carriesMissiles,
   fireCooldownFor,
   MINE_ARM,
   MINE_LIFE,
   OVERCHARGE_MULT,
-  rollShip,
   shipRadius,
-  spawnBullet,
-  spawnEmpMissile,
-  spawnMissile,
   speedForLevel,
   WHIP_DAMAGE,
   WHIP_FUEL_COST,
   WHIP_REACH,
   weaponFor,
-  wrap,
-} from "./factory";
-import { initArcadeWorld, initWorld, spawnShip } from "./init";
-import { cycleLock } from "./lock";
-import { tick } from "./tick";
-import { spawnWhip } from "./tick/whips";
+} from "./tuning";
 import {
   ARENA,
   BURST_MUZZLE,

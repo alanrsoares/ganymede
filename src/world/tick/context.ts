@@ -1,12 +1,13 @@
 import type { Seed } from "~/engine/rng";
 import { nextInt } from "~/engine/rng";
+import { hurtShip, rollShip } from "~/world/factory";
+import { toroidalDist } from "~/world/math";
 import {
   ARCADE_BASE_HP_FLOOR,
   ARCHETYPE_MODS,
   arcadeHandicap,
   armorFor,
   BASE_RAID_XP,
-  hurtShip,
   isRammer,
   killXp,
   levelUpScale,
@@ -15,13 +16,11 @@ import {
   PIERCE_COUNTER_MULT,
   RAM_SHOCK_DAMAGE,
   RAM_SHOCK_RADIUS,
-  rollShip,
   SCORE_KILL,
   SCORE_MERGE,
   shieldForLevel,
-  toroidalDist,
   xpForLevel,
-} from "../factory";
+} from "~/world/tuning";
 import {
   ARENA,
   BURST_COUNTER,
@@ -36,7 +35,7 @@ import {
   type Rgb,
   TEAMS,
   type World,
-} from "../types";
+} from "~/world/types";
 
 export type BurstSpec = {
   x: number;

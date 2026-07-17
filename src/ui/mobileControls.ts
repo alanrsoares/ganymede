@@ -6,8 +6,8 @@
 // the keyboard path does, so the sim stays oblivious to the input source.
 
 import van, { type State } from "vanjs-core";
-import type { LightCycle } from "./world";
-import { WHIP_ENABLED } from "./world/factory";
+import type { LightCycle } from "~/world";
+import { WHIP_ENABLED } from "~/world/tuning";
 
 const { div, button, span } = van.tags;
 

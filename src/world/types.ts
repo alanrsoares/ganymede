@@ -2,8 +2,8 @@
 // immutable World/Msg types, and the fixed field furniture. No logic lives here
 // — builders and the sim step import from this module.
 
-import type { Entity, EntityList } from "../engine/entities";
-import type { Seed } from "../engine/rng";
+import type { Entity, EntityList } from "~/engine/entities";
+import type { Seed } from "~/engine/rng";
 
 export const DEFAULT_GRID_W = 480;
 export const DEFAULT_GRID_H = 270;
@@ -518,4 +518,4 @@ export type Msg =
   | { readonly kind: "cycleTarget"; readonly dir: 1 | -1 }
   | { readonly kind: "arcadeSkipIntermission" };
 
-export type { Mutable } from "../engine/entities";
+export type { Mutable } from "~/engine/entities";

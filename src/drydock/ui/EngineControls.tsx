@@ -6,8 +6,8 @@ import { IconButton } from "@astryxdesign/core/IconButton";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import type { ReactElement } from "react";
-import type { EngineAnchor } from "../../ship-parts";
-import { addEngine, delEngine, hulls, view } from "../store";
+import { addEngine, delEngine, hulls, view } from "~/drydock/store";
+import type { EngineAnchor } from "~/hull/catalog";
 import { SliderField } from "./fields";
 
 const EngineRow = ({

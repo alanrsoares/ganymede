@@ -1,17 +1,12 @@
 import { elastic, normalize, wrapDelta } from "~/engine/physics";
-import {
-  HIT_COOLDOWN,
-  meleeDamage,
-  SCORE_KILL,
-  toroidalDist,
-  wrap,
-} from "../factory";
+import { toroidalDist, wrap } from "~/world/math";
+import { HIT_COOLDOWN, meleeDamage, SCORE_KILL } from "~/world/tuning";
 import {
   ARENA,
   BURST_EXPLOSION,
   type LightCycle,
   type Mutable,
-} from "../types";
+} from "~/world/types";
 import { gridSelfPairs, type PairList, SHIP_PAIR_BAND } from "./broadphase";
 import { hit, killShip, maybeRamShock, replace, type TickCtx } from "./context";
 

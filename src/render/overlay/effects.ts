@@ -1,8 +1,8 @@
 // view: reusable field effects shared across overlay draws (center pad, bases,
 // ship abilities). Pure — animation is derived from `now`.
 
-import { lerp } from "../engine/physics";
-import { SHAPE } from "../sprites";
+import { lerp } from "~/engine/physics";
+import { SHAPE } from "~/render/sprites";
 import type { PushFn } from "./push";
 
 /** Travel direction of the ping rings: outward (repel) or inward (attract). */

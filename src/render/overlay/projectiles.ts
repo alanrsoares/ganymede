@@ -8,7 +8,7 @@ import {
   clipLayer,
   explosionClip,
   SHAPE,
-} from "../sprites";
+} from "~/render/sprites";
 import {
   BURST_ARC,
   BURST_COUNTER,
@@ -20,8 +20,8 @@ import {
   BURST_SHIELD,
   type Burst,
   type World,
-} from "../world";
-import { DRONE_RADIUS, EMP_RADIUS, EXPLOSION_DURATION } from "../world/tuning";
+} from "~/world";
+import { DRONE_RADIUS, EMP_RADIUS, EXPLOSION_DURATION } from "~/world/tuning";
 import type { PushFn, Rgba } from "./push";
 
 // Weapon bolts — a shader-drawn streak (team glow + tapered tips) with the

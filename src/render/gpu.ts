@@ -2,6 +2,18 @@
 // game sprites (ships, asteroids, mines, pickups, explosions, HUD rings).
 
 import * as d from "typegpu/data";
+import { makePlumeMesh, makeShipMesh } from "~/hull/bake";
+import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
+// WGSL lives in .wgsl files (real syntax highlighting) and is imported as text.
+import backgroundWGSL from "~/shaders/background.wgsl" with { type: "text" };
+import baseWGSL from "~/shaders/base.wgsl" with { type: "text" };
+import bloomWGSL from "~/shaders/bloom.wgsl" with { type: "text" };
+import orbWGSL from "~/shaders/orb.wgsl" with { type: "text" };
+import overlayWGSL from "~/shaders/overlay.wgsl" with { type: "text" };
+import plumeWGSL from "~/shaders/plume.wgsl" with { type: "text" };
+import rockWGSL from "~/shaders/rock.wgsl" with { type: "text" };
+import shieldWGSL from "~/shaders/shield.wgsl" with { type: "text" };
+import shipWGSL from "~/shaders/ship.wgsl" with { type: "text" };
 import type { GpuContext } from "./gpu-context";
 import {
   type Mesh,
@@ -12,113 +24,28 @@ import {
 import {
   createMeshPass,
   type InstanceLayout,
-  instanceLayout,
   type MeshPass,
 } from "./mesh-pass";
-// WGSL lives in .wgsl files (real syntax highlighting) and is imported as text.
-import backgroundWGSL from "./shaders/background.wgsl" with { type: "text" };
-import baseWGSL from "./shaders/base.wgsl" with { type: "text" };
-import bloomWGSL from "./shaders/bloom.wgsl" with { type: "text" };
-import orbWGSL from "./shaders/orb.wgsl" with { type: "text" };
-import overlayWGSL from "./shaders/overlay.wgsl" with { type: "text" };
-import plumeWGSL from "./shaders/plume.wgsl" with { type: "text" };
-import rockWGSL from "./shaders/rock.wgsl" with { type: "text" };
-import shieldWGSL from "./shaders/shield.wgsl" with { type: "text" };
-import shipWGSL from "./shaders/ship.wgsl" with { type: "text" };
 import {
-  makePlumeMesh,
-  makeShipMesh,
-  SHIP_CLASSES,
-  type ShipClass,
-} from "./ship-parts";
+  FLOATS_PER_INSTANCE,
+  type FrameInstances,
+  MAX_BASES,
+  MAX_CENTER_PADS,
+  MAX_INSTANCES,
+  MAX_MESH_SHIPS,
+  MAX_ORBS,
+  MAX_PLUMES,
+  MAX_ROCKS,
+  MAX_SHIELDS,
+  PLUME_LAYOUT,
+  ROCK_LAYOUT,
+  SHIELD_LAYOUT,
+  SHIP_LAYOUT,
+} from "./overlay/frame";
 import { SPRITE_LAYER_COUNT, SPRITE_URLS } from "./sprites";
 
-// --- Sprite/Overlay pipeline (space shooter sprites and vector rings) ---
-
-export const FLOATS_PER_INSTANCE = 12; // posSize(4) + rotShape(4) + color(4)
-// Headroom for a busy fight: ~14 sprites/ace-ship × 12 ships + bolts + missiles
-// + mines + shrapnel + bursts + field furniture. overlay.push warns if exceeded.
-export const MAX_INSTANCES = 768;
-
-// --- 3D mesh passes (rocks, shields). Each layout is the single source of truth
-// for its float count, vertex attributes, and named packing offsets (see
-// overlay.ts). WGSL @location structs must list fields in this same order. ---
-export const MAX_ROCKS = 128;
-export const MAX_SHIELDS = 16; // ship shields
-export const MAX_ORBS = 12; // power-up energy orbs (own solid-lit pass)
-export const MAX_BASES = 8;
-export const MAX_CENTER_PADS = 2;
-// prettier-ignore
-export const ROCK_LAYOUT = instanceLayout([
-  "cx",
-  "cy",
-  "radius",
-  "_a",
-  "rx",
-  "ry",
-  "rz",
-  "_b",
-  "r",
-  "g",
-  "b",
-  "damage",
-]);
-export const SHIELD_LAYOUT = instanceLayout([
-  "cx",
-  "cy",
-  "radius",
-  "strength",
-  "r",
-  "g",
-  "b",
-  "flash",
-]);
-// 3D hull instances (ship.wgsl / drydock share this shape). One pass per ship
-// class, so each class's baked part-assembly mesh draws all its ships at once.
-export const MAX_MESH_SHIPS = 16;
-// prettier-ignore
-export const SHIP_LAYOUT = instanceLayout([
-  "cx",
-  "cy",
-  "radius",
-  "roll",
-  "heading",
-  "tilt",
-  "_a",
-  "_b",
-  "r",
-  "g",
-  "b",
-  "alpha",
-]);
-// Engine plume cones, one instance per nozzle anchor per ship (plume.wgsl).
-export const MAX_PLUMES = MAX_MESH_SHIPS * 4;
-// prettier-ignore
-export const PLUME_LAYOUT = instanceLayout([
-  "cx",
-  "cy",
-  "radius",
-  "roll",
-  "heading",
-  "tilt",
-  "throttle",
-  "phase",
-  "nx",
-  "ny",
-  "nz",
-  "w",
-  "r",
-  "g",
-  "b",
-  "alpha",
-]);
-/** Per-class hull instance buffers + engine plume instances for the mesh passes. */
-export interface ShipBuckets {
-  instances: Record<ShipClass, Float32Array<ArrayBuffer>>;
-  counts: Record<ShipClass, number>;
-  plumes: Float32Array<ArrayBuffer>;
-  plumeCount: number;
-}
+// Instance caps and layouts live in ./overlay/frame — they describe the
+// overlay's projection of the World; this module only consumes them.
 const DEPTH_FORMAT = "depth24plus";
 // Compresses pixel-space z into the [0,1] depth range (radius ≲ 60px stays well
 // inside the band, so rocks self-occlude without ever clipping the near/far plane).
@@ -158,24 +85,7 @@ export const CAMERA_IDENTITY: CameraView = {
 };
 
 export interface Renderer {
-  render(
-    instances: Float32Array<ArrayBuffer>,
-    instanceCount: number,
-    portalCount: number,
-    rockInstances: Float32Array<ArrayBuffer>,
-    rockCount: number,
-    shieldInstances: Float32Array<ArrayBuffer>,
-    shieldCount: number,
-    orbInstances: Float32Array<ArrayBuffer>,
-    orbCount: number,
-    baseInstances: Float32Array<ArrayBuffer>,
-    baseCount: number,
-    centerPadInstances: Float32Array<ArrayBuffer>,
-    centerPadCount: number,
-    ships: ShipBuckets,
-    time: number,
-    camera: CameraView,
-  ): void;
+  render(frame: FrameInstances, time: number, camera: CameraView): void;
   resize(): void;
 }
 
@@ -643,28 +553,16 @@ interface ScenePassInput {
   bgPipeline: GPURenderPipeline;
   bgBindGroup: GPUBindGroup;
   rockPass: MeshPass;
-  rockInstances: Float32Array<ArrayBuffer>;
-  rockCount: number;
   spritePipeline: GPURenderPipeline;
   spriteBindGroup: GPUBindGroup;
   instanceBuffer: GPUBuffer;
-  instanceCount: number;
-  portalCount: number; // leading instances = portals, drawn before the 3D passes
   orbPass: MeshPass;
-  orbInstances: Float32Array<ArrayBuffer>;
-  orbCount: number;
   shieldPass: MeshPass;
-  shieldInstances: Float32Array<ArrayBuffer>;
-  shieldCount: number;
   basePass: MeshPass;
-  baseInstances: Float32Array<ArrayBuffer>;
-  baseCount: number;
   centerPadPass: MeshPass;
-  centerPadInstances: Float32Array<ArrayBuffer>;
-  centerPadCount: number;
   shipPasses: Record<ShipClass, MeshPass>;
   plumePass: MeshPass;
-  ships: ShipBuckets;
+  frame: FrameInstances;
 }
 
 // Pass 1: the scene, into the offscreen sceneTex (+depth for the rocks).
@@ -696,6 +594,7 @@ const encodeScenePass = (
   pass.setBindGroup(0, input.bgBindGroup);
   pass.draw(3);
 
+  const { frame } = input;
   const drawSprites = (count: number, first: number) => {
     if (count <= 0) return;
     pass.setPipeline(input.spritePipeline);
@@ -706,31 +605,31 @@ const encodeScenePass = (
 
   // Portals are the leading sprite instances, drawn before the 3D passes so
   // rocks, shrapnel and bases fly OVER the portal vortices (background floor).
-  drawSprites(input.portalCount, 0);
+  drawSprites(frame.portalCount, 0);
 
-  input.rockPass.draw(pass, input.rockInstances, input.rockCount);
-  input.basePass.draw(pass, input.baseInstances, input.baseCount);
+  input.rockPass.draw(pass, frame.rockInstances, frame.rockCount);
+  input.basePass.draw(pass, frame.baseInstances, frame.baseCount);
   input.centerPadPass.draw(
     pass,
-    input.centerPadInstances,
-    input.centerPadCount,
+    frame.centerPadInstances,
+    frame.centerPadCount,
   );
 
   // The rest of the overlay (actors, HUD, base/pad glow) over the 3D passes.
-  drawSprites(input.instanceCount - input.portalCount, input.portalCount);
+  drawSprites(frame.count - frame.portalCount, frame.portalCount);
 
   // Ship hulls: one instanced draw per class mesh, over the sprite FX layer.
   for (const cls of SHIP_CLASSES) {
     input.shipPasses[cls].draw(
       pass,
-      input.ships.instances[cls],
-      input.ships.counts[cls],
+      frame.ships.instances[cls],
+      frame.ships.counts[cls],
     );
   }
-  input.plumePass.draw(pass, input.ships.plumes, input.ships.plumeCount);
+  input.plumePass.draw(pass, frame.ships.plumes, frame.ships.plumeCount);
 
-  input.orbPass.draw(pass, input.orbInstances, input.orbCount);
-  input.shieldPass.draw(pass, input.shieldInstances, input.shieldCount);
+  input.orbPass.draw(pass, frame.orbInstances, frame.orbCount);
+  input.shieldPass.draw(pass, frame.shieldInstances, frame.shieldCount);
   pass.end();
 };
 
@@ -799,44 +698,11 @@ interface RenderFnDeps {
 // the setup function itself stays short — behavior is identical either way.
 const createRenderFn =
   (deps: RenderFnDeps): Renderer["render"] =>
-  (
-    instances,
-    instanceCount,
-    portalCount,
-    rockInstances,
-    rockCount,
-    shieldInstances,
-    shieldCount,
-    orbInstances,
-    orbCount,
-    baseInstances,
-    baseCount,
-    centerPadInstances,
-    centerPadCount,
-    ships,
-    time,
-    camera,
-  ) => {
-    const { device, context, instanceBuffer } = deps;
-    writeFrameUniforms(deps, time, instances, instanceCount, camera);
+  (frame, time, camera) => {
+    const { device, context } = deps;
+    writeFrameUniforms(deps, time, frame.instances, frame.count, camera);
     const encoder = device.createCommandEncoder();
-    encodeScenePass(encoder, deps.targets, {
-      ...deps,
-      rockInstances,
-      rockCount,
-      instanceBuffer,
-      instanceCount,
-      portalCount,
-      orbInstances,
-      orbCount,
-      shieldInstances,
-      shieldCount,
-      baseInstances,
-      baseCount,
-      centerPadInstances,
-      centerPadCount,
-      ships,
-    });
+    encodeScenePass(encoder, deps.targets, { ...deps, frame });
     encodeBloomPasses(encoder, context, deps.targets, deps.bloom);
     device.queue.submit([encoder.finish()]);
   };

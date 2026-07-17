@@ -17,6 +17,10 @@ import {
   update,
   type World,
 } from "~/world";
+import { rollShip, spawnBullet } from "~/world/factory";
+import { fullBaseHp } from "~/world/math";
+import { goalDelta } from "~/world/steering";
+import { createTickCtx, creditBaseHit } from "~/world/tick/context";
 import {
   ARCADE_INTERMISSION_GENS,
   ARCADE_LIVES,
@@ -25,15 +29,10 @@ import {
   baseHitsRequired,
   cruiseFor,
   DRONE_COUNT,
-  fullBaseHp,
-  goalDelta,
   MATCH_REINFORCE_GENS,
   MAX_SHIPS,
   maxFuelFor,
-  rollShip,
-  spawnBullet,
-} from "~/world/factory";
-import { createTickCtx, creditBaseHit } from "~/world/tick/context";
+} from "~/world/tuning";
 
 const run = (seed: number, ticks: number, steps = 3) => {
   let w = initWorld(seed);

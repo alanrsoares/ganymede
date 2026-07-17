@@ -31,7 +31,15 @@ superseded; that lineage has been removed. All live code lives under `src`.)
 - **Burst**: a transient FX event (explosion / detonation / muzzle / impact).
 - **Instance**: one packed record in a GPU instance buffer (a sprite, a 3D rock,
   a shield). Each **instance layout** is the field schema for one pass.
+- **FrameInstances**: one frame's packed instance arrays + counts — the single
+  value the overlay hands the renderer. Built purely from the World (plus
+  `now`), so the whole projection is testable without a GPUDevice.
 - **Pass**: one GPU draw stage (background, sprites, 3D rocks, shields).
+- **Ship stats** (`ui/shipStats.ts`, `statsFor`): the UI read model answering
+  "what does the HUD say about a ship of archetype A at rank N" — stat gauge
+  rows, trait chips, counter relations, flavor, and the tier ladder. Derived
+  from the same tuning the sim spawns from, so the hover card and codex never
+  drift from the sim (or each other).
 
 ## Conventions
 

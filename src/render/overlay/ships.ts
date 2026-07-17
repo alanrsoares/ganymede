@@ -1,9 +1,14 @@
 // view: ship rendering — shadow, exhaust, smoke, shield, hull, status FX,
 // beam and HP bar. Pure — reads world, animation is derived from `now`.
-// Hull bodies are 3D part-assemblies (ship-parts.ts) drawn by gpu.ts's
+// Hull bodies are 3D part-assemblies (hull/bake.ts) drawn by gpu.ts's
 // instanced ship passes; everything else stays on the sprite/solid layer.
 
-import { clamp01 } from "../engine/physics";
+import { clamp01 } from "~/engine/physics";
+import { ENGINES, SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
+import { SHAPE, shipSprite } from "~/render/sprites";
+import type { LightCycle, World } from "~/world";
+import { hasRaidedAllEnemyBases } from "~/world/math";
+import { MUSTER_DRONE_SIZE_MULT, SHIELD_FLASH } from "~/world/tuning";
 import {
   MAX_MESH_SHIPS,
   MAX_PLUMES,
@@ -12,15 +17,7 @@ import {
   SHIELD_LAYOUT,
   SHIP_LAYOUT,
   type ShipBuckets,
-} from "../gpu";
-import { ENGINES, SHIP_CLASSES, type ShipClass } from "../ship-parts";
-import { SHAPE, shipSprite } from "../sprites";
-import type { LightCycle, World } from "../world";
-import {
-  hasRaidedAllEnemyBases,
-  MUSTER_DRONE_SIZE_MULT,
-  SHIELD_FLASH,
-} from "../world/factory";
+} from "./frame";
 import type { PushFn, Rgba } from "./push";
 
 const SHIP_LEVEL_SIZES = [4.5, 5.9, 7.0, 8.1, 9.2];

@@ -4,6 +4,8 @@ import {
   reflectOffDisc,
   wrapDelta,
 } from "~/engine/physics";
+import { spawnShrapnel } from "~/world/factory";
+import { within, wrap } from "~/world/math";
 import {
   BASE_RADIUS,
   BASE_RAM_DAMAGE,
@@ -12,10 +14,7 @@ import {
   HIT_COOLDOWN,
   SHRAPNEL_RADIUS,
   shipRadius,
-  spawnShrapnel,
-  wrap,
-} from "../factory";
-import { within } from "../math";
+} from "~/world/tuning";
 import {
   ARENA,
   type Asteroid,
@@ -28,7 +27,7 @@ import {
   type Mutable,
   type Projectile,
   TEAM_BASES,
-} from "../types";
+} from "~/world/types";
 import { gridCrossPairs, type PairList, runCrossPairs } from "./broadphase";
 import {
   creditBaseHit,

@@ -10,8 +10,6 @@ import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import type { ReactElement } from "react";
-import { SHIP_CLASSES, type ShipClass } from "../../ship-parts";
-import { TEAMS } from "../../world/types";
 import {
   setCls,
   setDesign,
@@ -22,7 +20,9 @@ import {
   togglePause,
   toggleSpin,
   view,
-} from "../store";
+} from "~/drydock/store";
+import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
+import { TEAMS } from "~/world/types";
 
 const GEAR: Record<ShipClass, { title: string; desc: string }> = {
   scout: {

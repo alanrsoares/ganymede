@@ -4,6 +4,8 @@
 // blurred live preview), so this module only owns the menu chrome.
 
 import van, { type State } from "vanjs-core";
+import { MAX_TEAMS, type MatchConfig } from "~/world";
+import { DEFAULT_CONFIG } from "~/world/tuning";
 import {
   choiceCard,
   ctaButton,
@@ -13,8 +15,6 @@ import {
   focusDefault,
   sectionHeading,
 } from "./dialog";
-import { MAX_TEAMS, type MatchConfig } from "./world";
-import { DEFAULT_CONFIG } from "./world/factory";
 
 const { div, label, input, span, button } = van.tags;
 

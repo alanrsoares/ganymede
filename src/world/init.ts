@@ -1,19 +1,15 @@
-import { empty } from "../engine/entities";
-import { nextRange, type Seed } from "../engine/rng";
+import { empty } from "~/engine/entities";
+import { nextRange, type Seed } from "~/engine/rng";
+import { rollAsteroid, rollMany, rollPickup, rollShip } from "./factory";
+import { fullBaseHp, zeroScores } from "./math";
 import {
   ARCADE_LIVES,
   activeTeams,
   DEFAULT_CONFIG,
-  fullBaseHp,
   NUM_ASTEROIDS,
   NUM_PICKUPS,
-  rollAsteroid,
-  rollMany,
-  rollPickup,
-  rollShip,
-  zeroScores,
-} from "./factory";
-import { SPAWN_INVULN_GENS } from "./tuning";
+  SPAWN_INVULN_GENS,
+} from "./tuning";
 import {
   ARCADE_PICKUP_KINDS,
   type ArcadeConfig,

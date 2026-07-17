@@ -10,10 +10,10 @@ import {
   readFloats,
   storageBuffer,
   uniformBuffer,
-} from "../buffers";
-import { compose, Kernel } from "../kernel";
-import flock from "../wgsl/flock.wgsl" with { type: "text" };
-import lib from "../wgsl/lib.wgsl" with { type: "text" };
+} from "~/gpgpu/buffers";
+import { compose, Kernel } from "~/gpgpu/kernel";
+import flock from "~/gpgpu/wgsl/flock.wgsl" with { type: "text" };
+import lib from "~/gpgpu/wgsl/lib.wgsl" with { type: "text" };
 import { SpatialGrid } from "./grid";
 import type { Arena } from "./separation";
 

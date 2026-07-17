@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { getVersion, subscribe } from "../store";
+import { getVersion, subscribe } from "~/drydock/store";
 
 /**
  * Subscribe the component to drydock store changes. Returns the store

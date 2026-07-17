@@ -4,7 +4,7 @@
 // smooths the gain). Matches the setup screen's neon-on-dark chrome.
 
 import van, { type State } from "vanjs-core";
-import type { Audio, Bus } from "./runtime/audio";
+import type { Audio, Bus } from "~/runtime/audio";
 
 const { div, button, input, span } = van.tags;
 

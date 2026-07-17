@@ -3,6 +3,8 @@
 // texture loader (gpu.ts) and the pure view (overlay.ts) import from here so the
 // loader and the renderer can never disagree about layer indices or timings.
 
+import { EXPLOSION_DURATION, EXPLOSION_VARIANTS } from "~/world/tuning";
+
 // Relative (no leading slash) so texture URLs resolve against the document base
 // — works at the dev-server root and under a GitHub Pages project subpath alike.
 const ROOT = "assets/SpaceRage";
@@ -54,17 +56,20 @@ const SHIP_LAYER_TOTAL = SHIP_FRAMES.length;
 // Three explosion variants with differing frame counts, played at random per
 // blast for visual variety.
 export const EXPLOSION_FRAME_COUNTS = [11, 9, 9] as const;
-export const EXPLOSION_VARIANTS = EXPLOSION_FRAME_COUNTS.length;
+// The sim gates burst lifetime on the variant count and longest clip duration
+// (world/tuning.ts). Validate the clip tables against those numbers at module
+// init, so art changes here can't silently desync the gameplay constants.
+if (EXPLOSION_FRAME_COUNTS.length !== EXPLOSION_VARIANTS) {
+  throw new Error(
+    `sprites: ${EXPLOSION_FRAME_COUNTS.length} explosion clips but world/tuning EXPLOSION_VARIANTS=${EXPLOSION_VARIANTS}`,
+  );
+}
 export const EXHAUST_FRAMES = 5;
 export const MINE_FRAMES = 9; // frames per mine tumble loop
 export const MINE_VARIANTS = 3; // distinct mine sprites, picked per-mine for variety
 export const PROTON_FRAMES = 3; // proton bolt-projectile flicker loop
 export const VULCAN_FRAMES = 3; // vulcan muzzle/impact spark + bolt projectile
 export const PLASMA_FRAMES = 2; // plasma bolt-body flicker loop
-// Number of distinct asteroid shapes the 3D mesh pass builds (procedural, no
-// texture): the sim rolls a variant per rock so the field reads as varied.
-export const ASTEROID_VARIANTS = 5;
-
 const EXPLOSION_URLS = EXPLOSION_FRAME_COUNTS.flatMap((count, v) =>
   frames(count, (n) => `${ROOT}/Explosions/explosion_${v + 1}_${pad2(n)}.png`),
 );
@@ -190,6 +195,15 @@ export const EXPLOSION_CLIPS: readonly AnimClip[] = EXPLOSION_FRAME_COUNTS.map(
     loop: false,
   }),
 );
+
+{
+  const longest = Math.max(...EXPLOSION_CLIPS.map((c) => c.frames * c.frameMs));
+  if (longest !== EXPLOSION_DURATION) {
+    throw new Error(
+      `sprites: longest explosion clip is ${longest}ms but world/tuning EXPLOSION_DURATION=${EXPLOSION_DURATION}`,
+    );
+  }
+}
 
 export const CLIP = {
   // Default explosion (variant 0) — used where a single clip is needed.

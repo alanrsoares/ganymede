@@ -12,10 +12,10 @@ import {
   readU32,
   storageBuffer,
   uniformBuffer,
-} from "../buffers";
-import { compose, Kernel } from "../kernel";
-import crossWgsl from "../wgsl/cross.wgsl" with { type: "text" };
-import lib from "../wgsl/lib.wgsl" with { type: "text" };
+} from "~/gpgpu/buffers";
+import { compose, Kernel } from "~/gpgpu/kernel";
+import crossWgsl from "~/gpgpu/wgsl/cross.wgsl" with { type: "text" };
+import lib from "~/gpgpu/wgsl/lib.wgsl" with { type: "text" };
 import { SpatialGrid } from "./grid";
 import type { PairResult } from "./pairs";
 import type { Arena } from "./separation";

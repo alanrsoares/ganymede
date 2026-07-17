@@ -1,4 +1,3 @@
-import { durationOf, EXPLOSION_CLIPS } from "../sprites";
 import {
   type ArcadeDifficulty,
   type Archetype,
@@ -33,6 +32,9 @@ export const DEFAULT_CONFIG: MatchConfig = {
 export const activeTeams = (config: MatchConfig): readonly Team[] =>
   TEAMS.slice(0, config.teams);
 export const NUM_ASTEROIDS = 5;
+// Distinct asteroid looks the sim rolls per rock (0..N-1). Gameplay data only —
+// the render side decides what, if anything, a variant changes visually.
+export const ASTEROID_VARIANTS = 5;
 export const NUM_PICKUPS = 3;
 export const PICKUP_RADIUS = 9; // collect distance (ship center to bubble)
 export const BOOST_DURATION = 320; // gens of speed boost
@@ -170,6 +172,7 @@ export const BASE_HORIZON = 1.4; // field reach as a multiple of BASE_RADIUS
 export const SHRAPNEL_LIFE = 130; // gens a shrapnel fragment lives
 export const SHRAPNEL_RADIUS = 5; // fragment hit radius vs ships
 export const HIT_COOLDOWN = 20; // gens a ship is immune after trading a hit
+export const SHIELD_FLASH = 12; // gens the shield flare lasts after a hit (impact flash/ripple)
 export const SHIELD_BASE_REGEN = 0.012; // fraction of max shield healed/gen home
 export const MINE_ARM = 25; // gens before a dropped mine goes live
 export const MINE_LIFE = 900; // gens a mine persists
@@ -321,8 +324,12 @@ export const arcadeHandicap = (wave: number, adapt: number): number =>
     ),
   );
 
-// Longest explosion variant — bursts live at least this long so none clip early.
-export const EXPLOSION_DURATION = Math.max(...EXPLOSION_CLIPS.map(durationOf));
+// Explosion bursts: the sim rolls a variant per blast and keeps the burst alive
+// long enough for the longest clip. Plain numbers here — render/sprites.ts
+// asserts its clip tables against them at module init, so if the art changes
+// these must be updated consciously (they gate burst lifetime, i.e. gameplay).
+export const EXPLOSION_VARIANTS = 3;
+export const EXPLOSION_DURATION = 495; // ms — longest clip (11 frames × 45ms)
 
 // --- Per-level stat tables (indexed by level-1) -----------------------------
 // Movement smarts unlock with rank: each rank dodges better, flocks tighter, and

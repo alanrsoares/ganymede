@@ -4,10 +4,10 @@
 
 import "@astryxdesign/core/astryx.css";
 import { createRoot } from "react-dom/client";
+import { App } from "~/drydock/ui/App";
 import { wireKeys } from "./keys";
 import { startScene } from "./scene";
 import { setGpuError } from "./store";
-import { App } from "./ui/App";
 
 const canvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
 const uiRoot = document.getElementById("ui-root") as HTMLElement;
