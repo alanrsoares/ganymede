@@ -159,6 +159,7 @@ export const buildAndRender = (
     centerPadInstances,
     centerPadCount,
     portalCount,
+    ships,
   } = overlay.build({
     w: canvas.width,
     h: canvas.height,
@@ -182,6 +183,7 @@ export const buildAndRender = (
     baseCount,
     centerPadInstances,
     centerPadCount,
+    ships,
     now / 1000,
     camera,
   );
