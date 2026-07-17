@@ -33,12 +33,10 @@ export const resolveLock = (
       : ships.items.find((s) => s.id === world.controlledShipId);
   if (!me) return null;
   const list = lockable(me, ships);
-  if (
-    world.lockedTargetId != null &&
+  return world.lockedTargetId != null &&
     list.some((e) => e.id === world.lockedTargetId)
-  )
-    return world.lockedTargetId;
-  return list[0]?.id ?? null;
+    ? world.lockedTargetId
+    : (list[0]?.id ?? null);
 };
 
 // Cycle to the next lockable enemy relative to the current lock (dir +1 / -1).

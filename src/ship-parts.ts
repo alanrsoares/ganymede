@@ -877,8 +877,7 @@ const rayTri = (o: V3, d: V3, t0: V3, t1: V3, t2: V3): number | null => {
   if (u < 0 || u > 1) return null;
   const q = cross(s, e1);
   const v = dot(d, q) * inv;
-  if (v < 0 || u + v > 1) return null;
-  return dot(e2, q) * inv;
+  return v < 0 || u + v > 1 ? null : dot(e2, q) * inv;
 };
 
 /** Bake one part's triangles (mirror copies included) in ship-local space. */

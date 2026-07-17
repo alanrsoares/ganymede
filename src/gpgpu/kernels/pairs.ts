@@ -115,7 +115,12 @@ export class CandidatePairKernel {
       !this.#pairStaging
     )
       return { count: 0, pairs: new Uint32Array(0), overflow: false };
-    const c = await readU32(this.device, this.#pairCount, this.#countStaging, 4);
+    const c = await readU32(
+      this.device,
+      this.#pairCount,
+      this.#countStaging,
+      4,
+    );
     const count = c[0];
     const kept = Math.min(count, this.#capacity);
     const pairs = await readU32(

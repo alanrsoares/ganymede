@@ -310,8 +310,9 @@ export const collideShardsShips = (
   if (pairs) {
     runCrossPairs(pairs, (bi, ai) => {
       const s = ctx.moved[ai];
-      if (ctx.removed.has(s.id)) return false;
-      return shardVsShip(ctx, hazards, motion.shards[bi], s) === "break";
+      return ctx.removed.has(s.id)
+        ? false
+        : shardVsShip(ctx, hazards, motion.shards[bi], s) === "break";
     });
     return;
   }

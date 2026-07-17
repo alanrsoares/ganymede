@@ -520,13 +520,12 @@ const buildManualStats = (s: LightCycle) => {
   );
 };
 
-const buildActionRow = (key: string, label: string, status: string) => {
-  return div(
+const buildActionRow = (key: string, label: string, status: string) =>
+  div(
     { class: "flex justify-between items-center" },
     span({ class: "text-[#ffd866]" }, `[${key}] ${label}`),
     span({ class: "opacity-75" }, status),
   );
-};
 
 const buildManualActions = (s: LightCycle) => {
   const bulletStatus =
@@ -567,8 +566,8 @@ const buildManualActions = (s: LightCycle) => {
 };
 
 // Manual control HUD panel shown when a ship is under player control.
-const buildManualPanel = (controlledShip: State<LightCycle | null>) => {
-  return div(
+const buildManualPanel = (controlledShip: State<LightCycle | null>) =>
+  div(
     {
       class: () =>
         `hud-manual absolute bottom-4 right-4 rounded-lg border border-[#ffb83f]/20 bg-[#040a0e]/85 px-4 py-3 font-mono text-[11px] text-[#ffe08a] backdrop-blur-[4px] transition-opacity duration-200 ${controlledShip.val ? "opacity-100 block" : "opacity-0 hidden"}`,
@@ -577,30 +576,29 @@ const buildManualPanel = (controlledShip: State<LightCycle | null>) => {
     },
     () => {
       const s = controlledShip.val;
-      if (!s) return div();
-      return div(
-        { class: "flex flex-col gap-1.5" },
-        buildManualHeader(s),
-        buildManualStats(s),
-        buildManualActions(s),
-      );
+      return !s
+        ? div()
+        : div(
+            { class: "flex flex-col gap-1.5" },
+            buildManualHeader(s),
+            buildManualStats(s),
+            buildManualActions(s),
+          );
     },
   );
-};
 
-const buildHelpRow = (keys: string, action: string) => {
-  return div(
+const buildHelpRow = (keys: string, action: string) =>
+  div(
     { class: "flex justify-between items-start gap-4 text-[10px]" },
     span({ class: "text-[#8fe6ff]/80 font-bold whitespace-nowrap" }, keys),
     span({ class: "text-[#d3f5e9]/70 text-right" }, action),
   );
-};
 
 const buildHelpSection = (
   title: string,
   rows: { keys: string; action: string }[],
-) => {
-  return div(
+) =>
+  div(
     { class: "flex flex-col gap-1" },
     div(
       {
@@ -611,7 +609,6 @@ const buildHelpSection = (
     ),
     ...rows.map((r) => buildHelpRow(r.keys, r.action)),
   );
-};
 
 const buildControlsInfoPanel = () => {
   const open = van.state(false);

@@ -48,9 +48,14 @@ class Clip {
 }
 
 const osc = (type: string, phase: number): number => {
-  if (type === "square") return Math.sin(phase) >= 0 ? 1 : -1;
-  if (type === "saw") return 1 - ((((phase / Math.PI) % 2) + 2) % 2);
-  if (type === "triangle") return Math.asin(Math.sin(phase)) * (2 / Math.PI);
+  switch (type) {
+    case "square":
+      return Math.sin(phase) >= 0 ? 1 : -1;
+    case "saw":
+      return 1 - ((((phase / Math.PI) % 2) + 2) % 2);
+    case "triangle":
+      return Math.asin(Math.sin(phase)) * (2 / Math.PI);
+  }
   return Math.sin(phase);
 };
 

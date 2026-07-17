@@ -227,8 +227,9 @@ export const bulletsVsShips = (
   if (pairs) {
     runCrossPairs(pairs, (bi, ai) => {
       const bt = motion.bullets[bi];
-      if (projectiles.removedBullets.has(bt.id)) return true; // spent → skip rest
-      return bulletVsShip(ctx, ctx.moved[ai], bt, projectiles) === "break";
+      return projectiles.removedBullets.has(bt.id)
+        ? true
+        : bulletVsShip(ctx, ctx.moved[ai], bt, projectiles) === "break";
     });
     return;
   }
@@ -298,8 +299,9 @@ export const missilesVsShips = (
   if (pairs) {
     runCrossPairs(pairs, (bi, ai) => {
       const mi = motion.missiles[bi];
-      if (projectiles.removedMissiles.has(mi.id)) return true; // spent → skip rest
-      return missileVsShip(ctx, ctx.moved[ai], mi, projectiles) === "break";
+      return projectiles.removedMissiles.has(mi.id)
+        ? true
+        : missileVsShip(ctx, ctx.moved[ai], mi, projectiles) === "break";
     });
     return;
   }

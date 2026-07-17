@@ -91,10 +91,20 @@ const handlePointerDown = (
 const getDirectionKey = (
   key: string,
 ): "up" | "down" | "left" | "right" | null => {
-  if (key === "w" || key === "arrowup") return "up";
-  if (key === "s" || key === "arrowdown") return "down";
-  if (key === "a" || key === "arrowleft") return "left";
-  if (key === "d" || key === "arrowright") return "right";
+  switch (key) {
+    case "w":
+    case "arrowup":
+      return "up";
+    case "s":
+    case "arrowdown":
+      return "down";
+    case "a":
+    case "arrowleft":
+      return "left";
+    case "d":
+    case "arrowright":
+      return "right";
+  }
   return null;
 };
 

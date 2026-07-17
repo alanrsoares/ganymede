@@ -186,9 +186,8 @@ export function resolveShipCollisions(ctx: TickCtx, pairs?: PairList | null) {
 
 /** Ship×ship candidate pairs, or null when the arena is too small to grid
  * (→ resolveShipCollisions runs the brute nested loop). */
-export function shipCollisionPairs(ctx: TickCtx): PairList | null {
-  return gridSelfPairs(ctx.moved, ARENA, SHIP_PAIR_BAND);
-}
+export const shipCollisionPairs = (ctx: TickCtx): PairList | null =>
+  gridSelfPairs(ctx.moved, ARENA, SHIP_PAIR_BAND);
 
 /** Kill every ship whose team base has been destroyed. */
 export function eliminateBaselessTeams(ctx: TickCtx) {

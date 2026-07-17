@@ -1,6 +1,6 @@
 <div align="center">
 
-# Ganymede
+# Ganymede!
 
 **A deterministic WebGPU space autobattler.**
 Four AI fleets flock, fight, and raid each other's bases around a central

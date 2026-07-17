@@ -279,10 +279,9 @@ export const WEAPON_PROFILES: Record<Archetype, WeaponProfile> = {
 // fighter mounts a third parallel barrel (2 → 3), widening its abreast volley.
 export const weaponFor = (a: Archetype, level: number): WeaponProfile => {
   const wp = WEAPON_PROFILES[a];
-  if (a === "fighter" && level >= MAX_LEVEL) {
-    return { ...wp, barrels: wp.barrels + 1 };
-  }
-  return wp;
+  return a === "fighter" && level >= MAX_LEVEL
+    ? { ...wp, barrels: wp.barrels + 1 }
+    : wp;
 };
 // The L5 fighter's third barrel used to nearly double its DPS — a spike, not a
 // bump. Pair the extra barrel with a slower cadence so the capstone reads as a

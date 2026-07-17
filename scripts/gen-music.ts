@@ -36,9 +36,14 @@ const MOODS: Record<string, Mood> = {
 };
 
 const osc = (type: string, ph: number): number => {
-  if (type === "square") return Math.sin(ph) >= 0 ? 0.7 : -0.7;
-  if (type === "saw") return 1 - ((((ph / Math.PI) % 2) + 2) % 2);
-  if (type === "triangle") return Math.asin(Math.sin(ph)) * (2 / Math.PI);
+  switch (type) {
+    case "square":
+      return Math.sin(ph) >= 0 ? 0.7 : -0.7;
+    case "saw":
+      return 1 - ((((ph / Math.PI) % 2) + 2) % 2);
+    case "triangle":
+      return Math.asin(Math.sin(ph)) * (2 / Math.PI);
+  }
   return Math.sin(ph);
 };
 

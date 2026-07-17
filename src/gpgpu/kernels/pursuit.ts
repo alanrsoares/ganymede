@@ -127,7 +127,8 @@ export class PursuitKernel {
   }
 
   async read(): Promise<Float32Array> {
-    if (!this.force || !this.staging) return new Float32Array(0);
-    return readFloats(this.device, this.force, this.staging, this.n * 2 * 4);
+    return !this.force || !this.staging
+      ? new Float32Array(0)
+      : readFloats(this.device, this.force, this.staging, this.n * 2 * 4);
   }
 }

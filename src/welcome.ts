@@ -16,7 +16,7 @@ const CYAN = "#3fd8ff";
 const MINT = "#e6fbf1";
 // Pixel-art display face for the wordmark; mono for legible body/HUD text.
 const PIXEL = `"Press Start 2P", ui-monospace, monospace`;
-const MONO = `ui-monospace,'SF Mono',Menlo,monospace`;
+const MONO = "ui-monospace,'SF Mono',Menlo,monospace";
 const { div, h1, p, span, button } = van.tags;
 
 // Which entry path the player chose from the title screen.
@@ -337,18 +337,22 @@ interface Director {
   stop(): void;
 }
 
+type Point = { x: number; y: number };
+
+// Pointer parallax: nudge focus a hair toward the cursor for a sense of depth.
+const onPointerMoveFor = (pointer: Point) => (e: PointerEvent) => {
+  pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = (e.clientY / window.innerHeight) * 2 - 1;
+};
+
 const createCameraDirector = (reduce: boolean): Director => {
+  const pointer = { x: 0, y: 0 };
+  const onPointerMove = onPointerMoveFor(pointer);
   const camera: CameraView = {
     fx: 0.5,
     fy: 0.5,
     zoom: reduce ? IDLE_ZOOM : ENTER_ZOOM,
     rot: 0,
-  };
-  // Pointer parallax: nudge focus a hair toward the cursor for a sense of depth.
-  const pointer = { x: 0, y: 0 };
-  const onPointerMove = (e: PointerEvent) => {
-    pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
-    pointer.y = (e.clientY / window.innerHeight) * 2 - 1;
   };
   window.addEventListener("pointermove", onPointerMove);
 
@@ -359,21 +363,19 @@ const createCameraDirector = (reduce: boolean): Director => {
   let raf = 0;
 
   // Advance one frame of whichever phase is active, returning the next phase.
-  const stepPhase = (
-    p: Phase,
-    now: number,
-    parX: number,
-    parY: number,
-  ): Phase => {
-    if (p === "enter")
-      return applyEnter(camera, now - t0, parX, parY) ? "idle" : "enter";
-    if (p === "idle") {
-      applyIdle(camera, (now - t0) / 1000, parX, parY);
-      return "idle";
+  function stepPhase(p: Phase, now: number, parX: number, parY: number): Phase {
+    switch (p) {
+      case "enter":
+        return applyEnter(camera, now - t0, parX, parY) ? "idle" : "enter";
+      case "idle":
+        applyIdle(camera, (now - t0) / 1000, parX, parY);
+        return "idle";
+      case "launch":
+        applyLaunch(camera, launchFrom, now - launchT0);
+        break;
     }
-    if (p === "launch") applyLaunch(camera, launchFrom, now - launchT0);
     return p;
-  };
+  }
 
   const tick = (now: number) => {
     phase = stepPhase(

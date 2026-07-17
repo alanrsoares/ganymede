@@ -11,10 +11,9 @@ import { useDrydock } from "./hooks";
 
 export const App = (): ReactElement => {
   useDrydock();
-  if (view.gpuError) {
-    return <div className="err">Drydock needs WebGPU: {view.gpuError}</div>;
-  }
-  return (
+  return view.gpuError ? (
+    <div className="err">Drydock needs WebGPU: {view.gpuError}</div>
+  ) : (
     <Theme theme={gothicTheme} mode="dark">
       <div className="panel panel-left">
         <ControlPanel />

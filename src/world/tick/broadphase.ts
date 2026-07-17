@@ -43,8 +43,9 @@ const wrapCell = (c: number, n: number): number => ((c % n) + n) % n;
 function tryCellDims(w: number, h: number, band: number): Grid | null {
   const ncx = Math.floor(w / band);
   const ncy = Math.floor(h / band);
-  if (ncx < 3 || ncy < 3) return null;
-  return { ncx, ncy, cellW: w / ncx, cellH: h / ncy };
+  return ncx < 3 || ncy < 3
+    ? null
+    : { ncx, ncy, cellW: w / ncx, cellH: h / ncy };
 }
 
 const cellXOf = (x: number, g: Grid): number =>
