@@ -21,10 +21,16 @@ import baseWGSL from "./shaders/base.wgsl" with { type: "text" };
 import bloomWGSL from "./shaders/bloom.wgsl" with { type: "text" };
 import orbWGSL from "./shaders/orb.wgsl" with { type: "text" };
 import overlayWGSL from "./shaders/overlay.wgsl" with { type: "text" };
+import plumeWGSL from "./shaders/plume.wgsl" with { type: "text" };
 import rockWGSL from "./shaders/rock.wgsl" with { type: "text" };
 import shieldWGSL from "./shaders/shield.wgsl" with { type: "text" };
 import shipWGSL from "./shaders/ship.wgsl" with { type: "text" };
-import { makeShipMesh, SHIP_CLASSES, type ShipClass } from "./ship-parts";
+import {
+  makePlumeMesh,
+  makeShipMesh,
+  SHIP_CLASSES,
+  type ShipClass,
+} from "./ship-parts";
 import { SPRITE_LAYER_COUNT, SPRITE_URLS } from "./sprites";
 
 // --- Sprite/Overlay pipeline (space shooter sprites and vector rings) ---
@@ -85,10 +91,33 @@ export const SHIP_LAYOUT = instanceLayout([
   "b",
   "alpha",
 ]);
-/** Per-class instance buffers + counts for the hull mesh passes. */
+// Engine plume cones, one instance per nozzle anchor per ship (plume.wgsl).
+export const MAX_PLUMES = MAX_MESH_SHIPS * 4;
+// prettier-ignore
+export const PLUME_LAYOUT = instanceLayout([
+  "cx",
+  "cy",
+  "radius",
+  "roll",
+  "heading",
+  "tilt",
+  "throttle",
+  "phase",
+  "nx",
+  "ny",
+  "nz",
+  "w",
+  "r",
+  "g",
+  "b",
+  "alpha",
+]);
+/** Per-class hull instance buffers + engine plume instances for the mesh passes. */
 export interface ShipBuckets {
   instances: Record<ShipClass, Float32Array<ArrayBuffer>>;
   counts: Record<ShipClass, number>;
+  plumes: Float32Array<ArrayBuffer>;
+  plumeCount: number;
 }
 const DEPTH_FORMAT = "depth24plus";
 // Compresses pixel-space z into the [0,1] depth range (radius ≲ 60px stays well
@@ -260,6 +289,7 @@ interface MeshPasses {
   basePass: MeshPass;
   centerPadPass: MeshPass;
   shipPasses: Record<ShipClass, MeshPass>;
+  plumePass: MeshPass;
 }
 
 const createHelperMeshPass = (
@@ -414,6 +444,23 @@ const createMeshPasses = (
   ...createOpaquePasses(device, format, ub),
   ...createTransparentPasses(device, format, ub),
   shipPasses: createShipPasses(device, format, ub),
+  // Additive engine-plume cones: no depth write (glow), still occluded by
+  // hulls written just before.
+  plumePass: createHelperMeshPass(
+    device,
+    format,
+    ub,
+    makePlumeMesh(),
+    plumeWGSL,
+    PLUME_LAYOUT,
+    MAX_PLUMES,
+    false,
+    "less",
+    {
+      color: { srcFactor: "one", dstFactor: "one" },
+      alpha: { srcFactor: "one", dstFactor: "one" },
+    },
+  ),
 });
 
 interface BloomPipelines {
@@ -616,6 +663,7 @@ interface ScenePassInput {
   centerPadInstances: Float32Array<ArrayBuffer>;
   centerPadCount: number;
   shipPasses: Record<ShipClass, MeshPass>;
+  plumePass: MeshPass;
   ships: ShipBuckets;
 }
 
@@ -679,6 +727,7 @@ const encodeScenePass = (
       input.ships.counts[cls],
     );
   }
+  input.plumePass.draw(pass, input.ships.plumes, input.ships.plumeCount);
 
   input.orbPass.draw(pass, input.orbInstances, input.orbCount);
   input.shieldPass.draw(pass, input.shieldInstances, input.shieldCount);
@@ -740,6 +789,7 @@ interface RenderFnDeps {
   basePass: MeshPass;
   centerPadPass: MeshPass;
   shipPasses: Record<ShipClass, MeshPass>;
+  plumePass: MeshPass;
   targets: RenderTargets;
   bloom: BloomPipelines;
 }

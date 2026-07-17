@@ -8,8 +8,10 @@ import {
   MAX_INSTANCES,
   MAX_MESH_SHIPS,
   MAX_ORBS,
+  MAX_PLUMES,
   MAX_ROCKS,
   MAX_SHIELDS,
+  PLUME_LAYOUT,
   ROCK_LAYOUT,
   SHIELD_LAYOUT,
   SHIP_LAYOUT,
@@ -138,7 +140,6 @@ const drawDynamicEntities = (
     now,
     world,
     showHp,
-    exhaustL,
   );
   drawWhips(push, cellPx, cellPy, now, world);
   drawDrones(push, cellPx, cellPy, now, world);
@@ -159,6 +160,8 @@ const createShipBuckets = (): ShipBuckets => ({
     ShipClass,
     number
   >,
+  plumes: new Float32Array(MAX_PLUMES * PLUME_LAYOUT.floats),
+  plumeCount: 0,
 });
 
 // One frame's worth of reusable instance arrays (overwritten every build).

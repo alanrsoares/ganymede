@@ -6,12 +6,14 @@
 import { clamp01 } from "../engine/physics";
 import {
   MAX_MESH_SHIPS,
+  MAX_PLUMES,
   MAX_SHIELDS,
+  PLUME_LAYOUT,
   SHIELD_LAYOUT,
   SHIP_LAYOUT,
   type ShipBuckets,
 } from "../gpu";
-import { SHIP_CLASSES, type ShipClass } from "../ship-parts";
+import { ENGINES, SHIP_CLASSES, type ShipClass } from "../ship-parts";
 import { SHAPE, shipSprite } from "../sprites";
 import type { LightCycle, World } from "../world";
 import {
@@ -112,76 +114,68 @@ function drawShipShadow(
   );
 }
 
-// Engine plume behind the nose (drawn under the body). Three layers: the
-// textured exhaust sprite for the ragged flame, a hot solid core disc punching
-// out of the nozzle, and — under boost — an elongated blue-white afterburner
-// cone of Mach-diamond shock puffs marching down the thrust axis. Length,
-// brightness and a fast per-ship flicker all scale with real thrust, so a ship
-// visibly lights up as it accelerates. Offset by the *rendered* hull angle
-// (which eases behind the heading through a turn), so the plume stays pinned to
-// the rear instead of swinging off it. Dead tank = dead engine: plume cuts out.
-function drawShipExhaust(
+// Engine plumes: one additive 3D cone per ENGINES nozzle anchor, carried
+// through the same heading/tilt/roll transform as the hull (plume.wgsl), so
+// every tail sits exactly on its nozzle at any bank angle. Throttle scales
+// length/brightness with real thrust; a dead tank cuts the engines.
+function packShipPlumes(
+  ships: ShipBuckets,
+  cycle: LightCycle,
+  v: ShipVisual,
+  cellPx: number,
+) {
+  if (cycle.fuel <= 0) return;
+  const speed = Math.hypot(cycle.vx, cycle.vy);
+  const drive = Math.max(0.35, Math.min(1, speed / 3));
+  const throttle = cycle.boostTime > 0 ? 1 : drive * 0.85;
+  const P = PLUME_LAYOUT.idx;
+  const d = ships.plumes;
+  for (const eng of ENGINES[hullClass(cycle.archetype)]) {
+    if (ships.plumeCount >= MAX_PLUMES) return;
+    const o = ships.plumeCount * PLUME_LAYOUT.floats;
+    d[o + P.cx] = v.scx;
+    d[o + P.cy] = v.scy;
+    d[o + P.radius] = v.size * cellPx;
+    d[o + P.roll] = v.roll;
+    d[o + P.heading] = cycle.angle;
+    d[o + P.tilt] = HULL_TILT;
+    d[o + P.throttle] = throttle;
+    d[o + P.phase] = cycle.id * 1.7 + ships.plumeCount;
+    d[o + P.nx] = eng.pos[0];
+    d[o + P.ny] = eng.pos[1];
+    d[o + P.nz] = eng.pos[2];
+    d[o + P.w] = eng.w;
+    d[o + P.r] = cycle.color[0];
+    d[o + P.g] = cycle.color[1];
+    d[o + P.b] = cycle.color[2];
+    d[o + P.alpha] = cycle.invulnTime > 0 ? 0.4 : 1;
+    ships.plumeCount++;
+  }
+}
+
+// Afterburner extra: Mach-diamond shock puffs marching down the thrust axis,
+// shrinking + fading toward the tip. Boost only.
+function drawShipBoostDiamonds(
   push: PushFn,
   cycle: LightCycle,
   v: ShipVisual,
   cellPx: number,
   cellPy: number,
   now: number,
-  exhaustL: number,
 ) {
-  if (cycle.fuel <= 0) return;
-  const speed = Math.hypot(cycle.vx, cycle.vy);
-  const drive = Math.max(0.35, Math.min(1, speed / 3));
-  const boosting = cycle.boostTime > 0;
-  const boost = boosting ? 1.8 : 1;
-  // Fast engine-flame flicker (deterministic per ship) — plume never sits still.
+  if (cycle.boostTime <= 0 || cycle.fuel <= 0) return;
   const flick =
     1 +
     0.18 * Math.sin(now * 0.05 + cycle.id * 2.3) +
     0.08 * Math.sin(now * 0.11 + cycle.id);
-  const exOff = v.size * 0.9;
-  const nx = -v.hx; // unit vector out the tail
-  const ny = -v.hy;
-  const nozx = v.scx + nx * exOff * cellPx;
-  const nozy = v.scy + ny * exOff * cellPy;
-
-  // Outer ragged flame (textured), stretched along thrust by drive × boost.
-  const flame = v.size * 0.7 * drive * boost * flick;
-  push(
-    nozx,
-    nozy,
-    flame * cellPx,
-    flame * cellPy,
-    cycle.angle,
-    SHAPE.sprite,
-    [1.0, 0.72, 0.32, 0.55 + 0.4 * drive],
-    exhaustL,
-  );
-
-  // Hot core disc at the nozzle — white-gold punch (blue-white under boost).
-  const core = v.size * 0.34 * (0.85 + 0.3 * drive) * flick;
-  push(
-    nozx,
-    nozy,
-    core * cellPx,
-    core * cellPy,
-    0,
-    SHAPE.solid,
-    boosting ? [0.75, 0.9, 1.0, 0.95] : [1.0, 0.95, 0.7, 0.9],
-  );
-
-  if (!boosting) return;
-
-  // Afterburner: Mach-diamond shock puffs marching down the thrust axis,
-  // shrinking + fading toward the tip.
   const DIAMONDS = 4;
   for (let k = 1; k <= DIAMONDS; k++) {
     const t = k / DIAMONDS;
-    const back = exOff + t * v.size * 3.2;
+    const back = v.size * (0.9 + t * 3.2);
     const sz = v.size * 0.3 * (1 - t * 0.7) * flick;
     push(
-      v.scx + nx * back * cellPx,
-      v.scy + ny * back * cellPy,
+      v.scx - v.hx * back * cellPx,
+      v.scy - v.hy * back * cellPy,
       sz * cellPx,
       sz * cellPy,
       0,
@@ -624,13 +618,13 @@ function drawShip(
   cellPy: number,
   now: number,
   showHp: boolean,
-  exhaustL: number,
   isControlled: boolean,
 ): number {
   const v = computeShipVisual(cycle, cellPx, cellPy, now);
   drawShipShadow(push, v, cellPx, cellPy);
   drawShipTrail(push, cycle, v, cellPx, cellPy, now);
-  drawShipExhaust(push, cycle, v, cellPx, cellPy, now, exhaustL);
+  packShipPlumes(ships, cycle, v, cellPx);
+  drawShipBoostDiamonds(push, cycle, v, cellPx, cellPy, now);
   drawShipDistressSmoke(push, cycle, v, cellPx, cellPy, now);
   const nextShieldCount = drawShipShield(
     shieldInstances,
@@ -659,10 +653,10 @@ export function drawShips(
   now: number,
   world: World,
   showHp: boolean,
-  exhaustL: number,
 ): number {
   let shieldCount = 0;
   for (const cls of SHIP_CLASSES) ships.counts[cls] = 0;
+  ships.plumeCount = 0;
   for (const cycle of world.ships.items) {
     const isControlled = cycle.id === world.controlledShipId;
     shieldCount = drawShip(
@@ -676,7 +670,6 @@ export function drawShips(
       cellPy,
       now,
       showHp,
-      exhaustL,
       isControlled,
     );
   }
