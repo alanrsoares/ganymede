@@ -3,28 +3,20 @@
 // under the cursor), this browses all classes at once — comparative stat bars
 // at a selectable rank, the rock-paper-scissors counter web, and the shared
 // L1→L5 progression tree. Pure chrome: main.ts owns the toggle key; this module
-// only renders and reacts to its own local state. Reuses the static flavor +
-// scaling from shipInfo.ts so the two views never drift.
+// only renders and reacts to its own local state. Reads all flavor, stats and
+// traits from the shipStats.ts read model so the two views never drift.
 
 import van, { type State } from "vanjs-core";
 import { clamp01 } from "~/engine/physics";
 import { ARCHETYPES, type Archetype, MAX_LEVEL } from "~/world";
-import {
-  ARC_MIN_LEVEL,
-  ARCHETYPE_MODS,
-  carriesArc,
-  carriesMissiles,
-  cruiseFor,
-  fireCooldownFor,
-  isCarrier,
-  isRecon,
-  MISSILE_MIN_LEVEL,
-  maxFuelFor,
-  maxHpFor,
-  minesFor,
-} from "~/world/factory";
 import { focusFirst, trapTab } from "./a11y";
-import { ARCHETYPE_INFO, PEAK, TIERS } from "./shipInfo";
+import {
+  ARCHETYPE_INFO,
+  COUNTERED_BY,
+  COUNTERS,
+  statsFor,
+  TIERS,
+} from "./shipStats";
 
 const { div, span, button } = van.tags;
 const svg = van.tags("http://www.w3.org/2000/svg");
@@ -38,16 +30,6 @@ const CLASS_TINT: Record<Archetype, string> = {
   heavy: "#ffb545",
   interceptor: "#ff6fae",
 };
-
-// Reverse of the `counters` relation: who presses on this class. With a clean
-// 4-cycle every class has exactly one predator, so this stays a total map.
-const COUNTERED_BY = ARCHETYPES.reduce(
-  (acc, a) => {
-    acc[ARCHETYPE_MODS[a].counters] = a;
-    return acc;
-  },
-  {} as Record<Archetype, Archetype>,
-);
 
 // --- Stat bars --------------------------------------------------------------
 // Segmented telemetry gauge (matches the hover card): lit ticks are relative
@@ -82,22 +64,11 @@ const meter = (label: string, frac: number, tint: string, value: string) => {
   );
 };
 
-const buildStatBars = (a: Archetype, lvl: number, tint: string) => {
-  const mod = ARCHETYPE_MODS[a];
-  return div(
+const buildStatBars = (a: Archetype, lvl: number, tint: string) =>
+  div(
     { class: "flex flex-col gap-1" },
-    meter("hull", mod.hp / PEAK.hp, tint, `${maxHpFor(a, lvl)}`),
-    meter("spd", mod.speed / PEAK.speed, tint, cruiseFor(a, lvl).toFixed(2)),
-    // Faster fire = shorter cooldown; invert so a fuller bar means quicker.
-    meter(
-      "fire",
-      1 / mod.fire / PEAK.fire,
-      tint,
-      `${Math.round(fireCooldownFor(a, lvl))}g`,
-    ),
-    meter("fuel", mod.fuel / PEAK.fuel, tint, String(maxFuelFor(a, lvl))),
+    ...statsFor(a, lvl).rows.map((r) => meter(r.key, r.norm, tint, r.text)),
   );
-};
 
 // --- Trait chips ------------------------------------------------------------
 const chip = (text: string) =>
@@ -110,31 +81,7 @@ const chip = (text: string) =>
   );
 
 const buildTraits = (a: Archetype, lvl: number) => {
-  const mod = ARCHETYPE_MODS[a];
-  const mines = minesFor(a, lvl);
-  const pct = (v: number) => Math.round(v * 100);
-  // [predicate, label] pairs — filtered to what applies, so this reads as data
-  // rather than a branch pile (keeps cognitive complexity in check).
-  const candidates: readonly [boolean, string][] = [
-    [mines > 0, `${mines} mines`],
-    [mines === 0 && mod.mines, "mines @ L3"],
-    [
-      carriesMissiles(a),
-      lvl >= MISSILE_MIN_LEVEL
-        ? "missiles"
-        : `missiles @ L${MISSILE_MIN_LEVEL}`,
-    ],
-    [mod.rammer, "rams + base slam"],
-    [
-      carriesArc(a),
-      lvl >= ARC_MIN_LEVEL ? "chain arc" : `chain arc @ L${ARC_MIN_LEVEL}`,
-    ],
-    [isCarrier(a), "refuels allies"],
-    [isRecon(a), "shares raid intel"],
-    [mod.meleeResist > 0, `${pct(mod.meleeResist)}% melee armor`],
-    [mod.pierceArmor > 0, `${pct(mod.pierceArmor)}% pierce armor`],
-  ];
-  const traits = candidates.filter(([on]) => on).map(([, label]) => label);
+  const traits = [...statsFor(a, lvl).traits];
   if (traits.length === 0) traits.push("gun only");
   return div({ class: "flex flex-wrap gap-1" }, ...traits.map(chip));
 };
@@ -180,7 +127,7 @@ const buildBadge = (a: Archetype, tint: string) => {
 
 // --- Class card -------------------------------------------------------------
 const matchupLine = (a: Archetype, tint: string) => {
-  const beats = ARCHETYPE_MODS[a].counters;
+  const beats = COUNTERS[a];
   const loses = COUNTERED_BY[a];
   return div(
     { class: "flex flex-wrap gap-x-2 text-[9px] uppercase tracking-[0.08em]" },
@@ -264,7 +211,7 @@ const arrowSegment = (
 };
 
 const counterArrow = (a: Archetype) => {
-  const seg = arrowSegment(NODE_POS[a], NODE_POS[ARCHETYPE_MODS[a].counters]);
+  const seg = arrowSegment(NODE_POS[a], NODE_POS[COUNTERS[a]]);
   return svg.line({
     x1: seg.x1,
     y1: seg.y1,

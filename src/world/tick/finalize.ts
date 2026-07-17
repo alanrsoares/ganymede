@@ -1,16 +1,14 @@
 import { cap, type EntityList, retain, spawn } from "~/engine/entities";
 import { nextInt, type Seed } from "~/engine/rng";
+import { rollAsteroid, rollMany, rollPickup } from "~/world/factory";
+import { resolveLock } from "~/world/lock";
 import {
   EXPLOSION_DURATION,
   EXPLOSION_VARIANTS,
   MAX_SHIPS,
   NUM_ASTEROIDS,
   NUM_PICKUPS,
-  rollAsteroid,
-  rollMany,
-  rollPickup,
-} from "~/world/factory";
-import { resolveLock } from "~/world/lock";
+} from "~/world/tuning";
 import {
   ARCADE_PICKUP_KINDS,
   type Burst,

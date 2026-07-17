@@ -1,6 +1,8 @@
-// Pure builders, tuning constants, and math helpers for the world sim. Every
-// function here is referentially transparent: randomness is threaded through the
-// PRNG seed, nothing reads a clock or mutates shared state.
+// Pure spawn/advance builders for the world sim: rolling ships, asteroids and
+// pickups, spawning and steering projectiles. Every function here is
+// referentially transparent: randomness is threaded through the PRNG seed,
+// nothing reads a clock or mutates shared state. Tuning constants live in
+// tuning.ts, geometry helpers in math.ts — import those directly.
 
 import {
   angleTo,
@@ -33,6 +35,7 @@ import {
   maxFuelFor,
   maxHpFor,
   minesFor,
+  SHIELD_FLASH,
   SHRAPNEL_LIFE,
   shieldForLevel,
   shipRadius,
@@ -56,11 +59,6 @@ import {
   type Team,
   teamByName,
 } from "./types";
-
-export * from "./math";
-export * from "./steering";
-// Export everything from the other sub-modules to preserve the unified factory facade.
-export * from "./tuning";
 
 // --- Builders ---------------------------------------------------------------
 
@@ -175,9 +173,6 @@ export const rollShip = (
   const ship = buildShip(id, x, y, level, archetype, team, dir);
   return [ship, s2];
 };
-
-/** Gens the shield flare lasts after a hit (drives the impact flash/ripple). */
-export const SHIELD_FLASH = 12;
 
 /** Apply damage to a ship AND light its shield flare. Use at every hit site. */
 export const hurtShip = (

@@ -8,27 +8,13 @@ import van from "vanjs-core";
 import { clamp01 } from "~/engine/physics";
 import { type LightCycle, MAX_LEVEL } from "~/world";
 import {
-  ARC_MIN_LEVEL,
-  ARCHETYPE_MODS,
-  carriesArc,
-  carriesMissiles,
-  cruiseFor,
-  fireCooldownFor,
-  isCarrier,
-  isRecon,
-  MISSILE_MIN_LEVEL,
-  maxFuelFor,
-  maxHpFor,
-  minesFor,
-} from "~/world/factory";
-import {
   ARCHETYPE_INFO,
   type ArchetypeInfo,
-  PEAK,
   rgbCss,
+  statsFor,
   TIERS,
   type Tier,
-} from "./shipInfo";
+} from "./shipStats";
 
 const { div, span } = van.tags;
 const svg = van.tags("http://www.w3.org/2000/svg");
@@ -67,24 +53,13 @@ const meter = (label: string, frac: number, tint: string, value: string) => {
   );
 };
 
-const buildStatBars = (ship: LightCycle, tint: string) => {
-  const a = ship.archetype;
-  const lvl = ship.level;
-  const mod = ARCHETYPE_MODS[a];
-  return div(
+const buildStatBars = (ship: LightCycle, tint: string) =>
+  div(
     { class: "flex flex-col gap-1" },
-    meter("hull", mod.hp / PEAK.hp, tint, `${maxHpFor(a, lvl)}`),
-    meter("spd", mod.speed / PEAK.speed, tint, cruiseFor(a, lvl).toFixed(2)),
-    // Faster fire = shorter cooldown; invert so a fuller bar means quicker.
-    meter(
-      "fire",
-      1 / mod.fire / PEAK.fire,
-      tint,
-      `${Math.round(fireCooldownFor(a, lvl))}g`,
+    ...statsFor(ship.archetype, ship.level).rows.map((r) =>
+      meter(r.key, r.norm, tint, r.text),
     ),
-    meter("fuel", mod.fuel / PEAK.fuel, tint, String(maxFuelFor(a, lvl))),
   );
-};
 
 // --- Trait chips ------------------------------------------------------------
 const chip = (text: string) =>
@@ -98,26 +73,9 @@ const chip = (text: string) =>
   );
 
 const buildTraits = (ship: LightCycle) => {
-  const a = ship.archetype;
-  const lvl = ship.level;
-  const mines = minesFor(a, lvl);
-  const at = (unlocked: boolean, label: string, level: number) =>
-    unlocked ? label : `${label} @ L${level}`;
-  // [predicate, label] pairs — filtered to what applies, so this reads as data
-  // rather than a branch pile (keeps cognitive complexity in check).
-  const candidates: readonly [boolean, string][] = [
-    [mines > 0, `${mines} mines`],
-    [mines === 0 && ARCHETYPE_MODS[a].mines, "mines @ L3"],
-    [
-      carriesMissiles(a),
-      at(lvl >= MISSILE_MIN_LEVEL, "missiles", MISSILE_MIN_LEVEL),
-    ],
-    [carriesArc(a), at(lvl >= ARC_MIN_LEVEL, "chain arc", ARC_MIN_LEVEL)],
-    [isCarrier(a), "refuels allies"],
-    [isRecon(a), "shares raid intel"],
-    [ship.maxShield > 0, `${ship.maxShield} shield`],
-  ];
-  const traits = candidates.filter(([on]) => on).map(([, label]) => label);
+  // Class traits come from the read model; shield is live per-ship state.
+  const traits = [...statsFor(ship.archetype, ship.level).traits];
+  if (ship.maxShield > 0) traits.push(`${ship.maxShield} shield`);
   if (traits.length === 0) traits.push("gun only");
   return div({ class: "flex flex-wrap gap-1" }, ...traits.map(chip));
 };

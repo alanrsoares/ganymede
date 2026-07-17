@@ -6,9 +6,10 @@ import {
   normalize,
   wrapDelta,
 } from "~/engine/physics";
+import { advanceAsteroid, advanceMissile } from "~/world/factory";
+import { wrap } from "~/world/math";
+import { flockSteer, fuelCarriers } from "~/world/steering";
 import {
-  advanceAsteroid,
-  advanceMissile,
   BOOST_MULT,
   cruiseFor,
   DRONE_ORBIT_RADIUS,
@@ -16,14 +17,11 @@ import {
   ENGAGE_RADIUS,
   FUEL_BURN,
   FUEL_DRIFT_SPEED,
-  flockSteer,
-  fuelCarriers,
   regenForLevel,
   SPEED_EASE_LVL,
   shipRadius,
   TURN_EASE_LVL,
-  wrap,
-} from "~/world/factory";
+} from "~/world/tuning";
 import {
   ARENA,
   type Asteroid,

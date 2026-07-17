@@ -1,6 +1,10 @@
 import { normalize, wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
+import { hasRaidedAllEnemyBases, within, wrap } from "~/world/math";
+import { hit, killShip, promote, type TickCtx } from "~/world/tick/context";
+import type { HazardState } from "~/world/tick/hazard-collisions";
+import type { MotionState } from "~/world/tick/motion";
 import {
   ARCADE_DOCK_HEAL_MULT,
   ARCADE_REPAIR_PING_GENS,
@@ -16,7 +20,6 @@ import {
   FUEL_REFILL,
   HIT_COOLDOWN,
   HOME_RADIUS,
-  hasRaidedAllEnemyBases,
   MINE_ARM,
   MINE_DAMAGE,
   MINE_DROP_CHANCE,
@@ -28,12 +31,7 @@ import {
   PORTAL_PULL,
   SHIELD_BASE_REGEN,
   shipRadius,
-  wrap,
-} from "~/world/factory";
-import { within } from "~/world/math";
-import { hit, killShip, promote, type TickCtx } from "~/world/tick/context";
-import type { HazardState } from "~/world/tick/hazard-collisions";
-import type { MotionState } from "~/world/tick/motion";
+} from "~/world/tuning";
 import {
   ARENA,
   type Asteroid,

@@ -14,7 +14,7 @@ import {
   setGridBounds,
   type World,
 } from "~/world";
-import { shipRadius, WHIP_ENABLED } from "~/world/factory";
+import { shipRadius, WHIP_ENABLED } from "~/world/tuning";
 
 type PressedKeys = {
   up: boolean;

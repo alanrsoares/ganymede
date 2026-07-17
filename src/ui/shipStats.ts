@@ -1,10 +1,25 @@
-// Static, ship-independent class reference data shared by the hover inspector
-// (shipCard.ts) and the browsable codex (codex.ts). Pure data + tiny pure
-// helpers — no live World state, no DOM. Keeping it here is the single source
-// of truth for class flavor, the L1→L5 tier notes, and the stat-bar scaling.
+// Ship-stats read model: one place that answers "what does the HUD say about a
+// ship of archetype A at rank N" — class flavor, the L1→L5 tier notes, the
+// counter relations, and the derived stat rows + trait chips shared by the
+// hover inspector (shipCard.ts) and the browsable codex (codex.ts). Pure data
+// + pure helpers — no live World state, no DOM. Stats come from the same
+// tuning derivations the sim spawns from, so the views can never drift.
 
-import type { Archetype, Rgb } from "~/world";
-import { ARCHETYPE_MODS } from "~/world/factory";
+import { ARCHETYPES, type Archetype, type Rgb } from "~/world";
+import {
+  ARC_MIN_LEVEL,
+  ARCHETYPE_MODS,
+  carriesArc,
+  carriesMissiles,
+  cruiseFor,
+  fireCooldownFor,
+  isCarrier,
+  isRecon,
+  MISSILE_MIN_LEVEL,
+  maxFuelFor,
+  maxHpFor,
+  minesFor,
+} from "~/world/tuning";
 
 // --- Per-class flavor -------------------------------------------------------
 // A glyph is a schematic top-down hull (nose up) in a 24×24 viewBox: `hull` is
@@ -99,16 +114,99 @@ export const TIERS: readonly Tier[] = [
   { level: 5, title: "Ace", note: "peak coordination + cadence" },
 ];
 
-// --- Stat-bar scaling -------------------------------------------------------
+// --- Counter relations ------------------------------------------------------
+// The rock-paper-scissors web, derived once from the tuning table. With a
+// clean 4-cycle every class has exactly one predator, so both maps stay total.
+export const COUNTERS: Record<Archetype, Archetype> = ARCHETYPES.reduce(
+  (acc, a) => {
+    acc[a] = ARCHETYPE_MODS[a].counters;
+    return acc;
+  },
+  {} as Record<Archetype, Archetype>,
+);
+
+export const COUNTERED_BY: Record<Archetype, Archetype> = ARCHETYPES.reduce(
+  (acc, a) => {
+    acc[ARCHETYPE_MODS[a].counters] = a;
+    return acc;
+  },
+  {} as Record<Archetype, Archetype>,
+);
+
+// --- Derived stats ----------------------------------------------------------
 // An `rgb` (0..1) triple → CSS `rgba()`, with optional alpha.
 export const rgbCss = (c: Rgb, a = 1) =>
   `rgba(${c.map((v) => Math.round(v * 255)).join(",")},${a})`;
 
 // Peak multiplier on each axis across all classes, so bars normalize to the
 // strongest class on that axis (a comparison, not an absolute).
-export const PEAK = {
+const PEAK = {
   speed: Math.max(...Object.values(ARCHETYPE_MODS).map((m) => m.speed)),
   hp: Math.max(...Object.values(ARCHETYPE_MODS).map((m) => m.hp)),
   fuel: Math.max(...Object.values(ARCHETYPE_MODS).map((m) => m.fuel)),
   fire: Math.max(...Object.values(ARCHETYPE_MODS).map((m) => 1 / m.fire)),
+};
+
+// One HUD gauge row: `norm` (0..1, relative to the strongest class on the
+// axis) drives the meter fill; `text` is the sim-accurate formatted readout.
+export interface StatRow {
+  key: "hull" | "spd" | "fire" | "fuel";
+  norm: number;
+  text: string;
+}
+
+export interface ShipStats {
+  rows: readonly StatRow[];
+  traits: readonly string[];
+}
+
+/**
+ * Everything the HUD says about a ship of archetype `a` at rank `lvl`. Both
+ * ship views render these rows/chips verbatim; live per-ship extras (shield)
+ * stay with the caller.
+ */
+export const statsFor = (a: Archetype, lvl: number): ShipStats => {
+  const mod = ARCHETYPE_MODS[a];
+  const mines = minesFor(a, lvl);
+  const pct = (v: number) => Math.round(v * 100);
+  const at = (unlocked: boolean, label: string, level: number) =>
+    unlocked ? label : `${label} @ L${level}`;
+  // [predicate, label] pairs — filtered to what applies, so this reads as data
+  // rather than a branch pile (keeps cognitive complexity in check).
+  const candidates: readonly [boolean, string][] = [
+    [mines > 0, `${mines} mines`],
+    [mines === 0 && mod.mines, "mines @ L3"],
+    [
+      carriesMissiles(a),
+      at(lvl >= MISSILE_MIN_LEVEL, "missiles", MISSILE_MIN_LEVEL),
+    ],
+    [mod.rammer, "rams + base slam"],
+    [carriesArc(a), at(lvl >= ARC_MIN_LEVEL, "chain arc", ARC_MIN_LEVEL)],
+    [isCarrier(a), "refuels allies"],
+    [isRecon(a), "shares raid intel"],
+    [mod.meleeResist > 0, `${pct(mod.meleeResist)}% melee armor`],
+    [mod.pierceArmor > 0, `${pct(mod.pierceArmor)}% pierce armor`],
+  ];
+  return {
+    rows: [
+      { key: "hull", norm: mod.hp / PEAK.hp, text: String(maxHpFor(a, lvl)) },
+      {
+        key: "spd",
+        norm: mod.speed / PEAK.speed,
+        text: cruiseFor(a, lvl).toFixed(2),
+      },
+      // Faster fire = shorter cooldown; inverted so a fuller bar means quicker.
+      {
+        key: "fire",
+        norm: 1 / mod.fire / PEAK.fire,
+        text: `${Math.round(fireCooldownFor(a, lvl))}g`,
+      },
+      {
+        key: "fuel",
+        norm: mod.fuel / PEAK.fuel,
+        text: String(maxFuelFor(a, lvl)),
+      },
+    ],
+    traits: candidates.filter(([on]) => on).map(([, label]) => label),
+  };
 };

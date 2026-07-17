@@ -15,7 +15,7 @@ import {
   BASE_MAX_HP,
   type CenterPadPhase,
   centerPadPhase,
-} from "~/world/factory";
+} from "~/world/tuning";
 import { drawForceField, type FieldDir } from "./effects";
 import { MAX_BASES, ROCK_LAYOUT } from "./frame";
 import type { PushFn, Rgba } from "./push";

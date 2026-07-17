@@ -172,6 +172,7 @@ export const BASE_HORIZON = 1.4; // field reach as a multiple of BASE_RADIUS
 export const SHRAPNEL_LIFE = 130; // gens a shrapnel fragment lives
 export const SHRAPNEL_RADIUS = 5; // fragment hit radius vs ships
 export const HIT_COOLDOWN = 20; // gens a ship is immune after trading a hit
+export const SHIELD_FLASH = 12; // gens the shield flare lasts after a hit (impact flash/ripple)
 export const SHIELD_BASE_REGEN = 0.012; // fraction of max shield healed/gen home
 export const MINE_ARM = 25; // gens before a dropped mine goes live
 export const MINE_LIFE = 900; // gens a mine persists

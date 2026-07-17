@@ -1,4 +1,6 @@
 import { wrapDelta } from "~/engine/physics";
+import { within } from "~/world/math";
+import { hit, killShip, type TickCtx } from "~/world/tick/context";
 import {
   baseHitsRequired,
   CARRIER_LEECH_LEVEL,
@@ -15,9 +17,7 @@ import {
   isRecon,
   RECON_SHARE_RADIUS,
   SCORE_KILL,
-} from "~/world/factory";
-import { within } from "~/world/math";
-import { hit, killShip, type TickCtx } from "~/world/tick/context";
+} from "~/world/tuning";
 import {
   ARENA,
   type LightCycle,

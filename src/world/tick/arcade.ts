@@ -4,8 +4,9 @@
 // No-op unless `world.config.format === "arcade"`. See docs/arcade-mode-plan.md.
 
 import { nextRange } from "~/engine/rng";
-import { activeTeams, rollShip } from "~/world/factory";
+import { rollShip } from "~/world/factory";
 import {
+  activeTeams,
   BASE_MAX_HP,
   HANDICAP_ADAPT_MAX,
   HANDICAP_CLEAN_STEP,

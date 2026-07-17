@@ -5,7 +5,7 @@
 
 import van, { type State } from "vanjs-core";
 import { MAX_TEAMS, type MatchConfig } from "~/world";
-import { DEFAULT_CONFIG } from "~/world/factory";
+import { DEFAULT_CONFIG } from "~/world/tuning";
 import {
   choiceCard,
   ctaButton,

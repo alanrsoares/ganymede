@@ -8,8 +8,9 @@
 // deterministic, no RNG, no `now`.
 
 import { wrapDelta } from "~/engine/physics";
-import { SCORE_KILL, toroidalDist, wrap } from "~/world/factory";
+import { toroidalDist, wrap } from "~/world/math";
 import {
+  SCORE_KILL,
   WHIP_ARC,
   WHIP_DAMP,
   WHIP_HIT_RADIUS,

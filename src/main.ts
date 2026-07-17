@@ -25,10 +25,10 @@ import { type Lobby, mountArcadeLobby } from "~/ui/arcade-lobby";
 import { mountMixer } from "~/ui/mixer";
 import { mountMobileControls } from "~/ui/mobileControls";
 import { mountSetup, type Setup } from "~/ui/setup";
-import { rgbCss } from "~/ui/shipInfo";
+import { rgbCss } from "~/ui/shipStats";
 import { mountUi, type Ui } from "~/ui/ui";
 import { mountWelcome, type Welcome } from "~/ui/welcome";
-import { DEFAULT_CONFIG } from "~/world/factory";
+import { DEFAULT_CONFIG } from "~/world/tuning";
 import {
   initWorld,
   type MatchConfig,

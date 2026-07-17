@@ -7,7 +7,7 @@
 
 import van, { type State } from "vanjs-core";
 import type { LightCycle } from "~/world";
-import { WHIP_ENABLED } from "~/world/factory";
+import { WHIP_ENABLED } from "~/world/tuning";
 
 const { div, button, span } = van.tags;
 

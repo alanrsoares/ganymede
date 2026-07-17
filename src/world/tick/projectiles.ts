@@ -1,16 +1,15 @@
 import { angleTo, normalize, wrapDelta } from "~/engine/physics";
+import { spawnShrapnel } from "~/world/factory";
+import { within, wrap } from "~/world/math";
 import {
   BASE_RADIUS,
   BULLET_RADIUS,
   MISSILE_RADIUS,
   SCORE_KILL,
   shipRadius,
-  spawnShrapnel,
-  wrap,
   XP_LEVEL_CAP,
   XP_PER_ROCK,
-} from "~/world/factory";
-import { within } from "~/world/math";
+} from "~/world/tuning";
 import {
   ARENA,
   type Asteroid,

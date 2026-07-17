@@ -33,17 +33,17 @@ import {
 } from "~/world";
 import {
   acquireTarget,
-  applyHit,
-  fireCooldownForLevel,
   focusEnemy,
   hurtShip,
-  maxHpForLevel,
   nearestEnemy,
   rollShip,
-  shipRadius,
-  toroidalDist,
-  wrap,
 } from "~/world/factory";
+import { applyHit, toroidalDist, wrap } from "~/world/math";
+import {
+  fireCooldownForLevel,
+  maxHpForLevel,
+  shipRadius,
+} from "~/world/tuning";
 
 const close = (a: number, b: number, eps = 1e-6) =>
   expect(Math.abs(a - b)).toBeLessThan(eps);

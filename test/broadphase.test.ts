@@ -14,13 +14,8 @@ import {
   TEAM_BASES,
   update,
 } from "~/world";
-import {
-  baseHitsRequired,
-  ENGAGE_RADIUS,
-  flockSteer,
-  fuelCarriers,
-  rollShip,
-} from "~/world/factory";
+import { rollShip } from "~/world/factory";
+import { flockSteer, fuelCarriers } from "~/world/steering";
 import {
   bruteCrossPairs,
   bruteSelfPairs,
@@ -56,6 +51,7 @@ import {
   resolveShipCollisions,
   shipCollisionPairs,
 } from "~/world/tick/ship-collisions";
+import { baseHitsRequired, ENGAGE_RADIUS } from "~/world/tuning";
 import { ARENA, TEAMS } from "~/world/types";
 
 const randomPts = (n: number, seed: number): Pt[] => {

@@ -1,7 +1,8 @@
-import { DRONE_FIRE_COOLDOWN, spawnDroneBolt } from "~/world/factory";
+import { spawnDroneBolt } from "~/world/factory";
 import { gridNeighbors } from "~/world/tick/broadphase";
 import type { TickCtx } from "~/world/tick/context";
 import type { MotionState } from "~/world/tick/motion";
+import { DRONE_FIRE_COOLDOWN } from "~/world/tuning";
 import { ARENA } from "~/world/types";
 import {
   AURA_BAND,

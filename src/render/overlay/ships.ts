@@ -7,11 +7,8 @@ import { clamp01 } from "~/engine/physics";
 import { ENGINES, SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
 import { SHAPE, shipSprite } from "~/render/sprites";
 import type { LightCycle, World } from "~/world";
-import {
-  hasRaidedAllEnemyBases,
-  MUSTER_DRONE_SIZE_MULT,
-  SHIELD_FLASH,
-} from "~/world/factory";
+import { hasRaidedAllEnemyBases } from "~/world/math";
+import { MUSTER_DRONE_SIZE_MULT, SHIELD_FLASH } from "~/world/tuning";
 import {
   MAX_MESH_SHIPS,
   MAX_PLUMES,

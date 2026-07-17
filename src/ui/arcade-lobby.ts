@@ -9,7 +9,7 @@ import {
   type Archetype,
   type MatchConfig,
 } from "~/world";
-import { ARCADE_TIERS } from "~/world/factory";
+import { ARCADE_TIERS } from "~/world/tuning";
 import {
   choiceCard,
   ctaButton,

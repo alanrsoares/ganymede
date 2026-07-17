@@ -2,6 +2,14 @@ import { wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
 import {
+  acquireTarget,
+  spawnBullet,
+  spawnEmpMissile,
+  spawnMissile,
+} from "~/world/factory";
+import { distSq, wrap } from "~/world/math";
+import { hit, killShip, type TickCtx } from "~/world/tick/context";
+import {
   AIM_ASSIST_BIAS,
   AIM_ASSIST_CONE_COS,
   AIM_ASSIST_RANGE,
@@ -12,7 +20,6 @@ import {
   ARC_MAX_LINKS,
   ARC_MIN_LEVEL,
   ARC_RANGE,
-  acquireTarget,
   carriesArc,
   carriesMissiles,
   EMP_MISSILE_LOCK,
@@ -26,15 +33,9 @@ import {
   PILOT_FIRE_MULT,
   SCORE_KILL,
   shipRadius,
-  spawnBullet,
-  spawnEmpMissile,
-  spawnMissile,
   type WeaponProfile,
   weaponFor,
-  wrap,
-} from "~/world/factory";
-import { distSq } from "~/world/math";
-import { hit, killShip, type TickCtx } from "~/world/tick/context";
+} from "~/world/tuning";
 import {
   ARENA,
   BURST_ARC,

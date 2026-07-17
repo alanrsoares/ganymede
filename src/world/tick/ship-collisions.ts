@@ -1,11 +1,6 @@
 import { elastic, normalize, wrapDelta } from "~/engine/physics";
-import {
-  HIT_COOLDOWN,
-  meleeDamage,
-  SCORE_KILL,
-  toroidalDist,
-  wrap,
-} from "~/world/factory";
+import { toroidalDist, wrap } from "~/world/math";
+import { HIT_COOLDOWN, meleeDamage, SCORE_KILL } from "~/world/tuning";
 import {
   ARENA,
   BURST_EXPLOSION,
