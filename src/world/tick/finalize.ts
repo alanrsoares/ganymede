@@ -1,8 +1,8 @@
 import { cap, type EntityList, retain, spawn } from "~/engine/entities";
 import { nextInt, type Seed } from "~/engine/rng";
-import { EXPLOSION_VARIANTS } from "~/render/sprites";
 import {
   EXPLOSION_DURATION,
+  EXPLOSION_VARIANTS,
   MAX_SHIPS,
   NUM_ASTEROIDS,
   NUM_PICKUPS,
