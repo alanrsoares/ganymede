@@ -21,7 +21,7 @@ import {
   toggleSpin,
   view,
 } from "~/drydock/store";
-import { SHIP_CLASSES, type ShipClass } from "~/ship-parts";
+import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
 import { TEAMS } from "~/world/types";
 
 const GEAR: Record<ShipClass, { title: string; desc: string }> = {

@@ -6,6 +6,13 @@
 // read) on the right. Reads the shared store every frame; registers mesh
 // rebuild hooks so designer edits re-bake the hull.
 
+import { assembleShipMesh, makePlumeMesh, pickPart } from "~/hull/bake";
+import {
+  type PartDef,
+  SHIP_CLASSES,
+  type ShipClass,
+  type V3,
+} from "~/hull/catalog";
 import { acquireGpu } from "~/render/gpu-context";
 import { makeAsteroidMesh } from "~/render/mesh";
 import {
@@ -18,15 +25,6 @@ import highlightWGSL from "~/shaders/highlight.wgsl" with { type: "text" };
 import plumeWGSL from "~/shaders/plume.wgsl" with { type: "text" };
 import rockWGSL from "~/shaders/rock.wgsl" with { type: "text" };
 import shipWGSL from "~/shaders/ship.wgsl" with { type: "text" };
-import {
-  assembleShipMesh,
-  makePlumeMesh,
-  type PartDef,
-  pickPart,
-  SHIP_CLASSES,
-  type ShipClass,
-  type V3,
-} from "~/ship-parts";
 import { TEAMS } from "~/world/types";
 import {
   hulls,

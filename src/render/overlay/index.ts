@@ -1,8 +1,8 @@
 // view: projects the immutable World into a flat sprite instance buffer for
 // gpu.ts. Pure — it only reads world — animation is derived from `now`.
 
+import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
 import { CLIP, clipLayer } from "~/render/sprites";
-import { SHIP_CLASSES, type ShipClass } from "~/ship-parts";
 import type { World } from "~/world";
 import {
   drawBases,

@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  assembleShipMesh,
-  buildPrim,
-  RECIPES,
-  SHIP_CLASSES,
-} from "../src/ship-parts";
+import { assembleShipMesh, buildPrim } from "~/hull/bake";
+import { type PartDef, RECIPES, SHIP_CLASSES } from "~/hull/catalog";
 
 describe("bevelSlab prim", () => {
   test("beveled slab bakes a finite, non-degenerate mesh", () => {
@@ -50,6 +46,20 @@ describe("hull recipes", () => {
           throw new Error(`${cls}: non-finite float at ${i}`);
         }
       }
+    }
+  });
+
+  test("an edited recipe re-bakes after a serialize round-trip", () => {
+    // The drydock loop: edit a working copy, persist as JSON, re-bake.
+    const parts = JSON.parse(JSON.stringify(RECIPES.scout)) as PartDef[];
+    parts[0].scale = [0.5, 2.0, 0.3];
+    parts[0].color = "acid";
+    const revived = JSON.parse(JSON.stringify(parts)) as PartDef[];
+    expect(revived).toEqual(parts);
+    const mesh = assembleShipMesh(revived);
+    expect(mesh.vertexCount).toBeGreaterThan(0);
+    for (let i = 0; i < mesh.vertexCount * 9; i++) {
+      expect(Number.isFinite(mesh.data[i])).toBe(true);
     }
   });
 });

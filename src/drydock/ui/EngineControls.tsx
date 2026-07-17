@@ -7,7 +7,7 @@ import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import type { ReactElement } from "react";
 import { addEngine, delEngine, hulls, view } from "~/drydock/store";
-import type { EngineAnchor } from "~/ship-parts";
+import type { EngineAnchor } from "~/hull/catalog";
 import { SliderField } from "./fields";
 
 const EngineRow = ({

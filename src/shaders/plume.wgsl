@@ -1,4 +1,4 @@
-// Additive engine-plume pass. One unit cone (ship-parts.ts makePlumeMesh)
+// Additive engine-plume pass. One unit cone (hull/bake.ts makePlumeMesh)
 // instanced per engine nozzle: positioned in ship-local space, carried through
 // the same heading/tilt/roll transform as the hull (ship.wgsl), scaled by
 // throttle, and flickered per-ship so the fleet never strobes in unison.

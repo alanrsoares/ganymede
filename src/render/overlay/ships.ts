@@ -1,11 +1,11 @@
 // view: ship rendering — shadow, exhaust, smoke, shield, hull, status FX,
 // beam and HP bar. Pure — reads world, animation is derived from `now`.
-// Hull bodies are 3D part-assemblies (ship-parts.ts) drawn by gpu.ts's
+// Hull bodies are 3D part-assemblies (hull/bake.ts) drawn by gpu.ts's
 // instanced ship passes; everything else stays on the sprite/solid layer.
 
 import { clamp01 } from "~/engine/physics";
+import { ENGINES, SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
 import { SHAPE, shipSprite } from "~/render/sprites";
-import { ENGINES, SHIP_CLASSES, type ShipClass } from "~/ship-parts";
 import type { LightCycle, World } from "~/world";
 import {
   hasRaidedAllEnemyBases,

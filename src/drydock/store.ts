@@ -12,7 +12,7 @@ import {
   RECIPES,
   SHIP_CLASSES,
   type ShipClass,
-} from "~/ship-parts";
+} from "~/hull/catalog";
 
 export interface HullDef {
   parts: PartDef[];
@@ -270,7 +270,7 @@ export const resetClass = (): void => {
 
 // --- clipboard round-trip -------------------------------------------------------
 // Pure `{ parts, engines }` JSON: a valid TS literal to paste into
-// ship-parts.ts, parseable back by import. Both return a status message
+// hull/catalog.ts, parseable back by import. Both return a status message
 // for the UI to flash on the button.
 
 export const exportHull = async (): Promise<string> => {

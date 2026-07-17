@@ -4,6 +4,7 @@
 // cap-respecting, correctly ordered instance data.
 
 import { expect, test } from "bun:test";
+import { SHIP_CLASSES } from "~/hull/catalog";
 import { createOverlay } from "~/render/overlay";
 import {
   FLOATS_PER_INSTANCE,
@@ -21,7 +22,6 @@ import {
   SHIELD_LAYOUT,
   SHIP_LAYOUT,
 } from "~/render/overlay/frame";
-import { SHIP_CLASSES } from "~/ship-parts";
 import { ARENA, initWorld, setOrbitPhase, update } from "~/world";
 
 const NOW = 5000;

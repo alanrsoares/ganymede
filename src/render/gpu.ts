@@ -2,6 +2,8 @@
 // game sprites (ships, asteroids, mines, pickups, explosions, HUD rings).
 
 import * as d from "typegpu/data";
+import { makePlumeMesh, makeShipMesh } from "~/hull/bake";
+import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
 // WGSL lives in .wgsl files (real syntax highlighting) and is imported as text.
 import backgroundWGSL from "~/shaders/background.wgsl" with { type: "text" };
 import baseWGSL from "~/shaders/base.wgsl" with { type: "text" };
@@ -12,12 +14,6 @@ import plumeWGSL from "~/shaders/plume.wgsl" with { type: "text" };
 import rockWGSL from "~/shaders/rock.wgsl" with { type: "text" };
 import shieldWGSL from "~/shaders/shield.wgsl" with { type: "text" };
 import shipWGSL from "~/shaders/ship.wgsl" with { type: "text" };
-import {
-  makePlumeMesh,
-  makeShipMesh,
-  SHIP_CLASSES,
-  type ShipClass,
-} from "~/ship-parts";
 import type { GpuContext } from "./gpu-context";
 import {
   type Mesh,

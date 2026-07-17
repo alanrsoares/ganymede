@@ -4,8 +4,8 @@
 // because they describe the projection (how many of each entity a frame may
 // carry, and how each record packs) — the GPU pipeline consumes them.
 
+import type { ShipClass } from "~/hull/catalog";
 import { instanceLayout } from "~/render/mesh-pass";
-import type { ShipClass } from "~/ship-parts";
 
 // --- Sprite/overlay quad instances (space shooter sprites and vector rings) ---
 
