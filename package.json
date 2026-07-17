@@ -11,14 +11,14 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "typegpu": "^0.11.9",
-    "vanjs-core": "^1.6.0"
+    "vanjs-core": "^1.6.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@webgpu/types": "^0.1.71",
     "bun-plugin-tailwind": "^0.1.2",
-    "bun-types": "latest",
+    "bun-types": "^1.3.14",
     "playwright": "^1.61.1",
     "tailwindcss": "^4.3.2",
     "typescript": "^7.0.2"

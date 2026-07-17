@@ -6,7 +6,6 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["bun-types", "@webgpu/types"],
     "paths": {
