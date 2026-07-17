@@ -145,22 +145,7 @@ export const buildAndRender = (
   // Align the furniture ring to the world being drawn (the sim advances age
   // between renders; this keeps rendered bases/portals/pads on the live orbit).
   setOrbitPhase(world.age);
-  const {
-    instances,
-    count,
-    rockInstances,
-    rockCount,
-    shieldInstances,
-    shieldCount,
-    orbInstances,
-    orbCount,
-    baseInstances,
-    baseCount,
-    centerPadInstances,
-    centerPadCount,
-    portalCount,
-    ships,
-  } = overlay.build({
+  const frame = overlay.build({
     w: canvas.width,
     h: canvas.height,
     gridW: ARENA.w,
@@ -169,24 +154,7 @@ export const buildAndRender = (
     world,
     showHp,
   });
-  renderer.render(
-    instances,
-    count,
-    portalCount,
-    rockInstances,
-    rockCount,
-    shieldInstances,
-    shieldCount,
-    orbInstances,
-    orbCount,
-    baseInstances,
-    baseCount,
-    centerPadInstances,
-    centerPadCount,
-    ships,
-    now / 1000,
-    camera,
-  );
+  renderer.render(frame, now / 1000, camera);
 };
 
 // Screen shake: each fresh explosion punches the canvas; it decays fast.

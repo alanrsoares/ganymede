@@ -2,7 +2,7 @@
 // function signature every `draw*` helper uses, and the pusher that owns the
 // flat sprite instance buffer + write cursor.
 
-import { FLOATS_PER_INSTANCE, MAX_INSTANCES } from "~/render/gpu";
+import { FLOATS_PER_INSTANCE, MAX_INSTANCES } from "./frame";
 
 export type Rgba = readonly [number, number, number, number];
 

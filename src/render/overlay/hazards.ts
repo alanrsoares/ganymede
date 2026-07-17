@@ -2,10 +2,10 @@
 // orbs. Pure — reads world, animation is derived from `now`.
 
 import { clamp01 } from "~/engine/physics";
-import { MAX_ORBS, MAX_ROCKS, ROCK_LAYOUT, SHIELD_LAYOUT } from "~/render/gpu";
 import { clipLayer, mineClip, SHAPE } from "~/render/sprites";
 import type { World } from "~/world";
 import { SHRAPNEL_LIFE } from "~/world/tuning";
+import { MAX_ORBS, MAX_ROCKS, ROCK_LAYOUT, SHIELD_LAYOUT } from "./frame";
 import type { PushFn } from "./push";
 
 export const PICKUP_RGB: readonly (readonly [number, number, number])[] = [

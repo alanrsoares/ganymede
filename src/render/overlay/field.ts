@@ -2,7 +2,6 @@
 // the rally beacon. Pure — reads world, animation is derived from `now`.
 
 import { clamp01 } from "~/engine/physics";
-import { MAX_BASES, ROCK_LAYOUT } from "~/render/gpu";
 import { SHAPE } from "~/render/sprites";
 import {
   CENTER_PAD,
@@ -18,6 +17,7 @@ import {
   centerPadPhase,
 } from "~/world/factory";
 import { drawForceField, type FieldDir } from "./effects";
+import { MAX_BASES, ROCK_LAYOUT } from "./frame";
 import type { PushFn, Rgba } from "./push";
 
 // Integrity bar under a base (green→red), hidden once razed.
