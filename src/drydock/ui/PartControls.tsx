@@ -34,6 +34,16 @@ const TaperFields = ({ prim }: { prim: PrimDef }): ReactElement | null => {
             prim.tz = v;
           }}
         />
+        <SliderField
+          label="bevel"
+          min={0}
+          max={0.24}
+          step={0.01}
+          value={prim.bevel ?? 0}
+          onChange={(v) => {
+            prim.bevel = v;
+          }}
+        />
       </>
     );
   }

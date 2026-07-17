@@ -1,9 +1,20 @@
-// view: ship rendering — shadow, exhaust, smoke, shield, body, status FX,
+// view: ship rendering — shadow, exhaust, smoke, shield, hull, status FX,
 // beam and HP bar. Pure — reads world, animation is derived from `now`.
+// Hull bodies are 3D part-assemblies (ship-parts.ts) drawn by gpu.ts's
+// instanced ship passes; everything else stays on the sprite/solid layer.
 
 import { clamp01 } from "../engine/physics";
-import { MAX_SHIELDS, SHIELD_LAYOUT } from "../gpu";
-import { bankLayer, SHAPE, type ShipRole, shipSprite } from "../sprites";
+import {
+  MAX_MESH_SHIPS,
+  MAX_PLUMES,
+  MAX_SHIELDS,
+  PLUME_LAYOUT,
+  SHIELD_LAYOUT,
+  SHIP_LAYOUT,
+  type ShipBuckets,
+} from "../gpu";
+import { ENGINES, SHIP_CLASSES, type ShipClass } from "../ship-parts";
+import { SHAPE, shipSprite } from "../sprites";
 import type { LightCycle, World } from "../world";
 import {
   hasRaidedAllEnemyBases,
@@ -16,12 +27,29 @@ const SHIP_LEVEL_SIZES = [4.5, 5.9, 7.0, 8.1, 9.2];
 
 export const shipSize = (level: number): number => SHIP_LEVEL_SIZES[level - 1];
 
+// Fixed camera tilt leaning every hull toward the viewer so its 3D form reads
+// under the top-down camera — same default the drydock inspector uses.
+const HULL_TILT = (28 * Math.PI) / 180;
+// Banking gain/cap: the hull's heading lags its velocity while turning; the
+// residual drives a continuous roll about the thrust axis.
+const ROLL_GAIN = 1.4;
+const ROLL_MAX = 0.6;
+
+/** Hull mesh for a ship: archetype = class, unknown archetypes fly the scout. */
+const hullClass = (archetype: string): ShipClass =>
+  (SHIP_CLASSES as readonly string[]).includes(archetype)
+    ? (archetype as ShipClass)
+    : "scout";
+
 export interface ShipVisual {
   scx: number;
   scy: number;
   size: number;
-  hullRot: number;
-  hullLayer: number;
+  /** Mesh-pass heading. NEGATED game angle: ship.wgsl's Rz sends the nose to
+   * (-sin h, cos h) in screen space while the sim flies (sin a, cos a), so
+   * h = a renders every ship x-mirrored (only visible off the vertical axis). */
+  heading: number;
+  roll: number;
   hpFrac: number;
   distress: number;
   hx: number;
@@ -29,13 +57,12 @@ export interface ShipVisual {
 }
 
 // Resolves the per-ship screen transform + derived render state shared by
-// the shadow, exhaust, smoke, shield, body and beam draws below.
+// the shadow, exhaust, smoke, shield, hull and beam draws below.
 export function computeShipVisual(
   cycle: LightCycle,
   cellPx: number,
   cellPy: number,
   now: number,
-  role?: ShipRole,
 ): ShipVisual {
   const scx = (cycle.x + 0.5) * cellPx;
   // Out of fuel: the hull bobs gently like a drifting power-up orb.
@@ -44,21 +71,18 @@ export function computeShipVisual(
     (cycle.y + 0.5) * cellPy +
     (drifting ? Math.sin(now / 420 + cycle.id * 1.7) * 1.4 * cellPy : 0);
   // Muster drone ships render pint-sized: every size-keyed layer (shadow,
-  // exhaust, shield, body) scales together so the escort reads as a wingman,
+  // exhaust, shield, hull) scales together so the escort reads as a wingman,
   // not a fifth hero. Sim hitbox (shipRadius) is unchanged.
   const size =
     shipSize(cycle.level) * (cycle.droneShip ? MUSTER_DRONE_SIZE_MULT : 1);
 
-  // Hull sprite + banking frame (shared by the shadow and the body). Banking
-  // FX: the hull angle lags its heading while turning, so the residual is
-  // the turn amount — pick the matching banked frame. Flipped (PI-rotated)
-  // hulls have their left/right mirrored, so invert the sign.
-  const sprite = shipSprite(cycle.archetype, role);
+  // Banking: the hull angle lags its heading while turning, so the residual
+  // is the turn amount — rolled continuously about the thrust axis.
   let turn = Math.atan2(cycle.dx, cycle.dy) - cycle.angle;
   turn = Math.atan2(Math.sin(turn), Math.cos(turn)); // wrap to [-π, π]
-  if (sprite.angleOffset !== 0) turn = -turn;
-  const hullLayer = bankLayer(sprite, turn);
-  const hullRot = cycle.angle + sprite.angleOffset;
+  // Negated with heading (see below): the x-mirror flips handedness, so the
+  // roll sign flips with it to keep the hull banking into the turn.
+  const roll = Math.max(-ROLL_MAX, Math.min(ROLL_MAX, -turn * ROLL_GAIN));
 
   // Distress ramp: 0 above 30% HP → 1 near death. Drives smoke + a reddening
   // hull so a dying ship reads at a glance. Render-only (no sim state).
@@ -69,8 +93,8 @@ export function computeShipVisual(
     scx,
     scy,
     size,
-    hullRot,
-    hullLayer,
+    heading: -cycle.angle,
+    roll,
     hpFrac,
     distress,
     hx: Math.sin(cycle.angle),
@@ -78,9 +102,8 @@ export function computeShipVisual(
   };
 }
 
-// Drop shadow: the same hull silhouette in black, offset down-right and
-// drawn first (under everything) so each ship reads as floating above the
-// field. tintsprite × black rgb = a shape-accurate shadow, no new asset.
+// Drop shadow: a soft dark disc offset down-right, drawn first (under
+// everything) so each ship reads as floating above the field.
 function drawShipShadow(
   push: PushFn,
   v: ShipVisual,
@@ -90,85 +113,76 @@ function drawShipShadow(
   push(
     v.scx + 2.0 * cellPx,
     v.scy + 2.6 * cellPy,
-    v.size * cellPx,
-    v.size * cellPy,
-    v.hullRot,
-    SHAPE.tintsprite,
-    [0, 0, 0, 0.32],
-    v.hullLayer,
+    v.size * 0.95 * cellPx,
+    v.size * 0.95 * cellPy,
+    0,
+    SHAPE.solid,
+    [0, 0, 0, 0.3],
   );
 }
 
-// Engine plume behind the nose (drawn under the body). Three layers: the
-// textured exhaust sprite for the ragged flame, a hot solid core disc punching
-// out of the nozzle, and — under boost — an elongated blue-white afterburner
-// cone of Mach-diamond shock puffs marching down the thrust axis. Length,
-// brightness and a fast per-ship flicker all scale with real thrust, so a ship
-// visibly lights up as it accelerates. Offset by the *rendered* hull angle
-// (which eases behind the heading through a turn), so the plume stays pinned to
-// the rear instead of swinging off it. Dead tank = dead engine: plume cuts out.
-function drawShipExhaust(
+// Engine plumes: one additive 3D cone per ENGINES nozzle anchor, carried
+// through the same heading/tilt/roll transform as the hull (plume.wgsl), so
+// every tail sits exactly on its nozzle at any bank angle. Throttle scales
+// length/brightness with real thrust; a dead tank cuts the engines.
+function packShipPlumes(
+  ships: ShipBuckets,
+  cycle: LightCycle,
+  v: ShipVisual,
+  cellPx: number,
+) {
+  if (cycle.fuel <= 0) return;
+  const speed = Math.hypot(cycle.vx, cycle.vy);
+  const drive = Math.max(0.35, Math.min(1, speed / 3));
+  const throttle = cycle.boostTime > 0 ? 1 : drive * 0.85;
+  const P = PLUME_LAYOUT.idx;
+  const d = ships.plumes;
+  for (const eng of ENGINES[hullClass(cycle.archetype)]) {
+    if (ships.plumeCount >= MAX_PLUMES) return;
+    const o = ships.plumeCount * PLUME_LAYOUT.floats;
+    d[o + P.cx] = v.scx;
+    d[o + P.cy] = v.scy;
+    d[o + P.radius] = v.size * cellPx;
+    d[o + P.roll] = v.roll;
+    d[o + P.heading] = v.heading;
+    d[o + P.tilt] = HULL_TILT;
+    d[o + P.throttle] = throttle;
+    d[o + P.phase] = cycle.id * 1.7 + ships.plumeCount;
+    d[o + P.nx] = eng.pos[0];
+    d[o + P.ny] = eng.pos[1];
+    d[o + P.nz] = eng.pos[2];
+    d[o + P.w] = eng.w;
+    d[o + P.r] = cycle.color[0];
+    d[o + P.g] = cycle.color[1];
+    d[o + P.b] = cycle.color[2];
+    d[o + P.alpha] = cycle.invulnTime > 0 ? 0.4 : 1;
+    ships.plumeCount++;
+  }
+}
+
+// Afterburner extra: Mach-diamond shock puffs marching down the thrust axis,
+// shrinking + fading toward the tip. Boost only.
+function drawShipBoostDiamonds(
   push: PushFn,
   cycle: LightCycle,
   v: ShipVisual,
   cellPx: number,
   cellPy: number,
   now: number,
-  exhaustL: number,
 ) {
-  if (cycle.fuel <= 0) return;
-  const speed = Math.hypot(cycle.vx, cycle.vy);
-  const drive = Math.max(0.35, Math.min(1, speed / 3));
-  const boosting = cycle.boostTime > 0;
-  const boost = boosting ? 1.8 : 1;
-  // Fast engine-flame flicker (deterministic per ship) — plume never sits still.
+  if (cycle.boostTime <= 0 || cycle.fuel <= 0) return;
   const flick =
     1 +
     0.18 * Math.sin(now * 0.05 + cycle.id * 2.3) +
     0.08 * Math.sin(now * 0.11 + cycle.id);
-  const exOff = v.size * 0.9;
-  const nx = -v.hx; // unit vector out the tail
-  const ny = -v.hy;
-  const nozx = v.scx + nx * exOff * cellPx;
-  const nozy = v.scy + ny * exOff * cellPy;
-
-  // Outer ragged flame (textured), stretched along thrust by drive × boost.
-  const flame = v.size * 0.7 * drive * boost * flick;
-  push(
-    nozx,
-    nozy,
-    flame * cellPx,
-    flame * cellPy,
-    cycle.angle,
-    SHAPE.sprite,
-    [1.0, 0.72, 0.32, 0.55 + 0.4 * drive],
-    exhaustL,
-  );
-
-  // Hot core disc at the nozzle — white-gold punch (blue-white under boost).
-  const core = v.size * 0.34 * (0.85 + 0.3 * drive) * flick;
-  push(
-    nozx,
-    nozy,
-    core * cellPx,
-    core * cellPy,
-    0,
-    SHAPE.solid,
-    boosting ? [0.75, 0.9, 1.0, 0.95] : [1.0, 0.95, 0.7, 0.9],
-  );
-
-  if (!boosting) return;
-
-  // Afterburner: Mach-diamond shock puffs marching down the thrust axis,
-  // shrinking + fading toward the tip.
   const DIAMONDS = 4;
   for (let k = 1; k <= DIAMONDS; k++) {
     const t = k / DIAMONDS;
-    const back = exOff + t * v.size * 3.2;
+    const back = v.size * (0.9 + t * 3.2);
     const sz = v.size * 0.3 * (1 - t * 0.7) * flick;
     push(
-      v.scx + nx * back * cellPx,
-      v.scy + ny * back * cellPy,
+      v.scx - v.hx * back * cellPx,
+      v.scy - v.hy * back * cellPy,
       sz * cellPx,
       sz * cellPy,
       0,
@@ -283,19 +297,19 @@ function drawShipShield(
   return shieldCount + 1;
 }
 
-// Ship body: tint the hull slightly toward its team color (near-white
-// multiply, so the original art shows through with a hint of team
-// identity). Sprite/frame/rotation were resolved by computeShipVisual
-// (shared with the shadow).
-function drawShipBody(
-  push: PushFn,
+// Ship hull: one instance into the class's 3D mesh pass. The shader applies
+// the near-white team multiply itself, so we pass the raw team color, scaled
+// by rank brightness and the distress reddening dip. Cloak fades the alpha.
+function packShipHull(
+  ships: ShipBuckets,
   cycle: LightCycle,
   v: ShipVisual,
   cellPx: number,
-  cellPy: number,
   now: number,
 ) {
-  const k = 0.55; // stronger team color (was subtle)
+  const cls = hullClass(cycle.archetype);
+  const n = ships.counts[cls];
+  if (n >= MAX_MESH_SHIPS) return;
   // Reddening dip: a distressed hull loses green/blue toward an angry red.
   const dr = v.distress * 0.4;
   // Rank brightness: higher tiers glow brighter (distinguishes tiers that
@@ -303,22 +317,20 @@ function drawShipBody(
   const lvl = 1 + (cycle.level - 1) * 0.06;
   // Cloak: a phased (invulnerable) hull renders faint + shimmering.
   const cloak = cycle.invulnTime > 0 ? 0.35 + 0.15 * Math.sin(now / 60) : 1;
-  const tint: Rgba = [
-    (1 - k + k * cycle.color[0]) * lvl,
-    (1 - k + k * cycle.color[1]) * (1 - dr) * lvl,
-    (1 - k + k * cycle.color[2]) * (1 - dr) * lvl,
-    0.95 * cloak,
-  ];
-  push(
-    v.scx,
-    v.scy,
-    v.size * cellPx,
-    v.size * cellPy,
-    v.hullRot,
-    SHAPE.tintsprite,
-    tint,
-    v.hullLayer,
-  );
+  const data = ships.instances[cls];
+  const o = n * SHIP_LAYOUT.floats;
+  const S = SHIP_LAYOUT.idx;
+  data[o + S.cx] = v.scx;
+  data[o + S.cy] = v.scy;
+  data[o + S.radius] = v.size * cellPx;
+  data[o + S.roll] = v.roll;
+  data[o + S.heading] = v.heading;
+  data[o + S.tilt] = HULL_TILT;
+  data[o + S.r] = cycle.color[0] * lvl;
+  data[o + S.g] = cycle.color[1] * (1 - dr) * lvl;
+  data[o + S.b] = cycle.color[2] * (1 - dr) * lvl;
+  data[o + S.alpha] = 0.95 * cloak;
+  ships.counts[cls] = n + 1;
 }
 
 function drawShipStatusEffects(
@@ -600,26 +612,26 @@ function drawShipControlledRing(
   );
 }
 
-// Renders one ship (shadow, exhaust, smoke, shield, body, beam, HP bar) and
+// Renders one ship (shadow, exhaust, smoke, shield, hull, beam, HP bar) and
 // returns the shield instance count after this ship's contribution.
 function drawShip(
   push: PushFn,
   shieldInstances: Float32Array<ArrayBuffer>,
   shieldCount: number,
+  ships: ShipBuckets,
   cycle: LightCycle,
   baseHp: Readonly<Record<string, number>>,
   cellPx: number,
   cellPy: number,
   now: number,
   showHp: boolean,
-  exhaustL: number,
   isControlled: boolean,
-  role?: ShipRole,
 ): number {
-  const v = computeShipVisual(cycle, cellPx, cellPy, now, role);
+  const v = computeShipVisual(cycle, cellPx, cellPy, now);
   drawShipShadow(push, v, cellPx, cellPy);
   drawShipTrail(push, cycle, v, cellPx, cellPy, now);
-  drawShipExhaust(push, cycle, v, cellPx, cellPy, now, exhaustL);
+  packShipPlumes(ships, cycle, v, cellPx);
+  drawShipBoostDiamonds(push, cycle, v, cellPx, cellPy, now);
   drawShipDistressSmoke(push, cycle, v, cellPx, cellPy, now);
   const nextShieldCount = drawShipShield(
     shieldInstances,
@@ -630,50 +642,42 @@ function drawShip(
   );
   drawShipControlledRing(push, cycle, v, cellPx, cellPy, now, isControlled);
   drawShipPrimed(push, cycle, v, baseHp, cellPx, cellPy, now);
-  drawShipBody(push, cycle, v, cellPx, cellPy, now);
+  packShipHull(ships, cycle, v, cellPx, now);
   drawShipStatusEffects(push, cycle, v, cellPx, cellPy, now);
   drawShipBeam(push, cycle, v, cellPx, cellPy);
   if (showHp) drawShipHpBar(push, cycle, v, cellPx, cellPy);
   return nextShieldCount;
 }
 
+// Every ship flies its class hull (team tint + controlled ring carry the
+// hero-vs-foe read that sprite-era role remapping used to fake).
 export function drawShips(
   push: PushFn,
   shieldInstances: Float32Array<ArrayBuffer>,
+  ships: ShipBuckets,
   cellPx: number,
   cellPy: number,
   now: number,
   world: World,
   showHp: boolean,
-  exhaustL: number,
 ): number {
   let shieldCount = 0;
-  // Arcade only: ships read as hero (piloted) vs foe, not by class.
-  const arcade = world.arcade !== null;
+  for (const cls of SHIP_CLASSES) ships.counts[cls] = 0;
+  ships.plumeCount = 0;
   for (const cycle of world.ships.items) {
     const isControlled = cycle.id === world.controlledShipId;
-    // Muster drone ships keep the scout hull (they fly with the hero, so the
-    // foe silhouette would read as an enemy in formation).
-    const role: ShipRole | undefined = arcade
-      ? isControlled
-        ? "hero"
-        : cycle.droneShip
-          ? "drone"
-          : "foe"
-      : undefined;
     shieldCount = drawShip(
       push,
       shieldInstances,
       shieldCount,
+      ships,
       cycle,
       world.baseHp,
       cellPx,
       cellPy,
       now,
       showHp,
-      exhaustL,
       isControlled,
-      role,
     );
   }
   return shieldCount;

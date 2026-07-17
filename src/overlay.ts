@@ -6,11 +6,16 @@ import {
   MAX_BASES,
   MAX_CENTER_PADS,
   MAX_INSTANCES,
+  MAX_MESH_SHIPS,
   MAX_ORBS,
+  MAX_PLUMES,
   MAX_ROCKS,
   MAX_SHIELDS,
+  PLUME_LAYOUT,
   ROCK_LAYOUT,
   SHIELD_LAYOUT,
+  SHIP_LAYOUT,
+  type ShipBuckets,
 } from "./gpu";
 import {
   drawBases,
@@ -35,6 +40,7 @@ import {
 import { createPusher, type PushFn } from "./overlay/push";
 import { drawShips } from "./overlay/ships";
 import { drawWhips } from "./overlay/whips";
+import { SHIP_CLASSES, type ShipClass } from "./ship-parts";
 import { CLIP, clipLayer } from "./sprites";
 import type { World } from "./world";
 
@@ -63,6 +69,7 @@ export interface Overlay {
     baseCount: number;
     centerPadInstances: Float32Array<ArrayBuffer>;
     centerPadCount: number;
+    ships: ShipBuckets;
   };
 }
 
@@ -95,6 +102,7 @@ const drawDynamicEntities = (
   rockInstances: Float32Array<ArrayBuffer>,
   shieldInstances: Float32Array<ArrayBuffer>,
   orbInstances: Float32Array<ArrayBuffer>,
+  ships: ShipBuckets,
   cellPx: number,
   cellPy: number,
   now: number,
@@ -126,12 +134,12 @@ const drawDynamicEntities = (
   const shieldCount = drawShips(
     push,
     shieldInstances,
+    ships,
     cellPx,
     cellPy,
     now,
     world,
     showHp,
-    exhaustL,
   );
   drawWhips(push, cellPx, cellPy, now, world);
   drawDrones(push, cellPx, cellPy, now, world);
@@ -140,16 +148,37 @@ const drawDynamicEntities = (
   return { rockCount, orbCount, shieldCount };
 };
 
+// Per-class hull instance buffers for the 3D ship passes.
+const createShipBuckets = (): ShipBuckets => ({
+  instances: Object.fromEntries(
+    SHIP_CLASSES.map((cls) => [
+      cls,
+      new Float32Array(MAX_MESH_SHIPS * SHIP_LAYOUT.floats),
+    ]),
+  ) as Record<ShipClass, Float32Array<ArrayBuffer>>,
+  counts: Object.fromEntries(SHIP_CLASSES.map((cls) => [cls, 0])) as Record<
+    ShipClass,
+    number
+  >,
+  plumes: new Float32Array(MAX_PLUMES * PLUME_LAYOUT.floats),
+  plumeCount: 0,
+});
+
+// One frame's worth of reusable instance arrays (overwritten every build).
+// Key names match the build() return shape so the frame can spread them.
+const createOverlayBuffers = () => ({
+  instances: new Float32Array(MAX_INSTANCES * FLOATS_PER_INSTANCE),
+  rockInstances: new Float32Array(MAX_ROCKS * ROCK_LAYOUT.floats),
+  shieldInstances: new Float32Array(MAX_SHIELDS * SHIELD_LAYOUT.floats),
+  orbInstances: new Float32Array(MAX_ORBS * SHIELD_LAYOUT.floats),
+  baseInstances: new Float32Array(MAX_BASES * ROCK_LAYOUT.floats),
+  centerPadInstances: new Float32Array(MAX_CENTER_PADS * ROCK_LAYOUT.floats),
+  ships: createShipBuckets(),
+});
+
 export const createOverlay = (): Overlay => {
-  const instances = new Float32Array(MAX_INSTANCES * FLOATS_PER_INSTANCE);
-  const rockInstances = new Float32Array(MAX_ROCKS * ROCK_LAYOUT.floats);
-  const shieldInstances = new Float32Array(MAX_SHIELDS * SHIELD_LAYOUT.floats);
-  const orbInstances = new Float32Array(MAX_ORBS * SHIELD_LAYOUT.floats);
-  const baseInstances = new Float32Array(MAX_BASES * ROCK_LAYOUT.floats);
-  const centerPadInstances = new Float32Array(
-    MAX_CENTER_PADS * ROCK_LAYOUT.floats,
-  );
-  const { push, reset, getCount } = createPusher(instances);
+  const bufs = createOverlayBuffers();
+  const { push, reset, getCount } = createPusher(bufs.instances);
 
   return {
     build: ({ w, h, gridW, gridH, now, world, showHp }) => {
@@ -164,8 +193,8 @@ export const createOverlay = (): Overlay => {
 
       const { baseCount, centerPadCount } = drawFieldFurniture(
         push,
-        baseInstances,
-        centerPadInstances,
+        bufs.baseInstances,
+        bufs.centerPadInstances,
         cellPx,
         cellPy,
         now,
@@ -173,9 +202,10 @@ export const createOverlay = (): Overlay => {
       );
       const { rockCount, orbCount, shieldCount } = drawDynamicEntities(
         push,
-        rockInstances,
-        shieldInstances,
-        orbInstances,
+        bufs.rockInstances,
+        bufs.shieldInstances,
+        bufs.orbInstances,
+        bufs.ships,
         cellPx,
         cellPy,
         now,
@@ -184,18 +214,13 @@ export const createOverlay = (): Overlay => {
       );
 
       return {
-        instances,
+        ...bufs,
         count: getCount(),
         portalCount,
-        rockInstances,
         rockCount,
-        shieldInstances,
         shieldCount,
-        orbInstances,
         orbCount,
-        baseInstances,
         baseCount,
-        centerPadInstances,
         centerPadCount,
       };
     },

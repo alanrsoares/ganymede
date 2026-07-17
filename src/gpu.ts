@@ -21,8 +21,16 @@ import baseWGSL from "./shaders/base.wgsl" with { type: "text" };
 import bloomWGSL from "./shaders/bloom.wgsl" with { type: "text" };
 import orbWGSL from "./shaders/orb.wgsl" with { type: "text" };
 import overlayWGSL from "./shaders/overlay.wgsl" with { type: "text" };
+import plumeWGSL from "./shaders/plume.wgsl" with { type: "text" };
 import rockWGSL from "./shaders/rock.wgsl" with { type: "text" };
 import shieldWGSL from "./shaders/shield.wgsl" with { type: "text" };
+import shipWGSL from "./shaders/ship.wgsl" with { type: "text" };
+import {
+  makePlumeMesh,
+  makeShipMesh,
+  SHIP_CLASSES,
+  type ShipClass,
+} from "./ship-parts";
 import { SPRITE_LAYER_COUNT, SPRITE_URLS } from "./sprites";
 
 // --- Sprite/Overlay pipeline (space shooter sprites and vector rings) ---
@@ -65,6 +73,52 @@ export const SHIELD_LAYOUT = instanceLayout([
   "b",
   "flash",
 ]);
+// 3D hull instances (ship.wgsl / drydock share this shape). One pass per ship
+// class, so each class's baked part-assembly mesh draws all its ships at once.
+export const MAX_MESH_SHIPS = 16;
+// prettier-ignore
+export const SHIP_LAYOUT = instanceLayout([
+  "cx",
+  "cy",
+  "radius",
+  "roll",
+  "heading",
+  "tilt",
+  "_a",
+  "_b",
+  "r",
+  "g",
+  "b",
+  "alpha",
+]);
+// Engine plume cones, one instance per nozzle anchor per ship (plume.wgsl).
+export const MAX_PLUMES = MAX_MESH_SHIPS * 4;
+// prettier-ignore
+export const PLUME_LAYOUT = instanceLayout([
+  "cx",
+  "cy",
+  "radius",
+  "roll",
+  "heading",
+  "tilt",
+  "throttle",
+  "phase",
+  "nx",
+  "ny",
+  "nz",
+  "w",
+  "r",
+  "g",
+  "b",
+  "alpha",
+]);
+/** Per-class hull instance buffers + engine plume instances for the mesh passes. */
+export interface ShipBuckets {
+  instances: Record<ShipClass, Float32Array<ArrayBuffer>>;
+  counts: Record<ShipClass, number>;
+  plumes: Float32Array<ArrayBuffer>;
+  plumeCount: number;
+}
 const DEPTH_FORMAT = "depth24plus";
 // Compresses pixel-space z into the [0,1] depth range (radius ≲ 60px stays well
 // inside the band, so rocks self-occlude without ever clipping the near/far plane).
@@ -118,6 +172,7 @@ export interface Renderer {
     baseCount: number,
     centerPadInstances: Float32Array<ArrayBuffer>,
     centerPadCount: number,
+    ships: ShipBuckets,
     time: number,
     camera: CameraView,
   ): void;
@@ -233,6 +288,8 @@ interface MeshPasses {
   orbPass: MeshPass;
   basePass: MeshPass;
   centerPadPass: MeshPass;
+  shipPasses: Record<ShipClass, MeshPass>;
+  plumePass: MeshPass;
 }
 
 const createHelperMeshPass = (
@@ -350,6 +407,35 @@ const createTransparentPasses = (
 // --- 3D mesh passes: opaque tumbling rocks + additive translucent shields +
 // solid-lit power-up orbs. All are adapters of createMeshPass; they differ
 // only in mesh, layout, blend, and depth mode. ---
+// Hull passes: one per ship class, each drawing its baked part-assembly for
+// every ship of that class. Alpha-blended (cloak fades the hull) but still
+// depth-written so parts occlude each other correctly.
+const createShipPasses = (
+  device: GPUDevice,
+  format: GPUTextureFormat,
+  ub: GPUBuffer,
+): Record<ShipClass, MeshPass> => {
+  const passes = {} as Record<ShipClass, MeshPass>;
+  for (const cls of SHIP_CLASSES) {
+    passes[cls] = createHelperMeshPass(
+      device,
+      format,
+      ub,
+      makeShipMesh(cls),
+      shipWGSL,
+      SHIP_LAYOUT,
+      MAX_MESH_SHIPS,
+      true,
+      "less",
+      {
+        color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" },
+        alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha" },
+      },
+    );
+  }
+  return passes;
+};
+
 const createMeshPasses = (
   device: GPUDevice,
   format: GPUTextureFormat,
@@ -357,6 +443,24 @@ const createMeshPasses = (
 ): MeshPasses => ({
   ...createOpaquePasses(device, format, ub),
   ...createTransparentPasses(device, format, ub),
+  shipPasses: createShipPasses(device, format, ub),
+  // Additive engine-plume cones: no depth write (glow), still occluded by
+  // hulls written just before.
+  plumePass: createHelperMeshPass(
+    device,
+    format,
+    ub,
+    makePlumeMesh(),
+    plumeWGSL,
+    PLUME_LAYOUT,
+    MAX_PLUMES,
+    false,
+    "less",
+    {
+      color: { srcFactor: "one", dstFactor: "one" },
+      alpha: { srcFactor: "one", dstFactor: "one" },
+    },
+  ),
 });
 
 interface BloomPipelines {
@@ -505,28 +609,33 @@ const createRenderTargets = (
   return state;
 };
 
-// Writes the shared frame uniforms and the sprite instance buffer for this
-// frame (both are GPU-side arrays reused across frames, just overwritten).
+// Writes the shared frame uniforms, the sprite instance buffer and the
+// cinematic camera vec4 for this frame (all GPU-side arrays reused across
+// frames, just overwritten).
 const writeFrameUniforms = (
-  device: GPUDevice,
-  uniformBuffer: GPUBuffer,
-  instanceBuffer: GPUBuffer,
-  canvas: HTMLCanvasElement,
+  deps: RenderFnDeps,
   time: number,
   instances: Float32Array<ArrayBuffer>,
   instanceCount: number,
+  camera: CameraView,
 ) => {
+  const { device, canvas } = deps;
   device.queue.writeBuffer(
-    uniformBuffer,
+    deps.uniformBuffer,
     0,
     new Float32Array([canvas.width, canvas.height, time, DEPTH_SCALE]),
   );
   device.queue.writeBuffer(
-    instanceBuffer,
+    deps.instanceBuffer,
     0,
     instances,
     0,
     instanceCount * FLOATS_PER_INSTANCE,
+  );
+  device.queue.writeBuffer(
+    deps.cameraBuffer,
+    0,
+    new Float32Array([camera.fx, camera.fy, camera.zoom, camera.rot]),
   );
 };
 
@@ -553,11 +662,15 @@ interface ScenePassInput {
   centerPadPass: MeshPass;
   centerPadInstances: Float32Array<ArrayBuffer>;
   centerPadCount: number;
+  shipPasses: Record<ShipClass, MeshPass>;
+  plumePass: MeshPass;
+  ships: ShipBuckets;
 }
 
 // Pass 1: the scene, into the offscreen sceneTex (+depth for the rocks).
-// Background (behind, no depth) → 3D rocks/bases/pads (depth-tested) → sprites (on top)
-// → translucent shields (last, over the ships).
+// Background (behind, no depth) → 3D rocks/bases/pads (depth-tested) → sprites
+// (trails/exhaust/FX) → 3D ship hulls (over their own trails) → translucent
+// orbs + shields (last, over the ships).
 const encodeScenePass = (
   encoder: GPUCommandEncoder,
   targets: RenderTargets,
@@ -605,6 +718,16 @@ const encodeScenePass = (
 
   // The rest of the overlay (actors, HUD, base/pad glow) over the 3D passes.
   drawSprites(input.instanceCount - input.portalCount, input.portalCount);
+
+  // Ship hulls: one instanced draw per class mesh, over the sprite FX layer.
+  for (const cls of SHIP_CLASSES) {
+    input.shipPasses[cls].draw(
+      pass,
+      input.ships.instances[cls],
+      input.ships.counts[cls],
+    );
+  }
+  input.plumePass.draw(pass, input.ships.plumes, input.ships.plumeCount);
 
   input.orbPass.draw(pass, input.orbInstances, input.orbCount);
   input.shieldPass.draw(pass, input.shieldInstances, input.shieldCount);
@@ -665,6 +788,8 @@ interface RenderFnDeps {
   shieldPass: MeshPass;
   basePass: MeshPass;
   centerPadPass: MeshPass;
+  shipPasses: Record<ShipClass, MeshPass>;
+  plumePass: MeshPass;
   targets: RenderTargets;
   bloom: BloomPipelines;
 }
@@ -688,25 +813,12 @@ const createRenderFn =
     baseCount,
     centerPadInstances,
     centerPadCount,
+    ships,
     time,
     camera,
   ) => {
-    const { device, context, canvas, uniformBuffer, instanceBuffer } = deps;
-    writeFrameUniforms(
-      device,
-      uniformBuffer,
-      instanceBuffer,
-      canvas,
-      time,
-      instances,
-      instanceCount,
-    );
-    // Camera uniform for the composite pass (focus.xy, zoom, rot).
-    device.queue.writeBuffer(
-      deps.cameraBuffer,
-      0,
-      new Float32Array([camera.fx, camera.fy, camera.zoom, camera.rot]),
-    );
+    const { device, context, instanceBuffer } = deps;
+    writeFrameUniforms(deps, time, instances, instanceCount, camera);
     const encoder = device.createCommandEncoder();
     encodeScenePass(encoder, deps.targets, {
       ...deps,
@@ -723,6 +835,7 @@ const createRenderFn =
       baseCount,
       centerPadInstances,
       centerPadCount,
+      ships,
     });
     encodeBloomPasses(encoder, context, deps.targets, deps.bloom);
     device.queue.submit([encoder.finish()]);
@@ -754,8 +867,7 @@ export const createRenderer = (
       textureView,
       sampler,
     );
-  const { rockPass, shieldPass, orbPass, basePass, centerPadPass } =
-    createMeshPasses(device, format, uniformBuffer);
+  const meshPasses = createMeshPasses(device, format, uniformBuffer);
   const bloom = createBloomPipelines(device, format);
   // Cinematic camera uniform, consumed only by the composite pass. One vec4:
   // [focus.x, focus.y, zoom, rot]. Recreated bind groups (on resize) reference it.
@@ -782,13 +894,9 @@ export const createRenderer = (
       cameraBuffer,
       bgPipeline,
       bgBindGroup,
-      rockPass,
       spritePipeline,
       spriteBindGroup,
-      orbPass,
-      shieldPass,
-      basePass,
-      centerPadPass,
+      ...meshPasses,
       targets,
       bloom,
     }),
