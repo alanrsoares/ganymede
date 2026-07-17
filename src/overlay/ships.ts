@@ -45,6 +45,10 @@ export interface ShipVisual {
   scx: number;
   scy: number;
   size: number;
+  /** Mesh-pass heading. NEGATED game angle: ship.wgsl's Rz sends the nose to
+   * (-sin h, cos h) in screen space while the sim flies (sin a, cos a), so
+   * h = a renders every ship x-mirrored (only visible off the vertical axis). */
+  heading: number;
   roll: number;
   hpFrac: number;
   distress: number;
@@ -76,7 +80,9 @@ export function computeShipVisual(
   // is the turn amount — rolled continuously about the thrust axis.
   let turn = Math.atan2(cycle.dx, cycle.dy) - cycle.angle;
   turn = Math.atan2(Math.sin(turn), Math.cos(turn)); // wrap to [-π, π]
-  const roll = Math.max(-ROLL_MAX, Math.min(ROLL_MAX, turn * ROLL_GAIN));
+  // Negated with heading (see below): the x-mirror flips handedness, so the
+  // roll sign flips with it to keep the hull banking into the turn.
+  const roll = Math.max(-ROLL_MAX, Math.min(ROLL_MAX, -turn * ROLL_GAIN));
 
   // Distress ramp: 0 above 30% HP → 1 near death. Drives smoke + a reddening
   // hull so a dying ship reads at a glance. Render-only (no sim state).
@@ -87,6 +93,7 @@ export function computeShipVisual(
     scx,
     scy,
     size,
+    heading: -cycle.angle,
     roll,
     hpFrac,
     distress,
@@ -137,7 +144,7 @@ function packShipPlumes(
     d[o + P.cy] = v.scy;
     d[o + P.radius] = v.size * cellPx;
     d[o + P.roll] = v.roll;
-    d[o + P.heading] = cycle.angle;
+    d[o + P.heading] = v.heading;
     d[o + P.tilt] = HULL_TILT;
     d[o + P.throttle] = throttle;
     d[o + P.phase] = cycle.id * 1.7 + ships.plumeCount;
@@ -317,7 +324,7 @@ function packShipHull(
   data[o + S.cy] = v.scy;
   data[o + S.radius] = v.size * cellPx;
   data[o + S.roll] = v.roll;
-  data[o + S.heading] = cycle.angle;
+  data[o + S.heading] = v.heading;
   data[o + S.tilt] = HULL_TILT;
   data[o + S.r] = cycle.color[0] * lvl;
   data[o + S.g] = cycle.color[1] * (1 - dr) * lvl;
