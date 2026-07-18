@@ -23,6 +23,7 @@ import {
   undoSlot,
   view,
 } from "~/drydock/store";
+import { ArticulationControls } from "./ArticulationControls";
 import { EngineList } from "./EngineControls";
 import { PartControls } from "./PartControls";
 
@@ -141,6 +142,8 @@ export const DesignerPanel = (): ReactElement => {
       {part && <PartControls key={`${view.cls}:${sel.part}`} part={part} />}
       <Divider label="engines" variant="strong" />
       <EngineList />
+      <Divider label="articulation" variant="strong" />
+      <ArticulationControls key={view.cls} />
       <ClipboardOps />
     </VStack>
   );
