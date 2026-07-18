@@ -6,8 +6,10 @@
 // read) on the right. Reads the shared store every frame; registers mesh
 // rebuild hooks so designer edits re-bake the hull.
 
+import { spineOffset } from "~/hull/articulation";
 import { assembleShipMesh, makePlumeMesh, pickPart } from "~/hull/bake";
 import {
+  type ArticulationDef,
   type PartDef,
   SHIP_CLASSES,
   type ShipClass,
@@ -50,8 +52,12 @@ const SHIP_LAYOUT = instanceLayout([
   "roll",
   "heading",
   "tilt",
-  "_a",
-  "_b",
+  "wavePhase", // spine articulation (ship.wgsl) — keep identical to the
+  "bendCurve", // game's SHIP_LAYOUT in render/overlay/frame.ts
+  "amp",
+  "freq",
+  "headStiff",
+  "segLen",
   "r",
   "g",
   "b",
@@ -329,6 +335,12 @@ interface ShipInstance {
   throttle: number;
   /** Per-ship flicker phase so plumes never strobe in unison. */
   phase: number;
+  /** Spine articulation (ship.wgsl): temporal wave phase + turn lean, and
+   * the hull's tuning with the *effective* amp already applied — the same
+   * values the plume anchor shift uses. */
+  wavePhase: number;
+  bendCurve: number;
+  art: ArticulationDef;
 }
 
 const packShip = (data: Float32Array, i: number, ship: ShipInstance): void => {
@@ -339,6 +351,12 @@ const packShip = (data: Float32Array, i: number, ship: ShipInstance): void => {
   data[o + S.roll] = ship.roll;
   data[o + S.heading] = ship.heading;
   data[o + S.tilt] = ship.tilt ?? (view.tiltDeg * Math.PI) / 180;
+  data[o + S.wavePhase] = ship.wavePhase;
+  data[o + S.bendCurve] = ship.bendCurve;
+  data[o + S.amp] = ship.art.amp;
+  data[o + S.freq] = ship.art.freq;
+  data[o + S.headStiff] = ship.art.headStiff;
+  data[o + S.segLen] = ship.art.segLen;
   data[o + S.r] = ship.team[0];
   data[o + S.g] = ship.team[1];
   data[o + S.b] = ship.team[2];
@@ -346,23 +364,55 @@ const packShip = (data: Float32Array, i: number, ship: ShipInstance): void => {
 };
 
 /** Inspector hull + swarm ships, bucketed per class mesh. */
+// Effective articulation for a hull: the working-copy tuning with the wave
+// amplitude scaled by engine output — the same read the game packer uses
+// (fast ships swim hard, idlers ripple). `freeze` forces a rigid rest pose.
+const effArt = (
+  cls: ShipClass,
+  throttle: number,
+  freeze: boolean,
+): ArticulationDef => {
+  const a = hulls[cls].articulation;
+  return { ...a, amp: freeze ? 0 : a.amp * (0.4 + 0.6 * throttle) };
+};
+
+// Wave phase advances with scene time at the game's rate (4 rad/s at
+// speed 1 — overlay/ships.ts uses now·ms × 0.004); pausing freezes view.t,
+// so reduced-motion users get a still hull for free.
+const wavePhase = (a: ArticulationDef, flickerPhase: number): number =>
+  view.t * 4 * a.speed + flickerPhase;
+
 const collectShips = (
   swarm: SwarmShip[],
   w: number,
   h: number,
   cellPx: number,
 ): ShipInstance[] => {
+  // Inspector hull: articulate normally, EXCEPT in design mode — click-picking
+  // and the highlight shell invert the rest pose, so the wave freezes there
+  // to keep part clicks and the glow exact.
+  const inspArt = effArt(view.cls, 0.85, view.design);
+  const pose = inspectorPose(w, h);
   const ships: ShipInstance[] = [
     {
       cls: view.cls,
-      ...inspectorPose(w, h),
+      ...pose,
       team: teamTint(view.team),
       throttle: 0.85,
       phase: 1,
+      wavePhase: wavePhase(inspArt, 1),
+      // Lean deforms even at amp 0, so design mode zeroes it with the wave —
+      // picking and the highlight shell assume the exact rest pose.
+      bendCurve: view.bank && !view.design ? Math.sin(view.t * 1.6) * 0.28 : 0,
+      art: inspArt,
     },
   ];
   for (const s of swarm) {
     if (s.x < 0.44) continue; // keep the field clear of the inspector
+    const throttle =
+      0.35 +
+      0.5 * ARCH_SPEED[s.cls] * (0.7 + 0.3 * Math.sin(view.t * 0.7 + s.phase));
+    const art = effArt(s.cls, throttle, false);
     ships.push({
       cls: s.cls,
       cx: s.x * w,
@@ -371,12 +421,11 @@ const collectShips = (
       roll: Math.sin(view.t * 1.3 + s.phase) * 0.3 + s.turn * 0.8,
       heading: s.heading,
       team: teamTint(s.team),
-      throttle:
-        0.35 +
-        0.5 *
-          ARCH_SPEED[s.cls] *
-          (0.7 + 0.3 * Math.sin(view.t * 0.7 + s.phase)),
+      throttle,
       phase: s.phase * 7,
+      wavePhase: wavePhase(art, s.phase),
+      bendCurve: Math.max(-0.35, Math.min(0.35, s.turn * 0.5)),
+      art,
     });
   }
   return ships;
@@ -398,7 +447,11 @@ const packPlumes = (data: Float32Array, ships: ShipInstance[]): number => {
       data[o + P.tilt] = ship.tilt ?? (view.tiltDeg * Math.PI) / 180;
       data[o + P.throttle] = ship.throttle;
       data[o + P.phase] = ship.phase + count;
-      data[o + P.nx] = eng.pos[0];
+      // Tail-follow: the nozzle rides the spine's lateral offset at its y —
+      // CPU mirror of the deformation ship.wgsl applies to hull vertices.
+      data[o + P.nx] =
+        eng.pos[0] +
+        spineOffset(eng.pos[1], ship.wavePhase, ship.bendCurve, ship.art);
       data[o + P.ny] = eng.pos[1];
       data[o + P.nz] = eng.pos[2];
       data[o + P.w] = eng.w;
@@ -447,6 +500,11 @@ const packHighlight = (
     team: MONO,
     throttle: 0,
     phase: 0,
+    // Design mode is rest pose (inspector amp is frozen to 0), so the glow
+    // shell packs a rigid spine too and stays glued to the picked part.
+    wavePhase: 0,
+    bendCurve: 0,
+    art: effArt(view.cls, 0, true),
   });
   return data;
 };

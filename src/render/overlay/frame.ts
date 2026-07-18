@@ -58,8 +58,12 @@ export const SHIP_LAYOUT = instanceLayout([
   "roll",
   "heading",
   "tilt",
-  "_a",
-  "_b",
+  "wavePhase", // spine articulation: temporal wave phase (per ship)
+  "bendCurve", // spine articulation: signed turn lean (per ship)
+  "amp", // articulation row: effective wave amplitude (drive-scaled)
+  "freq", // spatial frequency along the spine
+  "headStiff", // y above which the hull is rigid
+  "segLen", // 0 = smooth flex; > 0 = hinged rigid segments
   "r",
   "g",
   "b",

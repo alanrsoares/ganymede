@@ -100,6 +100,18 @@ export const PartControls = ({ part }: { part: PartDef }): ReactElement => (
       }}
     />
     <TaperFields prim={part.prim} />
+    {part.prim.kind !== "orb" && (
+      <SliderField
+        label="segments (1 = solid)"
+        min={1}
+        max={9}
+        step={1}
+        value={part.seg ?? 1}
+        onChange={(v) => {
+          part.seg = v;
+        }}
+      />
+    )}
     <Divider label="position" />
     <Vec3Fields label="pos" min={-1.6} max={1.6} vec={part.pos} />
     <Divider label="scale" />

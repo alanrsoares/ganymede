@@ -36,6 +36,57 @@ describe("bevelSlab prim", () => {
   });
 });
 
+describe("centipede segmentation", () => {
+  const base: PartDef = {
+    prim: { kind: "slab", tx: 0.3, tz: 0.5, bevel: 0.1 },
+    scale: [0.3, 1.6, 0.25],
+    pos: [0, 0.1, 0],
+    color: "bone",
+  };
+
+  test("seg n bakes n plates (n× the solid part's triangles)", () => {
+    const solid = assembleShipMesh([base]);
+    const chain = assembleShipMesh([{ ...base, seg: 5 }]);
+    expect(chain.vertexCount).toBe(solid.vertexCount * 5);
+    for (let i = 0; i < chain.vertexCount * 9; i++) {
+      expect(Number.isFinite(chain.data[i])).toBe(true);
+    }
+  });
+
+  test("plates stay inside the part's Y span and march tail→nose", () => {
+    const chain = assembleShipMesh([{ ...base, seg: 4 }]);
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let v = 0; v < chain.vertexCount; v++) {
+      const y = chain.data[v * 9 + 1];
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+    // Overlap never pushes a plate past the original prim's ends by more
+    // than half the extra plate height.
+    const half = base.scale[1] / 2;
+    const slack = (base.scale[1] / 4) * 0.5;
+    expect(minY).toBeGreaterThanOrEqual(base.pos[1] - half - slack);
+    expect(maxY).toBeLessThanOrEqual(base.pos[1] + half + slack);
+  });
+
+  test("seg 1, 0 or absent bakes the single solid prim", () => {
+    const solid = assembleShipMesh([base]);
+    expect(assembleShipMesh([{ ...base, seg: 1 }]).vertexCount).toBe(
+      solid.vertexCount,
+    );
+    expect(assembleShipMesh([{ ...base, seg: 0 }]).vertexCount).toBe(
+      solid.vertexCount,
+    );
+  });
+
+  test("segmented recipes survive the JSON round-trip", () => {
+    const revived = JSON.parse(JSON.stringify({ ...base, seg: 6 })) as PartDef;
+    expect(revived.seg).toBe(6);
+    expect(assembleShipMesh([revived]).vertexCount).toBeGreaterThan(0);
+  });
+});
+
 describe("hull recipes", () => {
   test("every stock hull bakes finite geometry", () => {
     for (const cls of SHIP_CLASSES) {

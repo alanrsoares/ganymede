@@ -5,6 +5,8 @@
 // debounced through hooks the scene registers once the GPU exists.
 
 import {
+  ARTICULATION,
+  type ArticulationDef,
   ENGINES,
   type EngineAnchor,
   type PartDef,
@@ -17,6 +19,7 @@ import {
 export interface HullDef {
   parts: PartDef[];
   engines: EngineAnchor[];
+  articulation: ArticulationDef;
 }
 
 export interface UndoSlot {
@@ -31,6 +34,7 @@ export const stockHull = (cls: ShipClass): HullDef =>
   structuredClone({
     parts: RECIPES[cls] as PartDef[],
     engines: ENGINES[cls] as EngineAnchor[],
+    articulation: ARTICULATION[cls],
   });
 
 const loadHulls = (): Record<ShipClass, HullDef> => {
@@ -42,7 +46,13 @@ const loadHulls = (): Record<ShipClass, HullDef> => {
       const saved = JSON.parse(raw) as Partial<Record<ShipClass, HullDef>>;
       for (const cls of SHIP_CLASSES) {
         const h = saved[cls];
-        if (h?.parts?.length && h.engines) out[cls] = h;
+        if (h?.parts?.length && h.engines) {
+          // Backfill articulation on pre-articulation saves — same store key.
+          out[cls] = {
+            ...h,
+            articulation: h.articulation ?? structuredClone(ARTICULATION[cls]),
+          };
+        }
       }
     }
   } catch {
@@ -269,13 +279,13 @@ export const resetClass = (): void => {
 };
 
 // --- clipboard round-trip -------------------------------------------------------
-// Pure `{ parts, engines }` JSON: a valid TS literal to paste into
+// Pure `{ parts, engines, articulation }` JSON: a valid TS literal to paste into
 // hull/catalog.ts, parseable back by import. Both return a status message
 // for the UI to flash on the button.
 
 export const exportHull = async (): Promise<string> => {
-  const { parts, engines } = hulls[view.cls];
-  const json = JSON.stringify({ parts, engines }, null, 2);
+  const { parts, engines, articulation } = hulls[view.cls];
+  const json = JSON.stringify({ parts, engines, articulation }, null, 2);
   console.log(`// ${view.cls} hull — exported from /drydock designer\n${json}`);
   if (!navigator.clipboard) return "no clipboard — see console";
   try {
@@ -295,7 +305,13 @@ export const importHull = async (): Promise<string> => {
       throw new Error("bad shape");
     }
     snapshotUndo("import");
-    hulls[view.cls] = { parts: parsed.parts, engines: parsed.engines };
+    hulls[view.cls] = {
+      parts: parsed.parts,
+      engines: parsed.engines,
+      // Pre-articulation clipboard payloads stay valid — fall back to stock.
+      articulation:
+        parsed.articulation ?? structuredClone(ARTICULATION[view.cls]),
+    };
     sel.part = 0;
     touchHull();
     return "imported ✓";

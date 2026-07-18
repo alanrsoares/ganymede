@@ -4,7 +4,14 @@
 // instanced ship passes; everything else stays on the sprite/solid layer.
 
 import { clamp01 } from "~/engine/physics";
-import { ENGINES, SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
+import { spineOffset } from "~/hull/articulation";
+import {
+  ARTICULATION,
+  type ArticulationDef,
+  ENGINES,
+  SHIP_CLASSES,
+  type ShipClass,
+} from "~/hull/catalog";
 import { SHAPE, shipSprite } from "~/render/sprites";
 import type { LightCycle, World } from "~/world";
 import { hasRaidedAllEnemyBases } from "~/world/math";
@@ -31,6 +38,10 @@ const HULL_TILT = (28 * Math.PI) / 180;
 // residual drives a continuous roll about the thrust axis.
 const ROLL_GAIN = 1.4;
 const ROLL_MAX = 0.6;
+// Spine bend: the same turn residual that drives roll leans the flexible
+// spine through the turn (ship.wgsl spineDeform). Sign follows roll.
+const BEND_GAIN = 0.5;
+const BEND_MAX = 0.35;
 
 /** Hull mesh for a ship: archetype = class, unknown archetypes fly the scout. */
 const hullClass = (archetype: string): ShipClass =>
@@ -51,6 +62,15 @@ export interface ShipVisual {
   distress: number;
   hx: number;
   hy: number;
+  /** Engine output 0..1, speed-normalised — shared by plumes + wave amp. */
+  drive: number;
+  /** Spine wave phase — stateless, derived from `now` + ship id. */
+  wavePhase: number;
+  /** Spine turn lean, negated with roll (heading x-mirror flips handedness). */
+  bendCurve: number;
+  /** Class articulation with the *effective* amp (drive/drift scaled) —
+   * exactly what the instance row and the plume anchor shift both use. */
+  art: ArticulationDef;
 }
 
 // Resolves the per-ship screen transform + derived render state shared by
@@ -86,6 +106,16 @@ export function computeShipVisual(
   const hpFrac = clamp01(cycle.hp / cycle.maxHp);
   const distress = hpFrac < 0.3 ? 1 - hpFrac / 0.3 : 0;
 
+  const drive = Math.max(0.35, Math.min(1, Math.hypot(cycle.vx, cycle.vy) / 3));
+  // Spine articulation. Phase rate is fixed per class (speed changes modulate
+  // amplitude, not rate — a rate change would jump the phase); a drifting
+  // ship keeps a slow dying ripple instead of a confident swim.
+  const stock = ARTICULATION[hullClass(cycle.archetype)];
+  const art = {
+    ...stock,
+    amp: stock.amp * (drifting ? 0.25 : 0.4 + 0.6 * drive),
+  };
+
   return {
     scx,
     scy,
@@ -96,6 +126,10 @@ export function computeShipVisual(
     distress,
     hx: Math.sin(cycle.angle),
     hy: Math.cos(cycle.angle),
+    drive,
+    wavePhase: now * 0.004 * stock.speed + cycle.id * 1.7,
+    bendCurve: Math.max(-BEND_MAX, Math.min(BEND_MAX, -turn * BEND_GAIN)),
+    art,
   };
 }
 
@@ -129,9 +163,7 @@ function packShipPlumes(
   cellPx: number,
 ) {
   if (cycle.fuel <= 0) return;
-  const speed = Math.hypot(cycle.vx, cycle.vy);
-  const drive = Math.max(0.35, Math.min(1, speed / 3));
-  const throttle = cycle.boostTime > 0 ? 1 : drive * 0.85;
+  const throttle = cycle.boostTime > 0 ? 1 : v.drive * 0.85;
   const P = PLUME_LAYOUT.idx;
   const d = ships.plumes;
   for (const eng of ENGINES[hullClass(cycle.archetype)]) {
@@ -145,7 +177,10 @@ function packShipPlumes(
     d[o + P.tilt] = HULL_TILT;
     d[o + P.throttle] = throttle;
     d[o + P.phase] = cycle.id * 1.7 + ships.plumeCount;
-    d[o + P.nx] = eng.pos[0];
+    // Tail-follow: shift the nozzle by the spine's lateral offset at its y —
+    // same deformation the hull vertices get in ship.wgsl, applied CPU-side.
+    d[o + P.nx] =
+      eng.pos[0] + spineOffset(eng.pos[1], v.wavePhase, v.bendCurve, v.art);
     d[o + P.ny] = eng.pos[1];
     d[o + P.nz] = eng.pos[2];
     d[o + P.w] = eng.w;
@@ -323,6 +358,12 @@ function packShipHull(
   data[o + S.roll] = v.roll;
   data[o + S.heading] = v.heading;
   data[o + S.tilt] = HULL_TILT;
+  data[o + S.wavePhase] = v.wavePhase;
+  data[o + S.bendCurve] = v.bendCurve;
+  data[o + S.amp] = v.art.amp;
+  data[o + S.freq] = v.art.freq;
+  data[o + S.headStiff] = v.art.headStiff;
+  data[o + S.segLen] = v.art.segLen;
   data[o + S.r] = cycle.color[0] * lvl;
   data[o + S.g] = cycle.color[1] * (1 - dr) * lvl;
   data[o + S.b] = cycle.color[2] * (1 - dr) * lvl;

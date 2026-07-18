@@ -43,6 +43,11 @@ export interface PartDef {
   color: PaletteKey;
   /** Also bake an x-mirrored copy. */
   mirror?: boolean;
+  /** Bake as a chain of this many overlapping carapace plates along the
+   * part's local Y (centipede segmentation, hull/bake.ts expandSeg). Long
+   * prims only have vertices at their ends, so the spine wave (ship.wgsl)
+   * would shear them; short plates tilt near-rigidly instead. 0/1 = solid. */
+  seg?: number;
 }
 
 // --- recipes -------------------------------------------------------------------
@@ -64,12 +69,14 @@ const ORB: PrimDef = { kind: "orb" };
 
 /** scout — "Lamprey": jawless eel-dart, ventral sucker maw, dorsal eye. */
 const SCOUT: PartDef[] = [
-  // Core fuselage, strong taper to the nose.
+  // Core fuselage, strong taper to the nose — telescoped carapace plates so
+  // the lamprey reads segmented like a centipede and bends plate-by-plate.
   {
     prim: SLAB(0.22, 0.45, 0.1),
     scale: [0.34, 1.7, 0.26],
     pos: [0, 0.15, 0],
     color: "bone",
+    seg: 6,
   },
   // Aft body — wider, overlapping the core by most of its length.
   {
@@ -77,6 +84,7 @@ const SCOUT: PartDef[] = [
     scale: [0.44, 0.9, 0.3],
     pos: [0, -0.55, 0.02],
     color: "carapace",
+    seg: 3,
   },
   // Dorsal ridge blending the two masses.
   {
@@ -84,6 +92,7 @@ const SCOUT: PartDef[] = [
     scale: [0.12, 1.3, 0.14],
     pos: [0, -0.15, 0.16],
     color: "bone",
+    seg: 5,
   },
   // Ventral sucker maw under the nose, ringed by feeder fangs.
   {
@@ -385,12 +394,13 @@ const HEAVY: PartDef[] = [
 
 /** interceptor — "Stinger": wasp needle, thorax + abdomen, egg-sac clutch. */
 const INTERCEPTOR: PartDef[] = [
-  // Needle spine, nose to tail.
+  // Needle spine, nose to tail — segmented wasp chitin, bends per plate.
   {
     prim: SLAB(0.12, 0.25, 0.08),
     scale: [0.2, 2.2, 0.18],
     pos: [0, 0, 0],
     color: "bone",
+    seg: 7,
   },
   // Stinger fang continuing the nose.
   {
@@ -413,12 +423,13 @@ const INTERCEPTOR: PartDef[] = [
     pos: [0, -0.28, 0],
     color: "sinew",
   },
-  // Abdomen bulb aft.
+  // Abdomen bulb aft — banded like a wasp gaster.
   {
     prim: SLAB(0.55, 0.5, 0.14),
     scale: [0.3, 0.75, 0.26],
     pos: [0, -0.68, 0],
     color: "carapace",
+    seg: 3,
   },
   // Forward canards off the thorax.
   {
@@ -518,3 +529,31 @@ export const ENGINES: Record<keyof typeof RECIPES, readonly EngineAnchor[]> = {
 
 export type ShipClass = keyof typeof RECIPES;
 export const SHIP_CLASSES = Object.keys(RECIPES) as readonly ShipClass[];
+
+/** Spine articulation — cosmetic vertex-shader deformation, render-only.
+ * The hull swims: a travelling lateral wave runs nose→tail (enveloped to
+ * zero at the stiff head) and the spine leans into turns. Evaluated in
+ * ship.wgsl per vertex and mirrored in hull/articulation.ts for the
+ * CPU-side plume anchors. */
+export interface ArticulationDef {
+  /** Lateral wave amplitude in ship-local units (0 = rigid hull). */
+  amp: number;
+  /** Spatial frequency of the wave along the spine. */
+  freq: number;
+  /** Temporal wave rate multiplier. */
+  speed: number;
+  /** Spine y above which the hull is rigid (nose is +Y). */
+  headStiff: number;
+  /** 0 = smooth flex; > 0 = rigid hinged segments of this length. */
+  segLen: number;
+}
+
+// Stock articulation per class. Serpent-shaped hulls (scout "Lamprey",
+// interceptor "Stinger") swim visibly; fighter ripples; heavy barely flexes.
+// Tune live in /drydock, then export back here (clipboard round-trip).
+export const ARTICULATION: Record<ShipClass, ArticulationDef> = {
+  scout: { amp: 0.1, freq: 3.5, speed: 1.0, headStiff: 0.4, segLen: 0 },
+  interceptor: { amp: 0.06, freq: 4.5, speed: 1.3, headStiff: 0.55, segLen: 0 },
+  fighter: { amp: 0.03, freq: 3.0, speed: 0.8, headStiff: 0.3, segLen: 0 },
+  heavy: { amp: 0.015, freq: 2.0, speed: 0.4, headStiff: 0.2, segLen: 0 },
+};
