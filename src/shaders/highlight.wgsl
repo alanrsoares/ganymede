@@ -13,8 +13,9 @@ struct Uniforms {
 
 struct VSIn {
   @location(0) inst_loc: vec4f, // [cx, cy, radius(px), roll]
-  @location(1) inst_att: vec4f, // [heading, tilt, _, _]
-  @location(2) inst_col: vec4f, // unused (kept for layout parity)
+  @location(1) inst_att: vec4f, // [heading, tilt, wavePhase, bendCurve]
+  @location(2) inst_art: vec4f, // articulation row — unused (design mode is
+                                // rest pose; ship.wgsl documents the fields)
   @location(6) pos: vec3f,
   @location(7) nrm: vec3f,
   @location(8) col: vec3f,      // present in hull meshes; unused here

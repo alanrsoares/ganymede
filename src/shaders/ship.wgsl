@@ -14,8 +14,9 @@ struct Uniforms {
 
 struct VSIn {
   @location(0) inst_loc: vec4f, // [cx, cy, radius(px), roll]
-  @location(1) inst_att: vec4f, // [heading, tilt, _, _]
-  @location(2) inst_col: vec4f, // team tint rgb + master alpha (cloak)
+  @location(1) inst_att: vec4f, // [heading, tilt, wavePhase, bendCurve]
+  @location(2) inst_art: vec4f, // [amp, freq, headStiff, segLen]
+  @location(3) inst_col: vec4f, // team tint rgb + master alpha (cloak)
   @location(6) pos: vec3f,      // mesh vertex (fixed loc, see mesh-pass.ts)
   @location(7) nrm: vec3f,      // flat face normal
   @location(8) col: vec3f,      // baked part colour; components > 1 = emissive
@@ -41,11 +42,37 @@ fn shipMat(heading: f32, tilt: f32, roll: f32) -> mat3x3f {
   return rz * rx * ry;
 }
 
+// Spine articulation: a travelling lateral wave nose→tail plus a parabolic
+// turn lean, both zero forward of headStiff. Returns [offset, slope] — the
+// x displacement at spine coordinate y and its d/dy for the normal fix.
+// Mirror of hull/articulation.ts spineOffset — keep in sync.
+fn spineDeform(y: f32, phase: f32, curve: f32, art: vec4f) -> vec2f {
+  let amp = art.x; let freq = art.y; let headStiff = art.z; let segLen = art.w;
+  // segLen > 0: hinge mode — snap to segment centres so plates stay rigid.
+  let yq = select(y, (floor(y / segLen) + 0.5) * segLen, segLen > 0.0);
+  // Envelope 0 at head → 1 at the tail (-1.1). Explicit clamp+hermite: the
+  // edges are reversed, so spell smoothstep out rather than rely on it.
+  let t = clamp((yq - headStiff) / (-1.1 - headStiff), 0.0, 1.0);
+  let env = t * t * (3.0 - 2.0 * t);
+  let d = headStiff - yq;
+  let aft = step(yq, headStiff);
+  let offset = sin(yq * freq - phase) * amp * env + curve * d * d * aft;
+  let slope = cos(yq * freq - phase) * amp * freq * env - 2.0 * curve * d * aft;
+  return vec2f(offset, slope);
+}
+
 @vertex
 fn vs(in: VSIn) -> VSOut {
+  let ds = spineDeform(in.pos.y, in.inst_att.z, in.inst_att.w, in.inst_art);
+  var lp = in.pos;
+  lp.x += ds.x;
+  // Small-angle Rz(atan(slope)) on the normal — enough for flat shading.
+  let ln = normalize(vec3f(
+    in.nrm.x - ds.y * in.nrm.y, in.nrm.y + ds.y * in.nrm.x, in.nrm.z));
+
   let R = shipMat(in.inst_att.x, in.inst_att.y, in.inst_loc.w);
-  let p = R * (in.pos * in.inst_loc.z);
-  let n = R * in.nrm;
+  let p = R * (lp * in.inst_loc.z);
+  let n = R * ln;
 
   let wx = in.inst_loc.x + p.x;
   let wy = in.inst_loc.y + p.y;
