@@ -69,8 +69,6 @@ const ORB: PrimDef = { kind: "orb" };
 
 /** scout — "Lamprey": jawless eel-dart, ventral sucker maw, dorsal eye. */
 const SCOUT: PartDef[] = [
-  // Core fuselage, strong taper to the nose — telescoped carapace plates so
-  // the lamprey reads segmented like a centipede and bends plate-by-plate.
   {
     prim: SLAB(0.22, 0.45, 0.1),
     scale: [0.34, 1.7, 0.26],
@@ -78,23 +76,20 @@ const SCOUT: PartDef[] = [
     color: "bone",
     seg: 6,
   },
-  // Aft body — wider, overlapping the core by most of its length.
   {
     prim: SLAB(0.6, 0.7, 0.12),
-    scale: [0.44, 0.9, 0.3],
+    scale: [0.44, 1.09, 0.3],
     pos: [0, -0.55, 0.02],
     color: "carapace",
     seg: 3,
   },
-  // Dorsal ridge blending the two masses.
   {
     prim: SLAB(0.15, 0.3, 0.06),
-    scale: [0.12, 1.3, 0.14],
+    scale: [0.25, 1.15, 0.14],
     pos: [0, -0.15, 0.16],
     color: "bone",
     seg: 5,
   },
-  // Ventral sucker maw under the nose, ringed by feeder fangs.
   {
     prim: SLAB(0.5, 0.4, 0.06),
     scale: [0.18, 0.42, 0.12],
@@ -109,48 +104,50 @@ const SCOUT: PartDef[] = [
     color: "fang",
     mirror: true,
   },
-  // Eye sunk into the ridge, port side. Not mirrored.
   {
     prim: ORB,
     scale: [0.2, 0.2, 0.2],
-    pos: [-0.09, 0.45, 0.12],
+    pos: [0, 0.45, 0.12],
     color: "eye",
   },
-  // Forward canards, rooted in the core, swept back.
   {
     prim: SLAB(0.1, 0.35, 0.06),
-    scale: [0.42, 0.5, 0.05],
-    rot: [0, deg(8), -deg(38)],
+    scale: [1.5, 0.12, 0.05],
+    rot: [0, deg(8), deg(-38)],
     pos: [0.28, 0.05, 0],
     color: "carapace",
     mirror: true,
   },
-  // Main wings off the aft body, steeper sweep, barbed tips.
   {
-    prim: SLAB(0.12, 0.4, 0.08),
-    scale: [0.55, 0.6, 0.06],
-    rot: [0, 0, -deg(42)],
-    pos: [0.26, -0.55, 0.04],
+    prim: ORB,
+    scale: [2.5, 0.6, 0.06],
+    rot: [0, 0, deg(-42)],
+    pos: [0.18, -0.55, 0.04],
     color: "bone",
     mirror: true,
   },
   {
     prim: SLAB(0.04, 0.04),
     scale: [0.04, 0.26, 0.04],
-    rot: [0, 0, -deg(52)],
+    rot: [0, 0, deg(-52)],
     pos: [0.46, -0.75, 0.04],
     color: "fang",
     mirror: true,
   },
-  // Spine barb — asymmetric, leaning starboard.
   {
-    prim: SLAB(0.05, 0.05),
-    scale: [0.05, 0.3, 0.05],
-    rot: [deg(-30), 0, deg(15)],
+    prim: SLAB(0.41, 0.05),
+    scale: [0.05, 0.5, 0.05],
+    rot: [deg(-30), 0, 0],
+    pos: [-0.07, -0.35, 0.22],
+    color: "fang",
+  },
+  {
+    prim: SLAB(0.41, 0.05),
+    scale: [0.05, 0.5, 0.05],
+    rot: [deg(-30), 0, 0],
     pos: [0.07, -0.35, 0.22],
     color: "fang",
   },
-  // Single engine polyp buried in the aft body, acid lip out.
   {
     prim: HEX(0.7),
     scale: [0.18, 0.5, 0.18],
@@ -167,57 +164,51 @@ const SCOUT: PartDef[] = [
 
 /** fighter — "Ossuary": rib-caged cross gunboat, tusk barrels, bone wings. */
 const FIGHTER: PartDef[] = [
-  // Fuselage core.
   {
     prim: SLAB(0.4, 0.55, 0.12),
     scale: [0.42, 1.5, 0.3],
     pos: [0, 0.1, 0],
     color: "carapace",
   },
-  // Nose wedge continuing the taper.
   {
     prim: SLAB(0.25, 0.35, 0.08),
     scale: [0.3, 0.5, 0.22],
     pos: [0, 0.82, -0.01],
     color: "bone",
   },
-  // Aft block, wider than the core — engine housing.
   {
     prim: SLAB(0.7, 0.75, 0.12),
     scale: [0.55, 0.62, 0.32],
     pos: [0, -0.62, 0],
     color: "carapace",
   },
-  // Bone-blade wings, rooted mid-fuselage, swept back — the cross span.
   {
     prim: SLAB(0.18, 0.5, 0.08),
-    scale: [0.75, 0.7, 0.07],
-    rot: [0, deg(6), -deg(24)],
+    scale: [2.5, 0.4, 0.07],
+    rot: [0, deg(6), deg(-24)],
     pos: [0.45, -0.15, 0.02],
     color: "bone",
     mirror: true,
   },
-  // Carapace leading-edge plates layered on the wing roots.
   {
     prim: SLAB(0.1, 0.4, 0.06),
-    scale: [0.4, 0.3, 0.05],
-    rot: [0, 0, -deg(24)],
-    pos: [0.36, -0.08, 0.06],
+    scale: [1.4, 0.25, 0.25],
+    rot: [0, 0, deg(-24)],
+    pos: [0.36, -0.08, 0],
     color: "carapace",
     mirror: true,
   },
   {
     prim: SLAB(0.05, 0.05),
     scale: [0.05, 0.3, 0.05],
-    rot: [0, 0, -deg(30)],
+    rot: [0, 0, deg(-30)],
     pos: [0.76, -0.36, 0.02],
     color: "fang",
     mirror: true,
   },
-  // Rib plates wrapping the spine, shrinking aft.
   {
     prim: SLAB(0.75, 0.5, 0.06),
-    scale: [0.5, 0.14, 0.12],
+    scale: [0.35, 0.14, 0.12],
     pos: [0, 0.3, 0.16],
     color: "bone",
   },
@@ -229,11 +220,10 @@ const FIGHTER: PartDef[] = [
   },
   {
     prim: SLAB(0.75, 0.5, 0.06),
-    scale: [0.38, 0.12, 0.1],
+    scale: [0.45, 0.12, 0.1],
     pos: [0, -0.26, 0.2],
     color: "bone",
   },
-  // Twin tusk barrels rooted in sinew polyps.
   {
     prim: SLAB(0.08, 0.08),
     scale: [0.07, 0.7, 0.07],
@@ -249,22 +239,19 @@ const FIGHTER: PartDef[] = [
     color: "sinew",
     mirror: true,
   },
-  // Eye on the nose ridge, starboard. Not mirrored.
   {
     prim: ORB,
     scale: [0.17, 0.17, 0.17],
-    pos: [0.1, 0.6, 0.14],
+    pos: [0, 0.6, 0.14],
     color: "eye",
   },
-  // Antenna barb — asymmetric, port aft.
   {
     prim: SLAB(0.04, 0.04),
     scale: [0.04, 0.32, 0.04],
-    rot: [deg(-35), 0, -deg(10)],
+    rot: [deg(-35), 0, deg(-10)],
     pos: [-0.12, -0.5, 0.24],
     color: "fang",
   },
-  // Twin engines buried in the aft block.
   {
     prim: HEX(0.75),
     scale: [0.15, 0.45, 0.15],
@@ -283,28 +270,24 @@ const FIGHTER: PartDef[] = [
 
 /** heavy — "Leviathan": whale barge, layered shell over bone belly, gaping maw. */
 const HEAVY: PartDef[] = [
-  // Main carapace back — the dominant mass.
   {
-    prim: SLAB(0.6, 0.65, 0.16),
-    scale: [1.0, 1.6, 0.42],
+    prim: SLAB(0.6, 1, 0.16),
+    scale: [1, 1.6, 0.42],
     pos: [0, -0.1, 0.06],
     color: "carapace",
   },
-  // Bone belly layered beneath.
   {
     prim: SLAB(0.7, 0.6, 0.12),
     scale: [0.8, 1.3, 0.3],
     pos: [0, 0, -0.14],
     color: "bone",
   },
-  // Brow hood pushing forward into the head.
   {
     prim: SLAB(0.5, 0.5, 0.12),
     scale: [0.6, 0.55, 0.3],
     pos: [0, 0.62, 0.02],
     color: "carapace",
   },
-  // Gaping maw inset under the brow, ringed by teeth.
   {
     prim: SLAB(0.55, 0.4, 0.08),
     scale: [0.42, 0.35, 0.24],
@@ -315,7 +298,7 @@ const HEAVY: PartDef[] = [
     prim: SLAB(0.04, 0.04),
     scale: [0.07, 0.26, 0.07],
     rot: [deg(-90), 0, 0],
-    pos: [0.16, 1.0, -0.02],
+    pos: [0.16, 1, -0.02],
     color: "fang",
     mirror: true,
   },
@@ -327,7 +310,6 @@ const HEAVY: PartDef[] = [
     color: "fang",
     mirror: true,
   },
-  // Dorsal shell plates, shrinking aft, second one leaning port.
   {
     prim: SLAB(0.85, 0.6, 0.1),
     scale: [0.55, 0.7, 0.12],
@@ -337,21 +319,19 @@ const HEAVY: PartDef[] = [
   {
     prim: SLAB(0.8, 0.6, 0.1),
     scale: [0.4, 0.45, 0.1],
-    pos: [-0.05, -0.55, 0.36],
+    pos: [0, -0.3, 0.36],
     color: "bone",
   },
-  // Cyclopean eye on the brow, starboard. Not mirrored. It watches.
   {
     prim: ORB,
-    scale: [0.22, 0.22, 0.22],
-    pos: [0.3, 0.42, 0.28],
+    scale: [0.5, 0.4, 0.4],
+    pos: [0, 0.42, 0.2],
     color: "eye",
   },
-  // Flank engine pods embedded in the hull sides.
   {
     prim: HEX(0.8),
-    scale: [0.26, 1.0, 0.26],
-    pos: [0.55, -0.15, -0.02],
+    scale: [0.5, 1, 0.26],
+    pos: [0.55, -0.16, -0.05],
     color: "carapace",
     mirror: true,
   },
@@ -362,11 +342,10 @@ const HEAVY: PartDef[] = [
     color: "acid",
     mirror: true,
   },
-  // Centre engine pair buried in the tail.
   {
     prim: HEX(0.75),
     scale: [0.16, 0.5, 0.16],
-    pos: [0.18, -1.0, -0.04],
+    pos: [0.18, -1, -0.04],
     color: "sinew",
     mirror: true,
   },
@@ -377,11 +356,10 @@ const HEAVY: PartDef[] = [
     color: "acid",
     mirror: true,
   },
-  // Mine barnacle cluster, dorsal port. Asymmetric.
   {
     prim: HEX(0.5),
     scale: [0.14, 0.2, 0.14],
-    pos: [-0.3, -0.35, 0.3],
+    pos: [0.36, -0.35, 0.3],
     color: "acid",
   },
   {
@@ -394,7 +372,6 @@ const HEAVY: PartDef[] = [
 
 /** interceptor — "Stinger": wasp needle, thorax + abdomen, egg-sac clutch. */
 const INTERCEPTOR: PartDef[] = [
-  // Needle spine, nose to tail — segmented wasp chitin, bends per plate.
   {
     prim: SLAB(0.12, 0.25, 0.08),
     scale: [0.2, 2.2, 0.18],
@@ -402,28 +379,24 @@ const INTERCEPTOR: PartDef[] = [
     color: "bone",
     seg: 7,
   },
-  // Stinger fang continuing the nose.
   {
     prim: SLAB(0.03, 0.03),
     scale: [0.07, 0.5, 0.07],
     pos: [0, 0.9, 0],
     color: "fang",
   },
-  // Thorax bulge around the spine.
   {
     prim: SLAB(0.45, 0.6, 0.1),
     scale: [0.24, 0.7, 0.22],
     pos: [0, 0.25, 0.02],
     color: "carapace",
   },
-  // Sinew waist joining thorax to abdomen.
   {
     prim: HEX(0.85),
     scale: [0.16, 0.35, 0.16],
     pos: [0, -0.28, 0],
     color: "sinew",
   },
-  // Abdomen bulb aft — banded like a wasp gaster.
   {
     prim: SLAB(0.55, 0.5, 0.14),
     scale: [0.3, 0.75, 0.26],
@@ -431,32 +404,28 @@ const INTERCEPTOR: PartDef[] = [
     color: "carapace",
     seg: 3,
   },
-  // Forward canards off the thorax.
   {
     prim: SLAB(0.08, 0.35, 0.05),
     scale: [0.3, 0.4, 0.04],
-    rot: [0, 0, -deg(30)],
+    rot: [0, 0, deg(-30)],
     pos: [0.18, 0.35, 0.02],
     color: "carapace",
     mirror: true,
   },
-  // Main fins off the abdomen, steep sweep.
   {
     prim: SLAB(0.1, 0.4, 0.06),
-    scale: [0.5, 0.55, 0.05],
-    rot: [0, 0, -deg(50)],
-    pos: [0.28, -0.75, 0.03],
+    scale: [1.41, 0.55, 0.05],
+    rot: [0, 0, deg(-50)],
+    pos: [0.28, -0.75, -0.03],
     color: "bone",
     mirror: true,
   },
-  // Vertical tail fin.
   {
     prim: SLAB(0.12, 0.35, 0.05),
     scale: [0.05, 0.45, 0.32],
     pos: [0, -0.85, 0.2],
     color: "carapace",
   },
-  // Egg sacs clutched on the abdomen — one extra, off-pair. It's about to hatch.
   {
     prim: ORB,
     scale: [0.09, 0.12, 0.09],
@@ -470,14 +439,12 @@ const INTERCEPTOR: PartDef[] = [
     pos: [0.14, -0.78, 0.16],
     color: "acid",
   },
-  // Eye at the thorax front, port. Not mirrored.
   {
     prim: ORB,
     scale: [0.13, 0.13, 0.13],
     pos: [-0.06, 0.55, 0.09],
     color: "eye",
   },
-  // Twin engines buried in the abdomen.
   {
     prim: HEX(0.7),
     scale: [0.11, 0.45, 0.11],
@@ -552,8 +519,8 @@ export interface ArticulationDef {
 // interceptor "Stinger") swim visibly; fighter ripples; heavy barely flexes.
 // Tune live in /drydock, then export back here (clipboard round-trip).
 export const ARTICULATION: Record<ShipClass, ArticulationDef> = {
-  scout: { amp: 0.1, freq: 3.5, speed: 1.0, headStiff: 0.4, segLen: 0 },
+  scout: { amp: 0.1, freq: 3.5, speed: 1, headStiff: 0.4, segLen: 0 },
+  fighter: { amp: 0.03, freq: 3, speed: 0.8, headStiff: 0.3, segLen: 0 },
+  heavy: { amp: 0.015, freq: 2, speed: 0.4, headStiff: 0.2, segLen: 0 },
   interceptor: { amp: 0.06, freq: 4.5, speed: 1.3, headStiff: 0.55, segLen: 0 },
-  fighter: { amp: 0.03, freq: 3.0, speed: 0.8, headStiff: 0.3, segLen: 0 },
-  heavy: { amp: 0.015, freq: 2.0, speed: 0.4, headStiff: 0.2, segLen: 0 },
 };
