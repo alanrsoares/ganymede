@@ -43,6 +43,11 @@ export interface PartDef {
   color: PaletteKey;
   /** Also bake an x-mirrored copy. */
   mirror?: boolean;
+  /** Bake as a chain of this many overlapping carapace plates along the
+   * part's local Y (centipede segmentation, hull/bake.ts expandSeg). Long
+   * prims only have vertices at their ends, so the spine wave (ship.wgsl)
+   * would shear them; short plates tilt near-rigidly instead. 0/1 = solid. */
+  seg?: number;
 }
 
 // --- recipes -------------------------------------------------------------------
@@ -64,12 +69,14 @@ const ORB: PrimDef = { kind: "orb" };
 
 /** scout — "Lamprey": jawless eel-dart, ventral sucker maw, dorsal eye. */
 const SCOUT: PartDef[] = [
-  // Core fuselage, strong taper to the nose.
+  // Core fuselage, strong taper to the nose — telescoped carapace plates so
+  // the lamprey reads segmented like a centipede and bends plate-by-plate.
   {
     prim: SLAB(0.22, 0.45, 0.1),
     scale: [0.34, 1.7, 0.26],
     pos: [0, 0.15, 0],
     color: "bone",
+    seg: 6,
   },
   // Aft body — wider, overlapping the core by most of its length.
   {
@@ -77,6 +84,7 @@ const SCOUT: PartDef[] = [
     scale: [0.44, 0.9, 0.3],
     pos: [0, -0.55, 0.02],
     color: "carapace",
+    seg: 3,
   },
   // Dorsal ridge blending the two masses.
   {
@@ -84,6 +92,7 @@ const SCOUT: PartDef[] = [
     scale: [0.12, 1.3, 0.14],
     pos: [0, -0.15, 0.16],
     color: "bone",
+    seg: 5,
   },
   // Ventral sucker maw under the nose, ringed by feeder fangs.
   {
@@ -385,12 +394,13 @@ const HEAVY: PartDef[] = [
 
 /** interceptor — "Stinger": wasp needle, thorax + abdomen, egg-sac clutch. */
 const INTERCEPTOR: PartDef[] = [
-  // Needle spine, nose to tail.
+  // Needle spine, nose to tail — segmented wasp chitin, bends per plate.
   {
     prim: SLAB(0.12, 0.25, 0.08),
     scale: [0.2, 2.2, 0.18],
     pos: [0, 0, 0],
     color: "bone",
+    seg: 7,
   },
   // Stinger fang continuing the nose.
   {
@@ -413,12 +423,13 @@ const INTERCEPTOR: PartDef[] = [
     pos: [0, -0.28, 0],
     color: "sinew",
   },
-  // Abdomen bulb aft.
+  // Abdomen bulb aft — banded like a wasp gaster.
   {
     prim: SLAB(0.55, 0.5, 0.14),
     scale: [0.3, 0.75, 0.26],
     pos: [0, -0.68, 0],
     color: "carapace",
+    seg: 3,
   },
   // Forward canards off the thorax.
   {

@@ -225,6 +225,55 @@ const mulV = (m: number[], v: V3): V3 => [
   m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
 ];
 
+// --- centipede segmentation ----------------------------------------------------
+// A part with seg > 1 bakes as a chain of overlapping carapace plates along
+// its local Y. Each plate keeps the part's silhouette (its cross-section
+// follows the original taper), its nose tucks under the next plate's base so
+// joints read as telescoped shell, and the short span lets the spine wave
+// (ship.wgsl spineDeform) tilt each plate near-rigidly — a long prim only has
+// vertices at its ends, so the wave would just shear it.
+
+const PLATE_OVERLAP = 1.5; // plate height ÷ pitch — joints stay sealed mid-bend
+const PLATE_TUCK = 0.85; // extra nose taper so each plate nests into the next
+
+const expandSeg = (def: PartDef): PartDef[] => {
+  const n = Math.round(def.seg ?? 1);
+  if (n <= 1 || def.prim.kind === "orb") return [def];
+  const m = rotMat(def.rot ?? [0, 0, 0]);
+  // Cross-section factor at t (0 base → 1 nose) of the original prim.
+  const [nx, nz] =
+    def.prim.kind === "slab"
+      ? [def.prim.tx, def.prim.tz]
+      : [def.prim.taper, def.prim.taper];
+  const ext = (f: number, t: number): number => 1 + (f - 1) * t;
+  const out: PartDef[] = [];
+  for (let i = 0; i < n; i++) {
+    const t0 = i / n;
+    const t1 = (i + 1) / n;
+    const tc = (t0 + t1) / 2;
+    const off = mulV(m, [0, (tc - 0.5) * def.scale[1], 0]);
+    const bx = ext(nx, t0);
+    const bz = ext(nz, t0);
+    const tx = (ext(nx, t1) / bx) * PLATE_TUCK;
+    const tz = (ext(nz, t1) / bz) * PLATE_TUCK;
+    out.push({
+      ...def,
+      seg: 1,
+      prim:
+        def.prim.kind === "slab"
+          ? { ...def.prim, tx, tz }
+          : { kind: "hex", taper: tx },
+      scale: [
+        def.scale[0] * bx,
+        (def.scale[1] / n) * PLATE_OVERLAP,
+        def.scale[2] * bz,
+      ],
+      pos: [def.pos[0] + off[0], def.pos[1] + off[1], def.pos[2] + off[2]],
+    });
+  }
+  return out;
+};
+
 /** Bake one part (and its optional mirror) into flat-shaded triangles. */
 const bakePart = (def: PartDef, prim: Prim, out: Tri[], colors: V3[]): void => {
   const m = rotMat(def.rot ?? [0, 0, 0]);
@@ -304,9 +353,13 @@ export const assembleShipMesh = (parts: readonly PartDef[]): Mesh => {
   const colors: V3[] = [];
   const centres: V3[] = [];
   for (const def of parts) {
-    const before = tris.length;
-    bakePart(def, buildPrim(def.prim), tris, colors);
-    trackCentres(def, tris.length - before, centres);
+    // Segmented parts bake plate-by-plate: each plate is its own convex prim
+    // with its own centre, so the outward-normal fix stays exact.
+    for (const plate of expandSeg(def)) {
+      const before = tris.length;
+      bakePart(plate, buildPrim(plate.prim), tris, colors);
+      trackCentres(plate, tris.length - before, centres);
+    }
   }
   const data = new Float32Array(tris.length * 3 * 9);
   let o = 0;
@@ -372,10 +425,13 @@ const rayTri = (o: V3, d: V3, t0: V3, t1: V3, t2: V3): number | null => {
   return v < 0 || u + v > 1 ? null : dot(e2, q) * inv;
 };
 
-/** Bake one part's triangles (mirror copies included) in ship-local space. */
+/** Bake one part's triangles (mirror + seg plates included) in ship-local
+ * space — picking any plate of a chain selects the owning PartDef. */
 const bakePartTris = (def: PartDef): Tri[] => {
   const tris: Tri[] = [];
-  bakePart(def, buildPrim(def.prim), tris, []);
+  for (const plate of expandSeg(def)) {
+    bakePart(plate, buildPrim(plate.prim), tris, []);
+  }
   return tris;
 };
 
