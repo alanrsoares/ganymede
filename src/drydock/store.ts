@@ -15,6 +15,7 @@ import {
   SHIP_CLASSES,
   type ShipClass,
 } from "~/hull/catalog";
+import { applyOp, type HullOp } from "./ops";
 
 export interface HullDef {
   parts: PartDef[];
@@ -219,6 +220,19 @@ export const undo = (): void => {
   undoSlot = redo;
   sel.part = 0;
   touchHull();
+};
+
+// --- agent ops (natural-language / hull-op DSL) -------------------------------
+// Apply a batch from the design agent as one undoable step. Bad ops are
+// skipped by applyOp; returns the applied-op log lines for the UI.
+
+export const applyOps = (ops: HullOp[], label: string): string[] => {
+  snapshotUndo(label);
+  const hull = hulls[view.cls];
+  const log = ops.map((op) => applyOp(hull, op)).filter(Boolean);
+  sel.part = Math.min(sel.part, hull.parts.length - 1);
+  touchHull();
+  return log;
 };
 
 // --- hull structure ops -------------------------------------------------------

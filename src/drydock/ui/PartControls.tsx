@@ -1,9 +1,11 @@
-// Property editor for the selected hull part: primitive shape (with its
-// taper knobs), position/scale/rotation and look. Fields mutate the part in
+// Property editor for the selected hull part, grouped into collapsible
+// sections: shape (primitive + taper + segmentation), transform
+// (pos/scale/rot) and look (color + mirror). Fields mutate the part in
 // place; SliderField/Selector handlers trigger the debounced re-bake.
 
-import { Divider } from "@astryxdesign/core/Divider";
+import { Collapsible, CollapsibleGroup } from "@astryxdesign/core/Collapsible";
 import { Selector } from "@astryxdesign/core/Selector";
+import { VStack } from "@astryxdesign/core/Stack";
 import { Switch } from "@astryxdesign/core/Switch";
 import type { ReactElement } from "react";
 import { defaultPrim, touchHull } from "~/drydock/store";
@@ -87,55 +89,66 @@ const RotationFields = ({ part }: { part: PartDef }): ReactElement => {
 };
 
 export const PartControls = ({ part }: { part: PartDef }): ReactElement => (
-  <>
-    <Divider label="shape" />
-    <Selector
-      label="primitive"
-      options={["slab", "hex", "orb"]}
-      value={part.prim.kind}
-      onChange={(kind) => {
-        if (!kind) return;
-        part.prim = defaultPrim(kind);
-        touchHull();
-      }}
-    />
-    <TaperFields prim={part.prim} />
-    {part.prim.kind !== "orb" && (
-      <SliderField
-        label="segments (1 = solid)"
-        min={1}
-        max={9}
-        step={1}
-        value={part.seg ?? 1}
-        onChange={(v) => {
-          part.seg = v;
-        }}
-      />
-    )}
-    <Divider label="position" />
-    <Vec3Fields label="pos" min={-1.6} max={1.6} vec={part.pos} />
-    <Divider label="scale" />
-    <Vec3Fields label="scale" min={0.02} max={2.5} vec={part.scale} />
-    <Divider label="rotation" />
-    <RotationFields part={part} />
-    <Divider label="look" />
-    <Selector
-      label="color"
-      options={PALETTE_KEYS as unknown as string[]}
-      value={part.color}
-      onChange={(v) => {
-        if (!v) return;
-        part.color = v as PartDef["color"];
-        touchHull();
-      }}
-    />
-    <Switch
-      label="mirror x"
-      value={!!part.mirror}
-      onChange={(checked) => {
-        part.mirror = checked;
-        touchHull();
-      }}
-    />
-  </>
+  <CollapsibleGroup
+    type="multiple"
+    defaultValue={["shape", "transform", "look"]}
+    hasDividers
+  >
+    <Collapsible trigger="shape" value="shape">
+      <VStack gap={1}>
+        <Selector
+          label="primitive"
+          options={["slab", "hex", "orb"]}
+          value={part.prim.kind}
+          onChange={(kind) => {
+            if (!kind) return;
+            part.prim = defaultPrim(kind);
+            touchHull();
+          }}
+        />
+        <TaperFields prim={part.prim} />
+        {part.prim.kind !== "orb" && (
+          <SliderField
+            label="segments (1 = solid)"
+            min={1}
+            max={9}
+            step={1}
+            value={part.seg ?? 1}
+            onChange={(v) => {
+              part.seg = v;
+            }}
+          />
+        )}
+      </VStack>
+    </Collapsible>
+    <Collapsible trigger="transform" value="transform">
+      <VStack gap={1}>
+        <Vec3Fields label="pos" min={-1.6} max={1.6} vec={part.pos} />
+        <Vec3Fields label="scale" min={0.02} max={2.5} vec={part.scale} />
+        <RotationFields part={part} />
+      </VStack>
+    </Collapsible>
+    <Collapsible trigger="look" value="look">
+      <VStack gap={1}>
+        <Selector
+          label="color"
+          options={PALETTE_KEYS as unknown as string[]}
+          value={part.color}
+          onChange={(v) => {
+            if (!v) return;
+            part.color = v as PartDef["color"];
+            touchHull();
+          }}
+        />
+        <Switch
+          label="mirror x"
+          value={!!part.mirror}
+          onChange={(checked) => {
+            part.mirror = checked;
+            touchHull();
+          }}
+        />
+      </VStack>
+    </Collapsible>
+  </CollapsibleGroup>
 );

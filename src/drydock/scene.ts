@@ -164,15 +164,24 @@ const shipMat = (heading: number, tilt: number, roll: number): number[] => {
   return matMul(rz, matMul(rx, ry));
 };
 
+/** Left control panel's outer edge in CSS px (margin + padding + border + width). */
+const PANEL_CLEAR_PX = 350;
+
 /** The inspector hull's current pose — shared by draw, pick and highlight. */
-const inspectorPose = (w: number, h: number) => ({
-  cx: w * 0.24,
-  cy: h * 0.5,
-  radius: Math.min(w, h) * 0.19,
-  roll: view.bank ? Math.sin(view.t * 1.6) * 0.55 : 0,
-  heading: Math.PI + view.spinPhase + view.orbitYaw,
-  tilt: (view.tiltDeg * Math.PI) / 180 + view.orbitPitch,
-});
+const inspectorPose = (w: number, h: number) => {
+  const radius = Math.min(w, h) * 0.19;
+  // On narrow (laptop) screens w*0.24 tucks the hull under the left panel;
+  // push it right until it clears, but never past centre.
+  const clear = PANEL_CLEAR_PX * Math.min(devicePixelRatio || 1, 2);
+  return {
+    cx: Math.max(w * 0.24, Math.min(clear + radius * 1.05, w * 0.5)),
+    cy: h * 0.5,
+    radius,
+    roll: view.bank ? Math.sin(view.t * 1.6) * 0.55 : 0,
+    heading: Math.PI + view.spinPhase + view.orbitYaw,
+    tilt: (view.tiltDeg * Math.PI) / 180 + view.orbitPitch,
+  };
+};
 
 // --- GPU setup ----------------------------------------------------------------
 

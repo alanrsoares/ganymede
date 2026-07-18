@@ -5,6 +5,7 @@
 import "@astryxdesign/core/astryx.css";
 import { createRoot } from "react-dom/client";
 import { App } from "~/drydock/ui/App";
+import { startAgentBridge } from "./agent-bridge";
 import { wireKeys } from "./keys";
 import { startScene } from "./scene";
 import { setGpuError } from "./store";
@@ -17,3 +18,4 @@ wireKeys();
 startScene(canvas).catch((err) => {
   setGpuError(err instanceof Error ? err.message : String(err));
 });
+startAgentBridge(canvas);

@@ -1,14 +1,18 @@
 // Left panel: scene controls — ship class, team tint, tilt, view toggles,
-// shortcuts and the class lore line. Pure astryx components over the store.
+// keyboard shortcuts and the class lore card. Pure astryx components over
+// the store.
 
+import { Kbd } from "@astryxdesign/core/Kbd";
+import { Section } from "@astryxdesign/core/Section";
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from "@astryxdesign/core/SegmentedControl";
 import { Slider } from "@astryxdesign/core/Slider";
-import { VStack } from "@astryxdesign/core/Stack";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
+import { Tooltip } from "@astryxdesign/core/Tooltip";
 import type { ReactElement } from "react";
 import {
   setCls,
@@ -43,20 +47,30 @@ const GEAR: Record<ShipClass, { title: string; desc: string }> = {
   },
 };
 
+const SHORTCUTS: Array<[keys: string, action: string]> = [
+  ["1", "ship class (1–4)"],
+  ["d", "design mode"],
+  ["space", "pause"],
+  ["m", "mono tint"],
+  ["b", "bank sweep"],
+  ["escape", "exit design"],
+];
+
 const TeamSwatches = (): ReactElement => (
   <div className="swatch-row">
     {TEAMS.map((team, i) => (
-      <button
-        key={team.name}
-        type="button"
-        className={`swatch${i === view.team ? " on" : ""}`}
-        style={{
-          background: `rgb(${team.rgb.map((c) => Math.round(c * 255)).join(",")})`,
-        }}
-        aria-label={`team ${team.name}`}
-        aria-pressed={i === view.team}
-        onClick={() => setTeam(i)}
-      />
+      <Tooltip key={team.name} content={`team ${team.name}`}>
+        <button
+          type="button"
+          className={`swatch${i === view.team ? " on" : ""}`}
+          style={{
+            background: `rgb(${team.rgb.map((c) => Math.round(c * 255)).join(",")})`,
+          }}
+          aria-label={`team ${team.name}`}
+          aria-pressed={i === view.team}
+          onClick={() => setTeam(i)}
+        />
+      </Tooltip>
     ))}
   </div>
 );
@@ -96,6 +110,20 @@ const ViewToggles = (): ReactElement => (
   </div>
 );
 
+const Shortcuts = (): ReactElement => (
+  <VStack gap={1}>
+    {SHORTCUTS.map(([keys, action]) => (
+      <HStack key={keys} gap={2} vAlign="center">
+        <Kbd keys={keys} />
+        <Text type="supporting">{action}</Text>
+      </HStack>
+    ))}
+    <Text type="supporting" display="block">
+      drag hull to orbit — x yaw · y pitch
+    </Text>
+  </VStack>
+);
+
 export const ControlPanel = (): ReactElement => {
   const gear = GEAR[view.cls];
   return (
@@ -126,15 +154,15 @@ export const ControlPanel = (): ReactElement => {
         valueDisplay="text"
       />
       <ViewToggles />
-      <Text type="supporting" display="block">
-        drag hull to orbit — x yaw · y pitch. keys: 1-4 class · d design · space
-        pause · m mono · b bank
-      </Text>
-      <Text type="supporting" display="block">
-        <strong>{gear.title}</strong>
-        <br />
-        {gear.desc}
-      </Text>
+      <Section variant="muted" padding={2}>
+        <Text type="label" weight="semibold" display="block">
+          {gear.title}
+        </Text>
+        <Text type="supporting" display="block">
+          {gear.desc}
+        </Text>
+      </Section>
+      <Shortcuts />
     </VStack>
   );
 };

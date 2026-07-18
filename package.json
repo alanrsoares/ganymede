@@ -35,6 +35,7 @@
     "lint": "bun x @biomejs/biome check .",
     "lint:fix": "bun x @biomejs/biome check --write . && bun x @biomejs/biome format --write .",
     "typecheck": "bun x tsc --noEmit",
-    "large-files": "bun run scripts/large-files.ts"
+    "large-files": "bun run scripts/large-files.ts",
+    "apply-hull": "bun run scripts/apply-hull-catalog.ts"
   }
 }
