@@ -4,6 +4,7 @@
 
 import type { Renderer } from "~/render/gpu";
 import { type Codex, mountCodex } from "~/ui/codex";
+import type { PauseMenu } from "~/ui/pauseMenu";
 import { mountShipCard } from "~/ui/shipCard";
 import type { Ui } from "~/ui/ui";
 import {
@@ -158,8 +159,12 @@ const handleKeyDown = (
   gameKeys: Record<string, () => void>,
   dispatch: (msg: Msg) => void,
   getWorld: () => World,
+  pause: PauseMenu,
 ) => {
   if (typingInField(e)) return;
+  // Freeze all game input while the pause menu is up (ESC is owned by the
+  // capture-phase handleEscape listener, which runs before this).
+  if (pause.isOpen()) return;
   const key = e.key.toLowerCase();
   if (key === "c") return toggleCodex(codex, isSetupOpen);
   if (codex.isOpen() || isSetupOpen()) return;
@@ -190,6 +195,30 @@ const handleKeyDown = (
   }
 
   gameKeys[key]?.();
+};
+
+// ESC owns the pause menu, in a dedicated capture-phase listener so it fires
+// before Astryx's own Escape-to-close on the pause Dialog — otherwise both
+// would fire on one press and the toggle would race itself. When another
+// surface is up (pre-game dialogs, welcome splash, codex) we leave the event
+// alone so Astryx can close those normally.
+const handleEscape = (
+  e: KeyboardEvent,
+  pause: PauseMenu,
+  codex: Codex,
+  isMenuOpen: () => boolean,
+) => {
+  if (e.key !== "Escape" || typingInField(e)) return;
+  if (pause.isOpen()) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    pause.close();
+    return;
+  }
+  if (isMenuOpen() || codex.isOpen()) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  pause.open();
 };
 
 const handleKeyUp = (
@@ -269,6 +298,7 @@ export const wireInput = (
   getWorld: () => World,
   isMenuOpen: () => boolean,
   audio: { toggleMute(): void; skip(): void },
+  pause: PauseMenu,
 ): Codex => {
   const card = mountShipCard();
   const codex = mountCodex();
@@ -308,6 +338,12 @@ export const wireInput = (
     ".": () => audio.skip(),
   };
 
+  // Capture phase: run before Astryx's Dialog Escape handler (see handleEscape).
+  window.addEventListener(
+    "keydown",
+    (e) => handleEscape(e, pause, codex, isMenuOpen),
+    true,
+  );
   window.addEventListener("keydown", (e) =>
     handleKeyDown(
       e,
@@ -318,6 +354,7 @@ export const wireInput = (
       gameKeys,
       dispatch,
       getWorld,
+      pause,
     ),
   );
   window.addEventListener("keyup", (e) =>

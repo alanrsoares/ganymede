@@ -24,6 +24,7 @@ import { updateGridDimensions, wireInput } from "~/runtime/input";
 import { type Lobby, mountArcadeLobby } from "~/ui/arcade-lobby";
 import { mountMixer } from "~/ui/mixer";
 import { mountMobileControls } from "~/ui/mobileControls";
+import { mountPauseMenu, type PauseMenu } from "~/ui/pauseMenu";
 import { mountSetup, type Setup } from "~/ui/setup";
 import { rgbCss } from "~/ui/shipStats";
 import { mountUi, type Ui } from "~/ui/ui";
@@ -113,6 +114,7 @@ const wireTouchControls = (
 // while open (and has its own opener button); `paused` is a separate freeze.
 const wirePause = (
   codex: ReturnType<typeof wireInput>,
+  pause: PauseMenu,
   dispatch: (msg: Msg) => void,
   ui: Ui,
 ): (() => boolean) => {
@@ -120,13 +122,15 @@ const wirePause = (
   wireTouchControls(dispatch, ui, (p) => {
     paused.on = p;
   });
-  return () => codex.isOpen() || paused.on;
+  return () => codex.isOpen() || paused.on || pause.isOpen();
 };
 
 interface PreGameFlow {
   setup: Setup;
   lobby: Lobby;
   codex: ReturnType<typeof wireInput>;
+  /** Desktop ESC pause menu; its `isOpen()` freezes the sim. */
+  pause: PauseMenu;
   /** Live welcome splash across remounts; `up` gates game input under it. */
   welcomeRef: { current: Welcome; up: boolean };
   /** True once a mode was chosen and no pre-game dialog is covering the sim. */
@@ -165,6 +169,9 @@ const wirePreGame = (
     startHidden: true,
     onClose: onDialogClose,
   });
+  // ESC pause menu; quitting to title reuses the dialog-close flow (back to
+  // the welcome splash).
+  const pause = mountPauseMenu({ onQuit: onDialogClose });
   const codex = wireInput(
     canvas,
     renderer,
@@ -175,6 +182,7 @@ const wirePreGame = (
     // dialogs or the welcome splash (stops C opening the codex over the title).
     () => setup.isOpen() || lobby.isOpen() || welcomeRef.up,
     audio,
+    pause,
   );
   // Keep the welcome splash clean; reveal all chrome together on launch.
   codex.setChromeHidden(true);
@@ -192,6 +200,7 @@ const wirePreGame = (
     setup,
     lobby,
     codex,
+    pause,
     welcomeRef,
     inMatch: () => begun && !setup.isOpen() && !lobby.isOpen(),
   };
@@ -223,8 +232,8 @@ const startRuntime = (
     startMatch,
     startArcadeMatch,
   );
-  const { setup, lobby, codex, welcomeRef } = flow;
-  const isPaused = wirePause(codex, dispatch, ui);
+  const { setup, lobby, codex, pause, welcomeRef } = flow;
+  const isPaused = wirePause(codex, pause, dispatch, ui);
 
   const syncCanvasSize = createResizeSync(renderer, canvas);
   const loop = createLoop((dt, now) => {
