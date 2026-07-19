@@ -6,6 +6,7 @@
 
 import van from "vanjs-core";
 import { clamp01 } from "~/engine/physics";
+import { hullSilhouettePath } from "~/hull/silhouette";
 import { type LightCycle, MAX_LEVEL } from "~/world";
 import {
   ARCHETYPE_INFO,
@@ -149,14 +150,14 @@ const buildRankTrack = (ship: LightCycle, tint: string) => {
 };
 
 // --- Badge ------------------------------------------------------------------
-// The blueprint glyph inside a reticle box: four corner ticks framing a
-// filled hull + lighter detail strokes, all in the team tint — the moment the
-// targeting readout "boxes" the contact.
+// The blueprint glyph inside a reticle box: four corner ticks framing the
+// hull silhouette (derived from the catalog geometry) in the team tint — the
+// moment the targeting readout "boxes" the contact.
 const corner = (edges: string, tint: string) =>
   span({ class: `absolute h-2 w-2 ${edges}`, style: `border-color:${tint}` });
 
 const buildBadge = (ship: LightCycle, tint: string) => {
-  const g = ARCHETYPE_INFO[ship.archetype].glyph;
+  const hull = hullSilhouettePath(ship.archetype);
   return div(
     {
       class:
@@ -175,16 +176,10 @@ const buildBadge = (ship: LightCycle, tint: string) => {
         "stroke-linecap": "round",
       },
       svg.path({
-        d: g.hull,
+        d: hull,
         fill: `${tint}26`,
         stroke: tint,
         "stroke-width": "1.4",
-      }),
-      svg.path({
-        d: g.detail,
-        stroke: tint,
-        "stroke-width": "1",
-        opacity: "0.65",
       }),
     ),
   );

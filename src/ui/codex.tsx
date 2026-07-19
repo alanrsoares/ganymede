@@ -23,9 +23,10 @@ import {
 } from "@astryxdesign/core/SegmentedControl";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { AstryxRoot } from "~/astryx";
+import { hullSilhouettePath } from "~/hull/silhouette";
 import { ARCHETYPES, type Archetype, MAX_LEVEL } from "~/world";
 import {
   ARCHETYPE_INFO,
@@ -122,7 +123,7 @@ const CORNERS = [
 ];
 
 const GlyphBadge = ({ a, tint }: { a: Archetype; tint: string }) => {
-  const g = ARCHETYPE_INFO[a].glyph;
+  const hull = useMemo(() => hullSilhouettePath(a), [a]);
   return (
     <div className="relative grid h-11 w-11 shrink-0 place-items-center rounded bg-white/[0.03]">
       {CORNERS.map((edges) => (
@@ -140,8 +141,7 @@ const GlyphBadge = ({ a, tint }: { a: Archetype; tint: string }) => {
         strokeLinecap="round"
         aria-hidden="true"
       >
-        <path d={g.hull} fill={`${tint}26`} stroke={tint} strokeWidth="1.4" />
-        <path d={g.detail} stroke={tint} strokeWidth="1" opacity="0.65" />
+        <path d={hull} fill={`${tint}26`} stroke={tint} strokeWidth="1.4" />
       </svg>
     </div>
   );
