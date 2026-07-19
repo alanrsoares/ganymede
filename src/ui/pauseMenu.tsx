@@ -22,18 +22,26 @@ export interface PauseMenu {
 }
 
 export interface PauseMenuOpts {
+  /** Restart the current match from the start (same config). */
+  onRestart: () => void;
   /** Abandon the match and return to the title splash. */
   onQuit: () => void;
 }
 
 const PauseView = ({
   store,
+  onRestart,
   onQuit,
 }: {
   store: DialogStore;
+  onRestart: () => void;
   onQuit: () => void;
 }) => {
   const resume = () => store.close();
+  const restart = () => {
+    store.close();
+    onRestart();
+  };
   const quit = () => {
     store.close();
     onQuit();
@@ -52,6 +60,13 @@ const PauseView = ({
         <Button
           variant="secondary"
           size="lg"
+          label="Restart game"
+          onClick={restart}
+          className="w-full"
+        />
+        <Button
+          variant="secondary"
+          size="lg"
           label="Quit to title"
           onClick={quit}
           className="w-full"
@@ -63,7 +78,9 @@ const PauseView = ({
 
 export const mountPauseMenu = (opts: PauseMenuOpts): PauseMenu => {
   const store = createDialogStore(false);
-  mountReactDialog(<PauseView store={store} onQuit={opts.onQuit} />);
+  mountReactDialog(
+    <PauseView store={store} onRestart={opts.onRestart} onQuit={opts.onQuit} />,
+  );
   return {
     open: () => store.open(),
     close: () => store.close(),
