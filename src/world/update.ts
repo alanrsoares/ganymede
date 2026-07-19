@@ -1,5 +1,6 @@
 import { assertNever } from "@onrails/pattern";
 import { nextInt } from "~/engine/rng";
+import { type AugmentId, augMul } from "~/world/augments";
 import { spawnWhip } from "~/world/tick/whips";
 import {
   rollShip,
@@ -16,7 +17,9 @@ import {
   fireCooldownFor,
   MINE_ARM,
   MINE_LIFE,
+  maxHpFor,
   OVERCHARGE_MULT,
+  shieldForLevel,
   shipRadius,
   speedForLevel,
   WHIP_DAMAGE,
@@ -505,7 +508,34 @@ export function update(msg: Msg, world: World): World {
       return world.arcade && world.arcade.phase === "intermission"
         ? { ...world, arcade: { ...world.arcade, phase: "fight" } }
         : world;
+    case "pickAugment":
+      return pickAugment(world, msg.id);
     default:
       return assertNever(msg);
   }
+}
+
+// Bank a wave-clear augment pick into the run's stack and clear the offer (which
+// un-freezes the sim and lets the next wave muster). The live pilot's caps are
+// re-baked from the level tables × the new stack — always from the base table,
+// never compounding on the stored value — and topped off, since the pick is a
+// reward. Offense augments (damage/cooldown/speed/regen) apply at their per-use
+// read sites, so only hp/shield need baking here.
+function pickAugment(world: World, id: AugmentId): World {
+  const a = world.arcade;
+  if (!a?.offer?.includes(id)) return world;
+  const augments = { ...a.augments, [id]: (a.augments[id] ?? 0) + 1 };
+  const hpMul = augMul(augments, "hp");
+  const shMul = augMul(augments, "shield");
+  const items = world.ships.items.map((s) => {
+    if (s.id !== world.controlledShipId) return s;
+    const maxHp = Math.round(maxHpFor(s.archetype, s.level) * hpMul);
+    const maxShield = Math.round(shieldForLevel(s.level) * shMul);
+    return { ...s, maxHp, maxShield, hp: maxHp, shield: maxShield };
+  });
+  return {
+    ...world,
+    ships: { ...world.ships, items },
+    arcade: { ...a, augments, offer: null },
+  };
 }

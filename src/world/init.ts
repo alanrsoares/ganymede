@@ -40,6 +40,8 @@ const initArcadeRun = (cfg: ArcadeConfig): ArcadeState => ({
   playerLevel: PILOT_START_LEVEL,
   adapt: 0,
   woundedWave: false,
+  augments: {},
+  offer: null,
 });
 
 // Half-width of the square each fresh ship spawns in, centred on its team base

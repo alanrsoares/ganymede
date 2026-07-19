@@ -4,6 +4,7 @@
 // No-op unless `world.config.format === "arcade"`. See docs/arcade-mode-plan.md.
 
 import { nextRange } from "~/engine/rng";
+import { augMul, rollOffer } from "~/world/augments";
 import { rollShip } from "~/world/factory";
 import {
   activeTeams,
@@ -53,9 +54,26 @@ function spawnAt(
   const base = baseByName.get(color);
   const [ox, s2] = nextRange(s1, -SPAWN_SPREAD, SPAWN_SPREAD);
   const [oy, seed] = nextRange(s2, -SPAWN_SPREAD, SPAWN_SPREAD);
-  const placed = base
+  const spot = base
     ? { ...ship, x: base.x + ox, y: base.y + oy, invulnTime: invuln }
     : { ...ship, invulnTime: invuln };
+  // Player-team spawns inherit the run's hull/plating augments (fleet-wide:
+  // pilot, respawns, mustered escorts). Empty stack = identity, so this is a
+  // no-op until a pick lands. Offense augments apply at the pilot's per-shot
+  // read sites, not here.
+  const stacks =
+    world.arcade && color === world.config.arcade?.playerTeam
+      ? world.arcade.augments
+      : null;
+  const placed = stacks
+    ? {
+        ...spot,
+        maxHp: Math.round(spot.maxHp * augMul(stacks, "hp")),
+        hp: Math.round(spot.hp * augMul(stacks, "hp")),
+        maxShield: Math.round(spot.maxShield * augMul(stacks, "shield")),
+        shield: Math.round(spot.shield * augMul(stacks, "shield")),
+      }
+    : spot;
   return {
     world: {
       ...world,
@@ -123,10 +141,16 @@ function advanceWave(
   cfg: ArcadeConfig,
   enemyCount: number,
 ): World {
-  // Muster a fresh wave: field clear of enemies AND none held in reserve. Spawn
-  // up to the on-field budget; the rest wait in `pending` and trickle in below
-  // as enemies die, so late waves stay dense without overflowing the ship cap.
-  if (a.waveRemaining === 0 && a.pending === 0 && enemyCount === 0) {
+  // Muster a fresh wave: field clear of enemies AND none held in reserve AND no
+  // augment offer pending (the wave-clear pick freezes progression until the
+  // player chooses). Spawn up to the on-field budget; the rest wait in `pending`
+  // and trickle in below as enemies die, so late waves stay dense.
+  if (
+    a.waveRemaining === 0 &&
+    a.pending === 0 &&
+    a.offer === null &&
+    enemyCount === 0
+  ) {
     const { count, maxLevel } = cfg.waves.spawn(a.wave);
     const now = Math.min(count, MAX_ENEMY_SHIPS);
     const spawned = spawnWave(world, cfg, now, maxLevel);
@@ -158,13 +182,16 @@ function advanceWave(
   }
 
   if (alive === 0 && pending === 0 && a.waveRemaining > 0) {
-    // Wave cleared → advance; next tick musters the harder wave. A clean clear
-    // (no death this wave) eases the adaptive handicap back toward the base.
+    // Wave cleared → advance and offer an augment. The offer freezes the next
+    // muster (see the gate above) until the player picks. A clean clear (no
+    // death this wave) eases the adaptive handicap back toward the base.
     const adapt = a.woundedWave
       ? a.adapt
       : Math.max(0, a.adapt - HANDICAP_CLEAN_STEP);
+    const { offer, seed } = rollOffer(next.seed);
     return {
       ...next,
+      seed,
       // The lull between waves is a yard-crew moment: whatever the wave chipped
       // off the home base is patched back to full before the next muster.
       baseHp: { ...next.baseHp, [cfg.playerTeam]: BASE_MAX_HP },
@@ -176,6 +203,7 @@ function advanceWave(
         kills,
         adapt,
         woundedWave: false,
+        offer,
       },
     };
   }

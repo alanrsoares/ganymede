@@ -1,5 +1,6 @@
 import type { Seed } from "~/engine/rng";
 import { nextInt } from "~/engine/rng";
+import { augMul } from "~/world/augments";
 import { hurtShip, rollShip } from "~/world/factory";
 import { toroidalDist } from "~/world/math";
 import {
@@ -293,6 +294,14 @@ export function promote(
   s.maxHp = maxHpFor(s.archetype, s.level);
   s.maxShield = shieldForLevel(s.level);
   s.maxMines = minesFor(s.archetype, s.level);
+  // Fold the pilot's run augments into the fresh caps (from the tables, so no
+  // compounding on the stored value). Empty stack = identity — no-op otherwise.
+  if (ctx.world.arcade && s.id === ctx.world.controlledShipId) {
+    s.maxHp = Math.round(s.maxHp * augMul(ctx.world.arcade.augments, "hp"));
+    s.maxShield = Math.round(
+      s.maxShield * augMul(ctx.world.arcade.augments, "shield"),
+    );
+  }
   if (heal) {
     s.hp = s.maxHp;
     s.shield = s.maxShield;

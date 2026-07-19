@@ -1,6 +1,7 @@
 import { wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
+import { augMul } from "~/world/augments";
 import {
   acquireTarget,
   spawnBullet,
@@ -108,10 +109,18 @@ const spawnSalvo = (
 ): number => {
   const shots = wp.pattern === "burst" ? 1 : wp.barrels;
   const mid = (shots - 1) / 2;
+  // The pilot's bolts carry the run's Caliber augment; every other shooter (and
+  // all of autobattle) fires at 1×.
+  const dmgMul =
+    s.id === ctx.world.controlledShipId
+      ? augMul(ctx.world.arcade?.augments ?? {}, "damage")
+      : 1;
   let id = bulletId;
   for (let i = 0; i < shots; i++) {
     const bolt = spawnBullet(id, s, aim.x, aim.y, (i - mid) * wp.spread);
-    bullets.push(bolt);
+    bullets.push(
+      dmgMul === 1 ? bolt : { ...bolt, damage: bolt.damage * dmgMul },
+    );
     muzzleFlash(ctx, s, bolt.angle);
     id += 1;
   }
@@ -241,7 +250,10 @@ export const fireWeapon = (
       const aim = pilotAim(ctx, s);
       const wp = weaponFor(s.archetype, s.level);
       const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp);
-      s.fireCooldown = applyFireCadence(s, wp) * PILOT_FIRE_MULT;
+      s.fireCooldown =
+        applyFireCadence(s, wp) *
+        PILOT_FIRE_MULT *
+        augMul(ctx.world.arcade?.augments ?? {}, "cooldown");
       return nextId;
     }
     return bulletId;
