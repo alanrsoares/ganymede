@@ -1,9 +1,8 @@
 // Drydock UI root: astryx gothic theme over the floating panels. The WebGPU
 // canvas lives outside React (scene.ts owns it); panels overlay it.
 
-import { Theme } from "@astryxdesign/core/theme";
-import { gothicTheme } from "@astryxdesign/theme-gothic/built";
 import type { ReactElement } from "react";
+import { AstryxRoot } from "~/astryx";
 import { view } from "~/drydock/store";
 import { ControlPanel } from "./ControlPanel";
 import { DesignerPanel } from "./DesignerPanel";
@@ -14,7 +13,7 @@ export const App = (): ReactElement => {
   return view.gpuError ? (
     <div className="err">Drydock needs WebGPU: {view.gpuError}</div>
   ) : (
-    <Theme theme={gothicTheme} mode="dark">
+    <AstryxRoot>
       <div className="panel panel-left">
         <ControlPanel />
       </div>
@@ -23,6 +22,6 @@ export const App = (): ReactElement => {
           <DesignerPanel />
         </div>
       )}
-    </Theme>
+    </AstryxRoot>
   );
 };
