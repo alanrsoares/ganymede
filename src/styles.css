@@ -24,8 +24,17 @@
   --hud-line: var(--color-border, #e8f1f61a);
   --hud-ink: var(--color-text-primary, #e8f1f6);
   --hud-muted: var(--color-text-secondary, #96a0ab);
-  --hud-accent: #3fd8ff;
-  --color-accent: #3fd8ff;
+  --hud-accent: oklch(0.8201 0.134 219.3); /* signal cyan */
+  --color-accent: oklch(0.8201 0.134 219.3);
+}
+
+/* Astryx reads --color-accent off the theme wrapper, and the gothic theme
+   sets its own near-white default there — so re-assert the game's cyan IN
+   SCOPE (mirrors the drydock's green override in drydock.html). This is what
+   drives every accent surface: selection rings, primary fills, and the
+   accent-tinted hairlines defined in astryx-theme.css. */
+[data-astryx-theme] {
+  --color-accent: oklch(0.8201 0.134 219.3);
 }
 
 /* Astryx tokens as Tailwind v4 utilities (bg-surface, border-line, text-ink,

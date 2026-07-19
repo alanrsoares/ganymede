@@ -85,10 +85,16 @@ export interface ChoiceCardProps {
   onClick: () => void;
 }
 
+// Accent-tinted translucency (game cyan / drydock green), mixed in OKLab.
+const accentMix = (pct: number) =>
+  `color-mix(in oklab, var(--color-accent) ${pct}%, transparent)`;
+
 /**
- * One selectable option. `SelectableCard` owns the card chrome, selection ring
- * and a11y; the grids are single-select, so we ignore deselect and let the
- * parent set the chosen value.
+ * One selectable option. Keeps `SelectableCard` for its radio a11y + keyboard,
+ * but drives the look through the card's native `style` escape hatch so it
+ * reads as the welcome-screen mode CTA: a translucent accent fill over a thin
+ * accent hairline, brightening (plus an accent glow) when chosen. The grids are
+ * single-select, so we ignore deselect and let the parent set the chosen value.
  */
 export const ChoiceCard = ({
   title,
@@ -101,9 +107,20 @@ export const ChoiceCard = ({
     isSelected={pressed}
     onChange={() => onClick()}
     padding={2}
+    style={{
+      border: `1px solid ${accentMix(pressed ? 66 : 32)}`,
+      background: accentMix(pressed ? 20 : 8),
+      boxShadow: pressed ? "0 0 18px -3px var(--color-accent)" : "none",
+      transition: "background .15s, border-color .15s, box-shadow .15s",
+    }}
   >
     <VStack gap={0.5}>
-      <Text size="sm" weight="semibold" display="block">
+      <Text
+        size="sm"
+        weight="bold"
+        display="block"
+        className="uppercase tracking-[0.08em]"
+      >
         {title}
       </Text>
       <Text size="2xs" color="secondary" display="block">

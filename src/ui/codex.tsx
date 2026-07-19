@@ -194,8 +194,15 @@ const Matchup = ({ a }: { a: Archetype }) => (
 const ClassCard = ({ a, lvl }: { a: Archetype; lvl: number }) => {
   const info = ARCHETYPE_INFO[a];
   const tint = CLASS_TINT[a];
+  // Dark tile with a faint class-tinted wash + hairline (echoes the welcome
+  // mode buttons: translucent fill, tinted outline). Identity carries on the
+  // heading + glyph, so the card sits quiet against the HUD.
   return (
-    <Card variant={CLASS_VARIANT[a]} padding={3}>
+    <Card
+      variant="default"
+      padding={3}
+      style={{ border: `1px solid ${tint}59`, background: `${tint}14` }}
+    >
       <VStack gap={2}>
         <HStack gap={2} vAlign="center">
           <GlyphBadge a={a} tint={tint} />

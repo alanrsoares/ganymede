@@ -5,3 +5,52 @@
  * side-effect import; a CSS-level @import sidesteps the types condition.
  */
 @import "@astryxdesign/theme-gothic/theme.css";
+
+/* --- House re-skin ----------------------------------------------------------
+ * Pull the Astryx chrome onto the title-screen's visual language (see
+ * ui/welcome.ts): monospace type, near-black cyan/green-tinted surfaces,
+ * accent-tinted hairlines, near-white mint text — so the dialogs / codex /
+ * mixer read as the same object as the HUD instead of a generic app panel.
+ *
+ * `--color-accent` itself stays per-stack (game cyan, drydock green), and
+ * everything tinted below reads FROM it via color-mix, so each stack keeps its
+ * brand while sharing one recipe. Scoped to the gothic theme wrapper. */
+[data-astryx-theme="gothic"] {
+  /* Mono everywhere — the HUD + welcome body face. No serif display. */
+  --font-family-heading: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-family-body: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-family-code: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Mint-white ink over a dim mint-teal secondary (welcome MINT / tagline).
+     Colours are OKLCH throughout for perceptually even tints + mixing. */
+  --color-text-primary: oklch(0.97 0.0256 165.7);
+  --color-text-secondary: oklch(0.8464 0.0554 175.9);
+
+  /* Near-black surfaces so the live scene reads through the veil like it does
+     under the splash — the panel is a HUD element, not an opaque modal. */
+  --color-background-body: oklch(0.1255 0.0104 241.8);
+  --color-background-surface: oklch(0.155 0.0147 242.7);
+  --color-background-card: oklch(0.1823 0.0189 245.5);
+  --color-background-popover: oklch(0.1823 0.0189 245.5);
+  --color-overlay: oklch(0.1255 0.0104 241.8 / 0.72);
+
+  /* Hairlines + emphasis borders in the stack's own accent (cyan / green),
+     mixed in OKLab so the fade to transparent keeps a clean hue. */
+  --color-border: color-mix(in oklab, var(--color-accent) 30%, transparent);
+  --color-border-emphasized: color-mix(
+    in oklab,
+    var(--color-accent) 55%,
+    transparent
+  );
+
+  /* Match the welcome CTA's 12px corners on containers + elements alike. */
+  --radius-container: 0.75rem;
+  --radius-element: 0.75rem;
+}
+
+/* Section labels / dialog titles carry the HUD's uppercase, wide-tracked
+   cadence rather than sentence-case app headings. */
+[data-astryx-theme="gothic"] :where(.astryx-heading) {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
