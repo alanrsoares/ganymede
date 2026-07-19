@@ -7,7 +7,7 @@
 // Phase 1 ships the six stat augments. The unlock/summon augments (spread cone,
 // nova, wing) arrive in later phases and slot into this same catalogue.
 
-import { nextInt, type Seed } from "~/engine/rng";
+import { nextRange, type Seed } from "~/engine/rng";
 
 /** The stat an augment scales, keyed to a pilot derived-stat. */
 export type AugmentStat =
@@ -27,7 +27,9 @@ export type AugmentId =
   | "thrusters"
   | "spread"
   | "nova"
-  | "wing";
+  | "wing"
+  | "aegis"
+  | "overdrive";
 
 // "stat" augments fold into augMul (a compounding multiplier on a derived stat);
 // "unlock"/"summon" augments are read by raw stack count at their own tick sites
@@ -40,6 +42,9 @@ export interface AugmentSpec {
   readonly stat?: AugmentStat; // stat kind only
   /** Per-stack multiplier; compounds as `mul ** stacks`. <1 shrinks (cooldown). */
   readonly mul?: number; // stat kind only
+  /** Capstone gate: this augment can't be offered until the run's total augment
+   * tier reaches this (see rollOffer). Absent = always offerable. */
+  readonly minTier?: number;
   readonly label: string; // offer-card title
   readonly blurb: string; // offer-card subtitle
 }
@@ -107,6 +112,25 @@ export const AUGMENTS: Record<AugmentId, AugmentSpec> = {
     label: "Wing",
     blurb: "+1 escort drone",
   },
+  // Capstones: build-defining, only offered once the run is deep (minTier).
+  aegis: {
+    id: "aegis",
+    kind: "stat",
+    stat: "shield",
+    mul: 2,
+    minTier: 6,
+    label: "Aegis",
+    blurb: "capstone · ×2 shield",
+  },
+  overdrive: {
+    id: "overdrive",
+    kind: "stat",
+    stat: "damage",
+    mul: 1.5,
+    minTier: 6,
+    label: "Overdrive",
+    blurb: "capstone · ×1.5 damage",
+  },
 };
 
 export const AUGMENT_IDS = Object.keys(AUGMENTS) as AugmentId[];
@@ -144,21 +168,50 @@ export const augmentTier = (stacks: AugmentStacks): number => {
   return t;
 };
 
+// Offer likelihood, shaped by how deep the run is (tier = total stacks owned):
+// the build-defining unlock/summon augments are front-loaded, stat augments ramp
+// up late, and capstones stay locked until their minTier. 0 = never offered.
+const offerWeight = (spec: AugmentSpec, tier: number): number => {
+  if (spec.minTier != null && tier < spec.minTier) return 0;
+  if (spec.minTier != null) return 5; // unlocked capstone
+  return (spec.kind ?? "stat") === "stat"
+    ? 2 + tier // stat fill — likelier as the run deepens
+    : Math.max(1, 6 - tier); // unlock/summon — front-loaded
+};
+
 /**
- * Roll the 3 distinct augment ids offered at a wave clear, off the world seed.
- * Distinct within one offer, but any id (owned or not) can appear — that's how
- * a run stacks the same augment across waves. Returns the advanced seed.
+ * Roll the 3 distinct augment ids offered at a wave clear, weighted by run depth
+ * (see offerWeight) and off the world seed. Distinct within one offer, but any
+ * unlocked id (owned or not) can appear — that's how a run stacks an augment
+ * across waves. Returns the advanced seed.
  */
-export const rollOffer = (seed: Seed): { offer: AugmentId[]; seed: Seed } => {
-  const pool = [...AUGMENT_IDS];
+export const rollOffer = (
+  seed: Seed,
+  stacks: AugmentStacks,
+): { offer: AugmentId[]; seed: Seed } => {
+  const tier = augmentTier(stacks);
+  const pool = AUGMENT_IDS.map((id) => ({
+    id,
+    w: offerWeight(AUGMENTS[id], tier),
+  })).filter((e) => e.w > 0);
   const offer: AugmentId[] = [];
   let s = seed;
   const n = Math.min(3, pool.length);
   for (let i = 0; i < n; i++) {
-    const [idx, s2] = nextInt(s, pool.length);
-    offer.push(pool[idx]);
-    pool.splice(idx, 1);
+    const total = pool.reduce((t, e) => t + e.w, 0);
+    const [r, s2] = nextRange(s, 0, total);
     s = s2;
+    let acc = 0;
+    let pick = pool.length - 1;
+    for (let j = 0; j < pool.length; j++) {
+      acc += pool[j].w;
+      if (r < acc) {
+        pick = j;
+        break;
+      }
+    }
+    offer.push(pool[pick].id);
+    pool.splice(pick, 1);
   }
   return { offer, seed: s };
 };

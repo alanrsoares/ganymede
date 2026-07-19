@@ -191,7 +191,7 @@ function advanceWave(
     const adapt = a.woundedWave
       ? a.adapt
       : Math.max(0, a.adapt - HANDICAP_CLEAN_STEP);
-    const { offer, seed } = rollOffer(next.seed);
+    const { offer, seed } = rollOffer(next.seed, a.augments);
     return {
       ...next,
       seed,
