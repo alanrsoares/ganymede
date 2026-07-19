@@ -1,8 +1,9 @@
 // Arcade lobby: a streamlined pre-run screen that picks a ship archetype and
-// launches a pilot-first wave-survival run. Sibling to setup.ts (autobattle);
-// shares the same dark cyan/mint chrome. The high-score table lands in Phase 3.
+// launches a pilot-first wave-survival run. Sibling to setup.tsx (autobattle);
+// shares the same Astryx dialog chrome. The high-score table lands in Phase 3.
 
-import van, { type State } from "vanjs-core";
+import { Grid } from "@astryxdesign/core/Grid";
+import { useState } from "react";
 import {
   ARCHETYPES,
   type ArcadeDifficulty,
@@ -11,15 +12,14 @@ import {
 } from "~/world";
 import { ARCADE_TIERS } from "~/world/tuning";
 import {
-  choiceCard,
-  ctaButton,
-  dialogPanel,
-  dialogRoot,
-  focusDefault,
-  sectionHeading,
+  ChoiceCard,
+  Cta,
+  createDialogStore,
+  DialogShell,
+  type DialogStore,
+  mountReactDialog,
+  SectionHeading,
 } from "./dialog";
-
-const { div } = van.tags;
 
 // Arcade tempo runs a touch faster than the autobattle default — one ship, so
 // the field can move quicker without becoming unreadable.
@@ -90,81 +90,77 @@ const DIFFICULTIES: readonly ArcadeDifficulty[] = [
   "endless",
 ];
 
-const panel = (
-  selected: State<Archetype>,
-  difficulty: State<ArcadeDifficulty>,
-  start: () => void,
-  close: () => void,
-) =>
-  dialogPanel(
-    {
-      label: "Arcade lobby",
-      title: "Arcade",
-      subtitle: "Fly one ship. Survive escalating waves. Chase a high score.",
-      onClose: close,
-    },
-    sectionHeading("choose your hull"),
-    div(
-      { class: "grid grid-cols-2 gap-2.5" },
-      ...HULLS.map((hull) =>
-        choiceCard({
-          title: hull.title,
-          blurb: hull.blurb,
-          pressed: () => selected.val === hull.key,
-          onclick: () => {
-            selected.val = hull.key;
-          },
-        }),
-      ),
-    ),
-    sectionHeading("difficulty"),
-    div(
-      { class: "grid grid-cols-2 gap-2.5" },
-      ...DIFFICULTIES.map((key) =>
-        choiceCard({
-          title: ARCADE_TIERS[key].label,
-          blurb: ARCADE_TIERS[key].blurb,
-          pressed: () => difficulty.val === key,
-          onclick: () => {
-            difficulty.val = key;
-          },
-        }),
-      ),
-    ),
-    ctaButton("Launch run", start),
+const LobbyView = ({
+  store,
+  onStart,
+  onClose,
+}: {
+  store: DialogStore;
+  onStart: (config: MatchConfig) => void;
+  onClose: () => void;
+}) => {
+  const [selected, setSelected] = useState<Archetype>(ARCHETYPES[1]); // fighter
+  const [difficulty, setDifficulty] = useState<ArcadeDifficulty>("normal");
+  const start = () => {
+    store.close();
+    onStart(buildArcadeConfig(selected, difficulty));
+  };
+  const close = () => {
+    store.close();
+    onClose();
+  };
+  return (
+    <DialogShell
+      store={store}
+      label="Arcade lobby"
+      title="Arcade"
+      subtitle="Fly one ship. Survive escalating waves. Chase a high score."
+      onClose={close}
+    >
+      <SectionHeading>choose your hull</SectionHeading>
+      <Grid columns={2} gap={2}>
+        {HULLS.map((hull) => (
+          <ChoiceCard
+            key={hull.key}
+            title={hull.title}
+            blurb={hull.blurb}
+            pressed={selected === hull.key}
+            onClick={() => setSelected(hull.key)}
+          />
+        ))}
+      </Grid>
+      <SectionHeading>difficulty</SectionHeading>
+      <Grid columns={2} gap={2}>
+        {DIFFICULTIES.map((key) => (
+          <ChoiceCard
+            key={key}
+            title={ARCADE_TIERS[key].label}
+            blurb={ARCADE_TIERS[key].blurb}
+            pressed={difficulty === key}
+            onClick={() => setDifficulty(key)}
+          />
+        ))}
+      </Grid>
+      <Cta label="Launch run" onClick={start} />
+    </DialogShell>
   );
+};
 
 export const mountArcadeLobby = (
   onStart: (config: MatchConfig) => void,
   opts: LobbyOpts = {},
 ): Lobby => {
-  const open = van.state(!opts.startHidden);
-  const selected = van.state<Archetype>(ARCHETYPES[1]); // fighter — friendly default
-  const difficulty = van.state<ArcadeDifficulty>("normal");
-  const start = () => {
-    open.val = false;
-    onStart(buildArcadeConfig(selected.val, difficulty.val));
-  };
-  const close = () => {
-    open.val = false;
-    opts.onClose?.();
-  };
-
-  const panelEl = panel(selected, difficulty, start, close);
-  const root = dialogRoot(open, panelEl, close);
-  van.add(document.body, root);
-
-  const show = () => {
-    open.val = true;
-    focusDefault(panelEl);
-  };
-  if (!opts.startHidden) show();
-
+  const store = createDialogStore(!opts.startHidden);
+  mountReactDialog(
+    <LobbyView
+      store={store}
+      onStart={onStart}
+      onClose={() => opts.onClose?.()}
+    />,
+  );
   return {
-    show,
-    hide: () => {
-      open.val = false;
-    },
-    isOpen: () => open.val,
+    show: () => store.open(),
+    hide: () => store.close(),
+    isOpen: () => store.isOpen(),
   };
 };

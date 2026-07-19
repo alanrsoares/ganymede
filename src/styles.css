@@ -1,4 +1,13 @@
-@import "tailwindcss";
+/* Astryx design system, loaded as shipped: its own reset + precompiled
+   component styles (shared foundation in astryx.css). Tailwind is imported
+   WITHOUT its preflight (theme + utilities layers only) so the game keeps
+   utility classes for the HUD while Astryx components render with the styles
+   they ship — no preflight fighting native <button>/<dialog> defaults, so no
+   per-component override hacks. (Canonical astryx + Tailwind integration;
+   mirrors ~/dev/mdreadr.) */
+@import "./astryx.css";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 /* Astryx gothic design tokens (scoped by data-astryx-theme on <html>).
    Token layer only for now: semantic aliases below expose them to the HUD;
    utility classes / inline hexes migrate onto these incrementally. */

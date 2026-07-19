@@ -1,0 +1,6 @@
+/* Shared Astryx CSS foundation for both stacks: the design system's own reset
+   plus its precompiled component styles, loaded as shipped. The game imports
+   this into styles.css (alongside no-preflight Tailwind); drydock imports it
+   from its entry. Keeps a single source so the two stacks can't drift. */
+@import "@astryxdesign/core/reset.css";
+@import "@astryxdesign/core/astryx.css";
