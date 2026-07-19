@@ -229,7 +229,9 @@ export const undo = (): void => {
 export const applyOps = (ops: HullOp[], label: string): string[] => {
   snapshotUndo(label);
   const hull = hulls[view.cls];
-  const log = ops.map((op) => applyOp(hull, op)).filter(Boolean);
+  const log = ops
+    .map((op) => applyOp(hull, op))
+    .filter((line): line is string => line !== null);
   sel.part = Math.min(sel.part, hull.parts.length - 1);
   touchHull();
   return log;
