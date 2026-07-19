@@ -109,14 +109,15 @@ p {
 }
 
 /* Dialog radio cards (dialog.tsx ChoiceCard): the accent fill/border live in
-   the component's inline style. Here we only suppress Astryx's built-in white
-   ::after hover wash (so the accent fill is the sole state signal) and add a
-   plain accent glow on hover. No color-mix in these rules on purpose — Bun's
-   CSS bundler downlevels property-level color-mix() to a solid fallback. */
+   the component's inline style. Astryx's SelectableCard paints an opaque hover
+   overlay on its ::after; suppress it so the inline accent fill is the sole
+   state signal, and add a plain accent glow on hover instead. */
 .choice-card {
   transition: box-shadow 0.15s;
 }
 .choice-card::after {
+  /* biome-ignore lint/complexity/noImportantStyles: only way to beat astryx's
+     specificity-inflated stylex atoms and suppress its hover overlay. */
   background: transparent !important;
 }
 .choice-card:hover {

@@ -589,8 +589,7 @@ const CodexPanel = ({ store }: { store: CodexStore }) => {
 const CodexOpener = ({ store }: { store: CodexStore }) => {
   const open = useSyncExternalStore(store.subscribe, store.getOpen);
   const hidden = useSyncExternalStore(store.subscribe, store.getHidden);
-  if (open || hidden) return null;
-  return (
+  return open || hidden ? null : (
     <Button
       variant="secondary"
       size="sm"
