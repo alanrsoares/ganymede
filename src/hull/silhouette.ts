@@ -15,6 +15,7 @@ import { RECIPES, type ShipClass } from "./catalog";
 const RES = 140;
 const BORDER = 2; // empty grid margin so the traced loop always closes inside
 const RDP_EPSILON = 0.9; // contour simplification tolerance, in grid cells
+const SIZE = 24; // viewBox the path is fitted to (callers render in a 24×24 svg)
 
 type Pt = readonly [number, number];
 
@@ -291,12 +292,12 @@ const rotateToStart = (pts: Pt[]): Pt[] => {
   return [...pts.slice(s), ...pts.slice(0, s)];
 };
 
-// Fit contour (grid-cell coords) into `size`×`size`, uniform-scaled + centered,
-// flipping Y so +Y (nose) points up. Emits an SVG path with a closing Z.
-const emitPath = (pts: Pt[], size: number): string => {
+// Fit contour (grid-cell coords) into the SIZE×SIZE viewBox, uniform-scaled +
+// centered, flipping Y so +Y (nose) points up. Emits an SVG path closed with Z.
+const emitPath = (pts: Pt[]): string => {
   const b = boundsOf(pts);
-  const margin = size * 0.08;
-  const span = size - 2 * margin;
+  const margin = SIZE * 0.08;
+  const span = SIZE - 2 * margin;
   const w = b.maxX - b.minX || 1;
   const h = b.maxY - b.minY || 1;
   const scale = span / Math.max(w, h);
@@ -304,7 +305,7 @@ const emitPath = (pts: Pt[], size: number): string => {
   const offY = margin + (span - h * scale) / 2;
   const r = (n: number) => Math.round(n * 10) / 10;
   const sx = (x: number) => r(offX + (x - b.minX) * scale);
-  const sy = (y: number) => r(size - offY - (y - b.minY) * scale);
+  const sy = (y: number) => r(SIZE - offY - (y - b.minY) * scale);
   const d = pts
     .map(([x, y], i) => `${i === 0 ? "M" : "L"}${sx(x)} ${sy(y)}`)
     .join(" ");
@@ -312,26 +313,28 @@ const emitPath = (pts: Pt[], size: number): string => {
 };
 
 // --- public api -------------------------------------------------------------
-const cache = new Map<string, string>();
+const cache = new Map<ShipClass, string>();
 
 /**
- * Top-down silhouette outline of a hull class as an SVG path string, fitted
- * into `size`×`size` with the nose pointing up. Cached per (class, size).
+ * Top-down silhouette outline of a hull class as an SVG path string, fitted to
+ * a 24×24 viewBox with the nose pointing up. Cached per class.
  */
-export const hullSilhouettePath = (cls: ShipClass, size = 24): string => {
-  const key = `${cls}@${size}`;
-  const hit = cache.get(key);
+export const hullSilhouettePath = (cls: ShipClass): string => {
+  const hit = cache.get(cls);
   if (hit !== undefined) return hit;
 
   const outer = pickOuter(marchLoops(rasterize(projectTris(cls))));
-  if (outer.length < 3) {
-    cache.set(key, "");
-    return "";
-  }
   // Doubled edge coords → cell coords, then simplify the open polyline (Z
   // reconnects the ends — closing it here would zero RDP's base segment).
-  const cellPts = rotateToStart(outer.map(([x, y]): Pt => [x / 2, y / 2]));
-  const path = emitPath(rdp(cellPts, RDP_EPSILON), size);
-  cache.set(key, path);
+  const path =
+    outer.length < 3
+      ? ""
+      : emitPath(
+          rdp(
+            rotateToStart(outer.map(([x, y]): Pt => [x / 2, y / 2])),
+            RDP_EPSILON,
+          ),
+        );
+  cache.set(cls, path);
   return path;
 };
