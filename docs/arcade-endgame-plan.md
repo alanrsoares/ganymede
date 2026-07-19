@@ -12,6 +12,20 @@ Keep the pure, data-driven shape: knobs in `tuning.ts`, sim logic in
 (still cap at L5); all new power is **player-side**, so the redesign is additive
 and can't regress autobattle.
 
+## Status — all phases shipped (branch `feat/arcade-endgame`)
+
+| Phase | Status | Commit |
+|---|---|---|
+| 0 — field-cap fix (trickle waves, guard pilot, no phantom kills) | ✅ DONE | `793c308` |
+| 1a — augment stack sim core | ✅ DONE | `7ae74e6` |
+| 1b — offer dialog + freeze + prestige HUD | ✅ DONE | `2ece2f1` |
+| 2 — cone projectiles (Spread) | ✅ DONE | `66627ae` |
+| 3 — Nova AoE cone blast (R) | ✅ DONE | `55c5ed5` |
+| 4 — persistent escort wing (Wing) | ✅ DONE | `93af845` |
+| 5 — prestige capstones + offer weighting | ✅ DONE | `b0a93b1` |
+
+Remaining is playtest/balance-by-feel against the open tuning knobs below.
+
 ## Current state — where the wall comes from
 
 Measured map of the live arcade balance (Normal difficulty, Fighter hull, 52
