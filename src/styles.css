@@ -2,9 +2,16 @@
    component styles (shared foundation in astryx.css). Tailwind is imported
    WITHOUT its preflight (theme + utilities layers only) so the game keeps
    utility classes for the HUD while Astryx components render with the styles
-   they ship — no preflight fighting native <button>/<dialog> defaults, so no
-   per-component override hacks. (Canonical astryx + Tailwind integration;
-   mirrors ~/dev/mdreadr.) */
+   they ship — no preflight fighting native <button>/<dialog> defaults.
+
+   This is the deliberate "leaner, no-preflight" variant. The official recipe
+   (astryx.atmeta.com/docs/styling-libraries) keeps preflight and orders it
+   under astryx via an explicit `@layer reset, theme, base, astryx-base,
+   astryx-theme, components, utilities` pre-declaration, plus an
+   `@astryxdesign/core/tailwind-theme.css` bridge — but that bridge file isn't
+   actually shipped in our installed version (only src/), and this canvas app
+   gains little from preflight, so we skip both and hand-roll the token bridge
+   below (@theme inline). */
 @import "./astryx.css";
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
