@@ -85,7 +85,11 @@ export interface ArcadeConfig {
 export interface ArcadeState {
   readonly lives: number;
   readonly wave: number;
-  readonly waveRemaining: number; // enemies left to kill this wave
+  readonly waveRemaining: number; // enemies currently alive on the field
+  // Enemies rolled for this wave but not yet spawned — held back when the field
+  // is at MAX_ENEMY_SHIPS, then trickled in as enemies die (see advanceWave).
+  readonly pending: number;
+  readonly waveMaxLevel: number; // level cap for this wave's (trickled) spawns
   readonly phase: "fight" | "intermission";
   readonly intermissionGens: number; // gens elapsed in the current intermission
   readonly kills: number; // enemies destroyed this run (run stat)

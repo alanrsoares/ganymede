@@ -13,6 +13,14 @@ import {
 
 // --- Field + gameplay tuning ------------------------------------------------
 export const MAX_SHIPS = 12;
+// Arcade runs a bigger array cap than autobattle so the enemy field (below),
+// the pilot, and player-side summons/escorts all fit without the ship trim
+// evicting anyone. Autobattle is unaffected — it keeps MAX_SHIPS.
+export const MAX_ARCADE_SHIPS = 16;
+// On-field enemy budget per arcade wave. Waves that ask for more than this
+// spawn up to the budget and trickle the remainder in as enemies die (see
+// advanceWave), so late waves stay dense but never overflow the array cap.
+export const MAX_ENEMY_SHIPS = 11;
 // Generations of reinforcement before sudden death (~60s at 45 gen/s). After
 // this, no respawns/reinforcements — teams get wiped until one is left standing.
 export const MATCH_REINFORCE_GENS = 2700;

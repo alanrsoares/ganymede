@@ -11,6 +11,7 @@ import {
   HANDICAP_ADAPT_MAX,
   HANDICAP_CLEAN_STEP,
   HANDICAP_DEATH_STEP,
+  MAX_ENEMY_SHIPS,
   SPAWN_INVULN_GENS,
 } from "~/world/tuning";
 import {
@@ -122,34 +123,63 @@ function advanceWave(
   cfg: ArcadeConfig,
   enemyCount: number,
 ): World {
-  if (a.waveRemaining === 0 && enemyCount === 0) {
+  // Muster a fresh wave: field clear of enemies AND none held in reserve. Spawn
+  // up to the on-field budget; the rest wait in `pending` and trickle in below
+  // as enemies die, so late waves stay dense without overflowing the ship cap.
+  if (a.waveRemaining === 0 && a.pending === 0 && enemyCount === 0) {
     const { count, maxLevel } = cfg.waves.spawn(a.wave);
-    const spawned = spawnWave(world, cfg, count, maxLevel);
-    return { ...spawned, arcade: { ...a, waveRemaining: count } };
+    const now = Math.min(count, MAX_ENEMY_SHIPS);
+    const spawned = spawnWave(world, cfg, now, maxLevel);
+    return {
+      ...spawned,
+      arcade: {
+        ...a,
+        waveRemaining: now,
+        pending: count - now,
+        waveMaxLevel: maxLevel,
+      },
+    };
   }
+  // Enemies only leave the field by dying now (the ship trim guards them from
+  // eviction), so a drop in the live count is a real kill — no phantom kills.
   const kills = a.kills + Math.max(0, a.waveRemaining - enemyCount);
-  if (enemyCount === 0 && a.waveRemaining > 0) {
+
+  // Trickle: refill open slots from the reserve as the front thins.
+  let next = world;
+  let alive = enemyCount;
+  let pending = a.pending;
+  if (pending > 0) {
+    const room = Math.min(pending, Math.max(0, MAX_ENEMY_SHIPS - enemyCount));
+    if (room > 0) {
+      next = spawnWave(world, cfg, room, a.waveMaxLevel);
+      alive = enemyCount + room;
+      pending = pending - room;
+    }
+  }
+
+  if (alive === 0 && pending === 0 && a.waveRemaining > 0) {
     // Wave cleared → advance; next tick musters the harder wave. A clean clear
     // (no death this wave) eases the adaptive handicap back toward the base.
     const adapt = a.woundedWave
       ? a.adapt
       : Math.max(0, a.adapt - HANDICAP_CLEAN_STEP);
     return {
-      ...world,
+      ...next,
       // The lull between waves is a yard-crew moment: whatever the wave chipped
       // off the home base is patched back to full before the next muster.
-      baseHp: { ...world.baseHp, [cfg.playerTeam]: BASE_MAX_HP },
+      baseHp: { ...next.baseHp, [cfg.playerTeam]: BASE_MAX_HP },
       arcade: {
         ...a,
         wave: a.wave + 1,
         waveRemaining: 0,
+        pending: 0,
         kills,
         adapt,
         woundedWave: false,
       },
     };
   }
-  return { ...world, arcade: { ...a, waveRemaining: enemyCount, kills } };
+  return { ...next, arcade: { ...a, waveRemaining: alive, pending, kills } };
 }
 
 export function arcadeStep(world: World): World {

@@ -185,7 +185,9 @@ export const updateScreenShake = (
 const getHudPhaseText = (world: World): string => {
   const a = world.arcade;
   if (a) {
-    return a.over ? "game over" : `wave ${a.wave} · ${a.waveRemaining} enemies`;
+    return a.over
+      ? "game over"
+      : `wave ${a.wave} · ${a.waveRemaining + a.pending} enemies`;
   }
   if (world.winner) return "match over";
   if (world.config.format === "endless") return "endless";
