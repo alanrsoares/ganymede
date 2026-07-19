@@ -94,10 +94,11 @@ const accentMix = (pct: number) =>
 /**
  * One selectable option, styled as the welcome-screen mode CTA: a translucent
  * accent fill over a thin accent hairline, brighter (with an accent glow) when
- * chosen. The fills live in the inline `style`; the only stylesheet rules are
- * suppressing astryx's built-in white ::after hover wash and a plain hover glow
- * (`.choice-card` in styles.css). Keeps `SelectableCard` for its radio a11y.
- * Single-select grids, so we ignore deselect and let the parent set the value.
+ * chosen. The fills live in the inline `style`; the utility classes suppress
+ * astryx's built-in ::after hover wash (`after:!bg-transparent` — the `!` beats
+ * astryx's stylex specificity) and add a plain accent glow on hover. Keeps
+ * `SelectableCard` for its radio a11y. Single-select grids, so we ignore
+ * deselect and let the parent set the value.
  */
 export const ChoiceCard = ({
   title,
@@ -110,7 +111,7 @@ export const ChoiceCard = ({
     isSelected={pressed}
     onChange={() => onClick()}
     padding={4}
-    className="choice-card"
+    className="transition-shadow after:!bg-transparent hover:shadow-[0_0_14px_-4px_var(--color-accent)]"
     style={{
       border: `1px solid ${accentMix(pressed ? 66 : 32)}`,
       background: accentMix(pressed ? 20 : 8),
