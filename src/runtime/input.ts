@@ -163,8 +163,9 @@ const handleKeyDown = (
 ) => {
   if (typingInField(e)) return;
   // Freeze all game input while the pause menu is up (ESC is owned by the
-  // capture-phase handleEscape listener, which runs before this).
-  if (pause.isOpen()) return;
+  // capture-phase handleEscape listener, which runs before this) or while the
+  // arcade wave-clear augment offer is pending its pick.
+  if (pause.isOpen() || getWorld().arcade?.offer != null) return;
   const key = e.key.toLowerCase();
   if (key === "c") return toggleCodex(codex, isSetupOpen);
   if (codex.isOpen() || isSetupOpen()) return;

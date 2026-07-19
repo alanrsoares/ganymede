@@ -22,6 +22,7 @@ import {
 } from "~/runtime/frame";
 import { updateGridDimensions, wireInput } from "~/runtime/input";
 import { type Lobby, mountArcadeLobby } from "~/ui/arcade-lobby";
+import { mountAugmentOffer } from "~/ui/augmentOffer";
 import { mountMixer } from "~/ui/mixer";
 import { mountMobileControls } from "~/ui/mobileControls";
 import { mountPauseMenu, type PauseMenu } from "~/ui/pauseMenu";
@@ -137,6 +138,17 @@ interface PreGameFlow {
   inMatch: () => boolean;
 }
 
+// Game input is gated while any full-screen surface covers the sim: the pre-game
+// dialogs, the welcome splash (so C can't open the codex over the title), or a
+// pending arcade augment offer (so ESC can't raise the pause menu over the
+// forced pick).
+const chromeGate =
+  (setup: Setup, lobby: Lobby, welcomeRef: { up: boolean }, sim: Sim) => () =>
+    setup.isOpen() ||
+    lobby.isOpen() ||
+    welcomeRef.up ||
+    sim.world.arcade?.offer != null;
+
 // Pre-game surfaces and their lifecycle: welcome splash → mode dialog →
 // launch. Closing a dialog (✕ / Escape / backdrop) returns to a freshly
 // mounted welcome splash (the old one removed itself); the ref keeps the
@@ -153,6 +165,14 @@ const wirePreGame = (
 ): PreGameFlow => {
   const welcomeRef = { current: welcome, up: true };
   let begun = false;
+  // Replays the last launch (same starter + config) for the pause-menu
+  // Restart; both starters reinit sim.world, so a replay is a true restart.
+  let replayLast: (() => void) | null = null;
+  const remember =
+    (start: (config: MatchConfig) => void) => (config: MatchConfig) => {
+      replayLast = () => start(config);
+      start(config);
+    };
   const onDialogClose = () => {
     begun = false;
     ui.setChromeHidden(true);
@@ -161,26 +181,27 @@ const wirePreGame = (
     welcomeRef.up = true;
     wireBegun(welcomeRef.current);
   };
-  const setup = mountSetup(startMatch, {
+  const setup = mountSetup(remember(startMatch), {
     startHidden: true,
     onClose: onDialogClose,
   });
-  const lobby = mountArcadeLobby(startArcadeMatch, {
+  const lobby = mountArcadeLobby(remember(startArcadeMatch), {
     startHidden: true,
     onClose: onDialogClose,
   });
-  // ESC pause menu; quitting to title reuses the dialog-close flow (back to
-  // the welcome splash).
-  const pause = mountPauseMenu({ onQuit: onDialogClose });
+  // ESC pause menu; Restart replays the last launch, quitting to title reuses
+  // the dialog-close flow (back to the welcome splash).
+  const pause = mountPauseMenu({
+    onRestart: () => replayLast?.(),
+    onQuit: onDialogClose,
+  });
   const codex = wireInput(
     canvas,
     renderer,
     dispatch,
     ui,
     () => sim.world,
-    // Gate game input while any full-screen surface is up — the pre-game
-    // dialogs or the welcome splash (stops C opening the codex over the title).
-    () => setup.isOpen() || lobby.isOpen() || welcomeRef.up,
+    chromeGate(setup, lobby, welcomeRef, sim),
     audio,
     pause,
   );
@@ -233,7 +254,13 @@ const startRuntime = (
     startArcadeMatch,
   );
   const { setup, lobby, codex, pause, welcomeRef } = flow;
-  const isPaused = wirePause(codex, pause, dispatch, ui);
+  // The wave-clear augment offer (arcade): its dialog is fed the live offer each
+  // frame, and while an offer is pending the sim freezes so the choice is calm.
+  const augmentOffer = mountAugmentOffer((id) =>
+    dispatch({ kind: "pickAugment", id }),
+  );
+  const pausedBase = wirePause(codex, pause, dispatch, ui);
+  const isPaused = () => pausedBase() || sim.world.arcade?.offer != null;
 
   const syncCanvasSize = createResizeSync(renderer, canvas);
   const loop = createLoop((dt, now) => {
@@ -264,6 +291,8 @@ const startRuntime = (
     );
     updateScreenShake(canvas, sim.world, now, loopState);
     updateHud(ui, sim.world);
+    // Surface (or dismiss) the arcade augment offer from live sim state.
+    augmentOffer.sync(sim.world.arcade?.offer ?? null);
     // setScene is idempotent, so calling it each frame is fine.
     audio.setScene(sceneFor(sim.world, flow.inMatch()));
     audio.frame(sim.world, now);

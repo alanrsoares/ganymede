@@ -17,6 +17,7 @@ import {
   setOrbitPhase,
   type World,
 } from "~/world";
+import { augmentTier } from "~/world/augments";
 import { updateGridDimensions } from "./input";
 
 // Staggered launch muster: a new match starts with an empty arena and deploys
@@ -185,9 +186,11 @@ export const updateScreenShake = (
 const getHudPhaseText = (world: World): string => {
   const a = world.arcade;
   if (a) {
+    const tier = augmentTier(a.augments);
+    const mk = tier > 0 ? ` · Mk ${tier}` : ""; // prestige readout past L5
     return a.over
       ? "game over"
-      : `wave ${a.wave} · ${a.waveRemaining + a.pending} enemies`;
+      : `wave ${a.wave} · ${a.waveRemaining + a.pending} enemies${mk}`;
   }
   if (world.winner) return "match over";
   if (world.config.format === "endless") return "endless";
