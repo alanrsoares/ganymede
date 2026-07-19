@@ -86,15 +86,18 @@ export interface ChoiceCardProps {
 }
 
 // Accent-tinted translucency (game cyan / drydock green), mixed in OKLab.
+// Inline (not a stylesheet rule) on purpose: Bun's CSS bundler downlevels
+// color-mix() in a property to a solid fallback, but leaves inline styles alone.
 const accentMix = (pct: number) =>
   `color-mix(in oklab, var(--color-accent) ${pct}%, transparent)`;
 
 /**
- * One selectable option. Keeps `SelectableCard` for its radio a11y + keyboard,
- * but drives the look through the card's native `style` escape hatch so it
- * reads as the welcome-screen mode CTA: a translucent accent fill over a thin
- * accent hairline, brightening (plus an accent glow) when chosen. The grids are
- * single-select, so we ignore deselect and let the parent set the chosen value.
+ * One selectable option, styled as the welcome-screen mode CTA: a translucent
+ * accent fill over a thin accent hairline, brighter (with an accent glow) when
+ * chosen. The fills live in the inline `style`; the only stylesheet rules are
+ * suppressing astryx's built-in white ::after hover wash and a plain hover glow
+ * (`.choice-card` in styles.css). Keeps `SelectableCard` for its radio a11y.
+ * Single-select grids, so we ignore deselect and let the parent set the value.
  */
 export const ChoiceCard = ({
   title,
@@ -106,12 +109,12 @@ export const ChoiceCard = ({
     label={title}
     isSelected={pressed}
     onChange={() => onClick()}
-    padding={2}
+    padding={4}
+    className="choice-card"
     style={{
       border: `1px solid ${accentMix(pressed ? 66 : 32)}`,
       background: accentMix(pressed ? 20 : 8),
-      boxShadow: pressed ? "0 0 18px -3px var(--color-accent)" : "none",
-      transition: "background .15s, border-color .15s, box-shadow .15s",
+      boxShadow: pressed ? "0 0 18px -3px var(--color-accent)" : undefined,
     }}
   >
     <VStack gap={0.5}>
