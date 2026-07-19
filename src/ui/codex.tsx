@@ -10,7 +10,6 @@
 // model, so this view and the hover card can never drift.
 
 import { Badge } from "@astryxdesign/core/Badge";
-import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Dialog } from "@astryxdesign/core/Dialog";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -28,6 +27,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { hullSilhouettePath } from "~/hull/silhouette";
 import { ARCHETYPES, type Archetype, MAX_LEVEL } from "~/world";
 import { mountReactDialog } from "./dialog";
+import { HudButton } from "./hud";
 import {
   ARCHETYPE_INFO,
   CLASS_TINT,
@@ -536,7 +536,7 @@ const CodexPanel = ({ store }: { store: CodexStore }) => {
           codex owns its own scroll: fill the bounded wrapper (flex-1 + min-h-0)
           and scroll the tall content within it. `overflow-y-auto` forces
           overflow-x to clip, so px-1 keeps edge focus rings from being cut. */}
-      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1">
+      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 outline-none focus:outline-none focus-visible:outline-none">
         <HStack justify="between" vAlign="center" className="flex-wrap gap-3">
           <VStack gap={0}>
             <Heading level={3}>Ship Codex</Heading>
@@ -581,13 +581,12 @@ const CodexOpener = ({ store }: { store: CodexStore }) => {
   const open = useSyncExternalStore(store.subscribe, store.getOpen);
   const hidden = useSyncExternalStore(store.subscribe, store.getHidden);
   return open || hidden ? null : (
-    <Button
-      variant="secondary"
-      size="sm"
-      label="◈ Ships (C)"
+    <HudButton
       onClick={() => store.open()}
-      className="hud-codex-open fixed left-4 top-4 z-30"
-    />
+      className="hud-codex-open fixed left-4 top-4 z-30 bg-deep/75 px-3 py-1.5 text-[11px] backdrop-blur-[4px]"
+    >
+      ◈ Ships (C)
+    </HudButton>
   );
 };
 

@@ -330,7 +330,7 @@ const ShipCardView = ({
 
   return (
     <div
-      className={`pointer-events-none fixed z-50 w-[272px] origin-top rounded-lg border bg-[#050b0f]/92 p-3 font-mono text-[#cfeee2] backdrop-blur-[6px] transition-[opacity,transform] duration-150 ${t ? "scale-100 opacity-100" : "scale-[0.97] opacity-0"}`}
+      className={`pointer-events-none fixed z-50 w-[272px] origin-top rounded-lg border bg-[#050b0f]/92 p-3 font-mono text-mint-soft backdrop-blur-[6px] transition-[opacity,transform] duration-150 ${t ? "scale-100 opacity-100" : "scale-[0.97] opacity-0"}`}
       style={style}
     >
       {body}

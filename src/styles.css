@@ -55,8 +55,19 @@
   --color-line-strong: var(--color-border-emphasized, #495056);
   --color-ink: var(--hud-ink);
   --color-muted: var(--hud-muted);
-  --color-signal: var(--hud-accent);
   --color-veil: var(--color-overlay, #101314cc);
+
+  /* HUD brand palette — the single source for the on-canvas chrome. Pinned to
+     literal hexes so the `signal/frost/mint/deep/gold` utilities are byte-exact
+     replacements for the arbitrary `[#…]` values they retire. (Kept separate
+     from the astryx --color-accent oklch above, which drives component surfaces.) */
+  --color-signal: #3fd8ff; /* cyan accent — borders, glow, selection */
+  --color-frost: #8fe6ff; /* interactive / label text */
+  --color-mint: #d3f5e9; /* heading text */
+  --color-mint-soft: #cfeee2; /* secondary label text */
+  --color-deep: #040a0e; /* HUD surface base (deeper than --surface) */
+  --color-gold: #ffb83f; /* manual-panel accent */
+  --color-gold-ink: #ffe08a; /* manual-panel text */
 }
 
 /* Contain the Astryx reset to the token layer: its @layer reset styles

@@ -127,7 +127,7 @@ const Stick = ({ keys, emit }: { keys: Keys; emit: () => void }) => {
     <div
       ref={baseRef}
       aria-label="Movement stick"
-      className="pointer-events-auto relative rounded-full border border-[#3fd8ff]/25 bg-[#040a0e]/55 backdrop-blur-[3px] [touch-action:none]"
+      className="pointer-events-auto relative rounded-full border border-signal/25 bg-deep/55 backdrop-blur-[3px] [touch-action:none]"
       style={{ width: STICK, height: STICK }}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -141,7 +141,7 @@ const Stick = ({ keys, emit }: { keys: Keys; emit: () => void }) => {
     >
       <div
         ref={knobRef}
-        className="absolute rounded-full border border-[#3fd8ff]/70 bg-[#3fd8ff]/25 shadow-[0_0_12px_#3fd8ff55]"
+        className="absolute rounded-full border border-signal/70 bg-signal/25 shadow-[0_0_12px_#3fd8ff55]"
         style={{
           width: KNOB,
           height: KNOB,
@@ -165,7 +165,7 @@ const Fire = ({ keys, emit }: { keys: Keys; emit: () => void }) => {
     <button
       type="button"
       aria-label="Fire"
-      className="pointer-events-auto flex h-[92px] w-[92px] items-center justify-center rounded-full border border-[#ffd866]/70 bg-[#ffb83f]/20 text-[13px] font-bold uppercase tracking-[0.14em] text-[#ffe08a] shadow-[0_0_16px_#ffb83f44] [touch-action:none] active:bg-[#ffb83f]/40"
+      className="pointer-events-auto flex h-[92px] w-[92px] items-center justify-center rounded-full border border-[#ffd866]/70 bg-gold/20 text-[13px] font-bold uppercase tracking-[0.14em] text-gold-ink shadow-[0_0_16px_#ffb83f44] [touch-action:none] active:bg-gold/40"
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         press(true);
@@ -189,7 +189,7 @@ const AbilityButton = ({
   <button
     type="button"
     aria-label={ability.label}
-    className="pointer-events-auto flex h-11 w-11 flex-col items-center justify-center rounded-lg border border-[#3fd8ff]/35 bg-[#040a0e]/70 text-[#cfeee2] [touch-action:manipulation] active:bg-[#3fd8ff]/20"
+    className="pointer-events-auto flex h-11 w-11 flex-col items-center justify-center rounded-lg border border-signal/35 bg-deep/70 text-mint-soft [touch-action:manipulation] active:bg-signal/20"
     onClick={() => onAction(ability.id)}
   >
     <span className="text-[15px] leading-none">{ability.icon}</span>
@@ -204,7 +204,7 @@ const CycleButton = ({ onCycle }: { onCycle: (dir: 1 | -1) => void }) => (
   <button
     type="button"
     aria-label="Cycle target"
-    className="pointer-events-auto flex h-11 items-center justify-center gap-1 rounded-lg border border-[#ff6b6b]/45 bg-[#040a0e]/70 px-3 text-[11px] uppercase tracking-[0.1em] text-[#ffb4b4] [touch-action:manipulation] active:bg-[#ff6b6b]/20"
+    className="pointer-events-auto flex h-11 items-center justify-center gap-1 rounded-lg border border-[#ff6b6b]/45 bg-deep/70 px-3 text-[11px] uppercase tracking-[0.1em] text-[#ffb4b4] [touch-action:manipulation] active:bg-[#ff6b6b]/20"
     onClick={() => onCycle(1)}
   >
     <span className="text-[14px] leading-none">🎯</span>
@@ -227,7 +227,7 @@ const PauseButton = ({ onPause }: { onPause: (paused: boolean) => void }) => {
       type="button"
       aria-label={isPaused ? "Resume" : "Pause"}
       aria-pressed={isPaused}
-      className="hud-mobile-pause flex h-10 w-10 items-center justify-center rounded-full border border-[#3fd8ff]/35 bg-[#040a0e]/75 text-[16px] text-[#cfeee2] backdrop-blur-[4px] [touch-action:manipulation] active:bg-[#3fd8ff]/20"
+      className="hud-mobile-pause flex h-10 w-10 items-center justify-center rounded-full border border-signal/35 bg-deep/75 text-[16px] text-mint-soft backdrop-blur-[4px] [touch-action:manipulation] active:bg-signal/20"
       onClick={() => {
         paused.val = !paused.val;
         onPause(paused.val);
