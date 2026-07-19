@@ -10,9 +10,8 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { useState } from "react";
-import { createRoot } from "react-dom/client";
-import { AstryxRoot } from "~/astryx";
 import type { Audio, Bus } from "~/runtime/audio";
+import { mountReactDialog } from "./dialog";
 
 const pct = (v: number) => `${Math.round(v * 100)}`;
 
@@ -93,12 +92,5 @@ const Mixer = ({ audio }: { audio: Audio }) => {
   );
 };
 
-export const mountMixer = (audio: Audio): void => {
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  createRoot(container).render(
-    <AstryxRoot>
-      <Mixer audio={audio} />
-    </AstryxRoot>,
-  );
-};
+export const mountMixer = (audio: Audio): void =>
+  mountReactDialog(<Mixer audio={audio} />);

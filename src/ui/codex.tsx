@@ -25,10 +25,9 @@ import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { createRoot } from "react-dom/client";
-import { AstryxRoot } from "~/astryx";
 import { hullSilhouettePath } from "~/hull/silhouette";
 import { ARCHETYPES, type Archetype, MAX_LEVEL } from "~/world";
+import { mountReactDialog } from "./dialog";
 import {
   ARCHETYPE_INFO,
   COUNTERED_BY,
@@ -611,13 +610,11 @@ export interface Codex {
 
 export const mountCodex = (): Codex => {
   const store = createCodexStore();
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  createRoot(container).render(
-    <AstryxRoot>
+  mountReactDialog(
+    <>
       <CodexOpener store={store} />
       <CodexPanel store={store} />
-    </AstryxRoot>,
+    </>,
   );
   return {
     toggle: () => store.toggle(),
