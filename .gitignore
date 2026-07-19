@@ -12,3 +12,6 @@ bun-cache
 .env.test
 .env.production
 .impeccable/
+
+# chrome-driver verification screenshots
+chromium_cli/
