@@ -513,6 +513,12 @@ const CodexPanel = ({ store }: { store: CodexStore }) => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      // When a rank pill holds focus, defer to the SegmentedControl's own
+      // navigation so its focus ring and selection move together (handling it
+      // here too would leave the ring behind on the old pill).
+      const el = document.activeElement;
+      if (el instanceof HTMLElement && el.getAttribute("role") === "radio")
+        return;
       setLvl((n) =>
         Math.min(MAX_LEVEL, Math.max(1, n + (e.key === "ArrowRight" ? 1 : -1))),
       );
@@ -537,8 +543,9 @@ const CodexPanel = ({ store }: { store: CodexStore }) => {
     >
       {/* astryx wraps Dialog children in an overflow-hidden flex column, so the
           codex owns its own scroll: fill the bounded wrapper (flex-1 + min-h-0)
-          and scroll the tall content within it. */}
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+          and scroll the tall content within it. `overflow-y-auto` forces
+          overflow-x to clip, so px-1 keeps edge focus rings from being cut. */}
+      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1">
         <HStack justify="between" vAlign="center" className="flex-wrap gap-3">
           <VStack gap={0}>
             <Heading level={3}>Ship Codex</Heading>
