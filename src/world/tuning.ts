@@ -239,6 +239,11 @@ export const boltRange = (level: number, archetype?: Archetype): number =>
 export const fireRangeFor = (level: number, archetype?: Archetype): number =>
   Math.round(boltRange(level, archetype) * 0.9);
 
+// Cone/fan weapon (arcade Spread augment): each stack adds a barrel and the whole
+// volley diverges by this angle per barrel off the aim line — a true shotgun
+// spread (bolts rotate apart), unlike the parallel-offset `spread` field.
+export const FAN_ANGLE_STEP = 0.14; // radians (~8°) between adjacent barrels
+
 // --- Per-archetype firing patterns ------------------------------------------
 // Each class shoots differently: a "single" bolt, a "parallel" salvo of wing-
 // mounted barrels fired abreast (wide hulls), or a "burst" — a quick stream of

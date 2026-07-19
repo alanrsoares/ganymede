@@ -24,13 +24,20 @@ export type AugmentId =
   | "overclock"
   | "caliber"
   | "nanofoam"
-  | "thrusters";
+  | "thrusters"
+  | "spread";
+
+// "stat" augments fold into augMul (a compounding multiplier on a derived stat);
+// "unlock"/"summon" augments are read by raw stack count at their own tick sites
+// (augCount) — the fan weapon, the nova blast, the escort wing.
+export type AugmentKind = "stat" | "unlock" | "summon";
 
 export interface AugmentSpec {
   readonly id: AugmentId;
-  readonly stat: AugmentStat;
+  readonly kind?: AugmentKind; // defaults to "stat"
+  readonly stat?: AugmentStat; // stat kind only
   /** Per-stack multiplier; compounds as `mul ** stacks`. <1 shrinks (cooldown). */
-  readonly mul: number;
+  readonly mul?: number; // stat kind only
   readonly label: string; // offer-card title
   readonly blurb: string; // offer-card subtitle
 }
@@ -80,6 +87,12 @@ export const AUGMENTS: Record<AugmentId, AugmentSpec> = {
     label: "Thrusters",
     blurb: "+8% speed",
   },
+  spread: {
+    id: "spread",
+    kind: "unlock",
+    label: "Spread",
+    blurb: "cone shot · +1 barrel",
+  },
 };
 
 export const AUGMENT_IDS = Object.keys(AUGMENTS) as AugmentId[];
@@ -100,10 +113,15 @@ export const augMul = (stacks: AugmentStacks, stat: AugmentStat): number => {
   let m = 1;
   for (const id of AUGMENT_IDS) {
     const n = stacks[id] ?? 0;
-    if (n > 0 && AUGMENTS[id].stat === stat) m *= AUGMENTS[id].mul ** n;
+    const spec = AUGMENTS[id];
+    if (n > 0 && spec.stat === stat && spec.mul != null) m *= spec.mul ** n;
   }
   return stat === "cooldown" ? Math.max(MIN_COOLDOWN_MUL, m) : m;
 };
+
+/** Raw stacks owned of one augment — how unlock/summon augments read intensity. */
+export const augCount = (stacks: AugmentStacks, id: AugmentId): number =>
+  stacks[id] ?? 0;
 
 /** Total stacks owned — the prestige "Mk N" readout on the HUD. */
 export const augmentTier = (stacks: AugmentStacks): number => {

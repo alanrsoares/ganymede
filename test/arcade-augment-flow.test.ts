@@ -78,7 +78,7 @@ test("the Hull augment compounds the pilot's max HP and heals to it", () => {
 
   const pilot = w.ships.items.find((s) => s.id === w.controlledShipId);
   expect(w.arcade?.augments.hull).toBe(2);
-  expect(pilot?.maxHp).toBe(Math.round(base * AUGMENTS.hull.mul ** 2));
+  expect(pilot?.maxHp).toBe(Math.round(base * (AUGMENTS.hull.mul ?? 1) ** 2));
   expect(pilot?.hp).toBe(pilot?.maxHp); // topped off on pick
 });
 

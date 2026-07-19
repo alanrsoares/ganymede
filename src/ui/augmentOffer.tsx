@@ -85,7 +85,7 @@ const OfferView = ({
               title={spec.label}
               blurb={spec.blurb}
               pressed={false}
-              tint={STAT_TINT[spec.stat]}
+              tint={spec.stat ? STAT_TINT[spec.stat] : undefined}
               onClick={() => onPick(id)}
             />
           );
