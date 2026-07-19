@@ -1,8 +1,10 @@
 import { assertNever } from "@onrails/pattern";
+import { wrapDelta } from "~/engine/physics";
 import { nextInt } from "~/engine/rng";
-import { type AugmentId, augMul } from "~/world/augments";
+import { type AugmentId, augCount, augMul } from "~/world/augments";
 import { spawnWhip } from "~/world/tick/whips";
 import {
+  hurtShip,
   rollShip,
   spawnBullet,
   spawnEmpMissile,
@@ -18,7 +20,15 @@ import {
   MINE_ARM,
   MINE_LIFE,
   maxHpFor,
+  NOVA_ARC,
+  NOVA_ARC_STEP,
+  NOVA_DAMAGE,
+  NOVA_DAMAGE_STEP,
+  NOVA_FUEL_COST,
+  NOVA_RADIUS,
+  NOVA_RADIUS_STEP,
   OVERCHARGE_MULT,
+  SCORE_KILL,
   shieldForLevel,
   shipRadius,
   speedForLevel,
@@ -29,6 +39,7 @@ import {
 } from "./tuning";
 import {
   ARENA,
+  BURST_EXPLOSION,
   BURST_MUZZLE,
   type Bullet,
   type Burst,
@@ -370,7 +381,80 @@ type ActionPools = {
   idMines: number;
   idBursts: number;
   idWhips: number;
+  scoreGain: number; // points banked this action (nova kills)
 };
+
+type NovaCone = { cosArc: number; radius: number; dmg: number };
+
+// An enemy caught in the pilot's nova cone → a damage-applied copy, or null when
+// it's an ally, out of reach, or outside the facing arc.
+const novaStrike = (
+  s: LightCycle,
+  e: LightCycle,
+  cone: NovaCone,
+): LightCycle | null => {
+  if (e.colorName === s.colorName) return null;
+  const ex = wrapDelta(s.x, e.x, ARENA.w);
+  const ey = wrapDelta(s.y, e.y, ARENA.h);
+  const dist = Math.hypot(ex, ey);
+  if (dist < 1 || dist > cone.radius) return null;
+  if ((ex * s.dx + ey * s.dy) / dist < cone.cosArc) return null;
+  const wounded = { ...e };
+  hurtShip(wounded, cone.dmg);
+  return wounded;
+};
+
+const novaBurst = (id: number, e: LightCycle): Burst => ({
+  id,
+  x: Math.floor(e.x),
+  y: Math.floor(e.y),
+  kind: BURST_EXPLOSION,
+  rgb: e.color,
+  rot: 0,
+  start: performance.now(),
+  variant: 0,
+});
+
+// Apply the nova cone across the ship list: survivors (with the pilot's fuel
+// docked), plus the enemies it killed (for bursts + score).
+const applyNova = (
+  s: LightCycle,
+  ships: readonly LightCycle[],
+  cone: NovaCone,
+): { survivors: LightCycle[]; dead: LightCycle[] } => {
+  const survivors: LightCycle[] = [];
+  const dead: LightCycle[] = [];
+  for (const e of ships) {
+    if (e.id === s.id) {
+      survivors.push({ ...e, fuel: Math.max(0, e.fuel - NOVA_FUEL_COST) });
+      continue;
+    }
+    const struck = novaStrike(s, e, cone);
+    if (!struck || struck.hp > 0) survivors.push(struck ?? e);
+    else dead.push(e);
+  }
+  return { survivors, dead };
+};
+
+// Nova (arcade): a fuel-gated forward-cone blast. Damages every enemy inside the
+// pilot's facing arc within reach; each stack widens the arc and adds reach +
+// damage, so fuel is the only rate limit. Kills are removed here and counted by
+// the arcade wave machine's death-diff next tick (see advanceWave).
+function handleNova(world: World, s: LightCycle, p: ActionPools): void {
+  const stacks = world.arcade ? augCount(world.arcade.augments, "nova") : 0;
+  if (stacks <= 0 || s.fuel < NOVA_FUEL_COST) return;
+  const cone: NovaCone = {
+    cosArc: Math.cos(
+      Math.min(Math.PI, NOVA_ARC + (stacks - 1) * NOVA_ARC_STEP),
+    ),
+    radius: NOVA_RADIUS + (stacks - 1) * NOVA_RADIUS_STEP,
+    dmg: NOVA_DAMAGE + (stacks - 1) * NOVA_DAMAGE_STEP,
+  };
+  const { survivors, dead } = applyNova(s, p.ships, cone);
+  p.ships = survivors;
+  for (const e of dead) p.bursts.push(novaBurst(p.idBursts++, e));
+  p.scoreGain += dead.length * SCORE_KILL;
+}
 
 /** Route one manual action to its handler, mutating `p` in place. */
 function dispatchAction(
@@ -416,6 +500,9 @@ function dispatchAction(
         world.whips.items.some((w) => w.owner === s.id),
       );
       break;
+    case 9:
+      handleNova(world, s, p);
+      break;
     default:
       handleBuffs(s, p.ships, idx, actionId);
   }
@@ -441,6 +528,7 @@ function handleUserAction(world: World, actionId: number): World {
     idMines: world.mines.nextId,
     idBursts: world.bursts.nextId,
     idWhips: world.whips.nextId,
+    scoreGain: 0,
   };
   dispatchAction(world, s, idx, actionId, p);
 
@@ -452,6 +540,13 @@ function handleUserAction(world: World, actionId: number): World {
     mines: { ...world.mines, items: p.mines, nextId: p.idMines },
     bursts: { ...world.bursts, items: p.bursts, nextId: p.idBursts },
     whips: { ...world.whips, items: p.whips, nextId: p.idWhips },
+    score:
+      p.scoreGain > 0
+        ? {
+            ...world.score,
+            [s.colorName]: (world.score[s.colorName] ?? 0) + p.scoreGain,
+          }
+        : world.score,
   };
 }
 

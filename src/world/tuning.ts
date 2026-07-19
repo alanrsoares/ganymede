@@ -244,6 +244,17 @@ export const fireRangeFor = (level: number, archetype?: Archetype): number =>
 // spread (bolts rotate apart), unlike the parallel-offset `spread` field.
 export const FAN_ANGLE_STEP = 0.14; // radians (~8°) between adjacent barrels
 
+// Nova (arcade Nova augment): a fuel-gated forward-cone blast that thins a
+// saturated front. Each stack past the first widens the arc and adds reach +
+// damage; at high stacks the arc saturates toward a full-circle panic nova.
+export const NOVA_FUEL_COST = 350;
+export const NOVA_DAMAGE = 3; // to each enemy in the cone, at 1 stack
+export const NOVA_DAMAGE_STEP = 1.5; // per extra stack
+export const NOVA_RADIUS = 55; // reach in cells, at 1 stack
+export const NOVA_RADIUS_STEP = 12; // per extra stack
+export const NOVA_ARC = 0.9; // cone half-angle (radians, ~51°), at 1 stack
+export const NOVA_ARC_STEP = 0.35; // per extra stack (clamped to a full circle)
+
 // --- Per-archetype firing patterns ------------------------------------------
 // Each class shoots differently: a "single" bolt, a "parallel" salvo of wing-
 // mounted barrels fired abreast (wide hulls), or a "burst" — a quick stream of

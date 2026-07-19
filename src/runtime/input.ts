@@ -115,12 +115,15 @@ const triggerManualAction = (
   dispatch: (msg: Msg) => void,
 ): boolean => {
   // 1-7 = fire/mine/missile/buffs; q = the whip special (action 8), gated off
-  // while the whip is unplugged from gameplay.
+  // while the whip is unplugged from gameplay; r = the arcade Nova cone blast
+  // (action 9, a no-op without the Nova augment).
   const actionId = /^[1-7]$/.test(key)
     ? Number.parseInt(key, 10)
     : key === "q" && WHIP_ENABLED
       ? 8
-      : 0;
+      : key === "r"
+        ? 9
+        : 0;
   if (actionId === 0) return false;
   const world = getWorld();
   if (world.controlledShipId !== null) {
