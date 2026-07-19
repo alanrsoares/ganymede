@@ -4,9 +4,10 @@
 // the loop writes each frame — van updates just the bound text node.
 
 import van, { type State } from "vanjs-core";
+import { hullSilhouettePath } from "~/hull/silhouette";
 import type { LightCycle } from "~/world";
 import { carriesMissiles } from "~/world/tuning";
-import { ARCHETYPE_INFO, rgbCss } from "./shipStats";
+import { rgbCss } from "./shipStats";
 
 const { div, h1, label, input, p, span, button } = van.tags;
 const svg = van.tags("http://www.w3.org/2000/svg");
@@ -40,7 +41,7 @@ const livesStrip = (
       const n = lives.val ?? 0;
       const color = ship.val ? rgbCss(ship.val.color) : "#3fd8ff";
       const hull = ship.val
-        ? ARCHETYPE_INFO[ship.val.archetype].glyph.hull
+        ? hullSilhouettePath(ship.val.archetype)
         : FALLBACK_HULL;
       const icons = Array.from({ length: Math.min(n, MAX_LIFE_ICONS) }, () =>
         shipIcon(color, hull),

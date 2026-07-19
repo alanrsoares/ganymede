@@ -9,8 +9,9 @@
     <meta name="theme-color" content="#050b0f" />
     <link rel="icon" href="data:," />
     <title>Ganymede — Drydock</title>
-    <!-- Astryx gothic tokens (wrapper works around the package's missing
-         theme.css.d.ts); component CSS is imported from main.tsx. -->
+    <!-- Astryx design system: shared reset + component styles (same foundation
+         the game loads via styles.css), then the gothic tokens wrapper. -->
+    <link rel="stylesheet" href="./astryx.css" />
     <link rel="stylesheet" href="./astryx-theme.css" />
     <style>
       /* Only the chrome astryx can't own: the fullscreen canvas and the
@@ -19,7 +20,7 @@
          tokens, picked up by every astryx selection state. */
       :root,
       [data-astryx-theme] {
-        --color-accent: #97ce4c;
+        --color-accent: oklch(0.7873 0.1695 129.2); /* portal green */
       }
       html,
       body {

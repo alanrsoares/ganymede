@@ -1,4 +1,20 @@
-@import "tailwindcss";
+/* Astryx design system, loaded as shipped: its own reset + precompiled
+   component styles (shared foundation in astryx.css). Tailwind is imported
+   WITHOUT its preflight (theme + utilities layers only) so the game keeps
+   utility classes for the HUD while Astryx components render with the styles
+   they ship — no preflight fighting native <button>/<dialog> defaults.
+
+   This is the deliberate "leaner, no-preflight" variant. The official recipe
+   (astryx.atmeta.com/docs/styling-libraries) keeps preflight and orders it
+   under astryx via an explicit `@layer reset, theme, base, astryx-base,
+   astryx-theme, components, utilities` pre-declaration, plus an
+   `@astryxdesign/core/tailwind-theme.css` bridge — but that bridge file isn't
+   actually shipped in our installed version (only src/), and this canvas app
+   gains little from preflight, so we skip both and hand-roll the token bridge
+   below (@theme inline). */
+@import "./astryx.css";
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 /* Astryx gothic design tokens (scoped by data-astryx-theme on <html>).
    Token layer only for now: semantic aliases below expose them to the HUD;
    utility classes / inline hexes migrate onto these incrementally. */
@@ -15,8 +31,17 @@
   --hud-line: var(--color-border, #e8f1f61a);
   --hud-ink: var(--color-text-primary, #e8f1f6);
   --hud-muted: var(--color-text-secondary, #96a0ab);
-  --hud-accent: #3fd8ff;
-  --color-accent: #3fd8ff;
+  --hud-accent: oklch(0.8201 0.134 219.3); /* signal cyan */
+  --color-accent: oklch(0.8201 0.134 219.3);
+}
+
+/* Astryx reads --color-accent off the theme wrapper, and the gothic theme
+   sets its own near-white default there — so re-assert the game's cyan IN
+   SCOPE (mirrors the drydock's green override in drydock.html). This is what
+   drives every accent surface: selection rings, primary fills, and the
+   accent-tinted hairlines defined in astryx-theme.css. */
+[data-astryx-theme] {
+  --color-accent: oklch(0.8201 0.134 219.3);
 }
 
 /* Astryx tokens as Tailwind v4 utilities (bg-surface, border-line, text-ink,

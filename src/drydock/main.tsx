@@ -2,7 +2,6 @@
 // boot the WebGPU scene. GPU failure surfaces through the store so the UI
 // can swap to an error screen.
 
-import "@astryxdesign/core/astryx.css";
 import { createRoot } from "react-dom/client";
 import { App } from "~/drydock/ui/App";
 import { startAgentBridge } from "./agent-bridge";
