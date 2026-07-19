@@ -13,7 +13,6 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { Dialog } from "@astryxdesign/core/Dialog";
-import { Grid } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
@@ -22,6 +21,7 @@ import {
   SegmentedControlItem,
 } from "@astryxdesign/core/SegmentedControl";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
@@ -408,10 +408,43 @@ const RankControl = ({
   </SegmentedControl>
 );
 
+// --- Class tabs -------------------------------------------------------------
+// One tab per archetype (dot in the class tint), selecting the card shown
+// below. Arrows are owned by the rank picker, so tabs are click/tap-select.
+const ClassTabs = ({
+  active,
+  onChange,
+}: {
+  active: Archetype;
+  onChange: (a: Archetype) => void;
+}) => (
+  <TabList
+    value={active}
+    onChange={(v) => onChange(v as Archetype)}
+    layout="fill"
+    aria-label="Ship class"
+  >
+    {ARCHETYPES.map((a) => (
+      <Tab
+        key={a}
+        value={a}
+        label={a[0].toUpperCase() + a.slice(1)}
+        icon={
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ background: CLASS_TINT[a] }}
+          />
+        }
+      />
+    ))}
+  </TabList>
+);
+
 // --- Panel ------------------------------------------------------------------
 const CodexPanel = ({ store }: { store: CodexStore }) => {
   const open = useSyncExternalStore(store.subscribe, store.getOpen);
   const [lvl, setLvl] = useState(3);
+  const [active, setActive] = useState<Archetype>("fighter");
 
   // ←/→ cycles rank from anywhere while the codex is up. Captured on `document`
   // (capture phase) so it fires — and is swallowed — before the rank
@@ -468,13 +501,12 @@ const CodexPanel = ({ store }: { store: CodexStore }) => {
             />
           </HStack>
         </HStack>
+        <ClassTabs active={active} onChange={setActive} />
         <div className="flex flex-col gap-4 md:flex-row md:items-start">
+          <div className="flex-1">
+            <ClassCard a={active} lvl={lvl} />
+          </div>
           <CounterWeb />
-          <Grid columns={{ minWidth: 240, max: 2 }} gap={2} className="flex-1">
-            {ARCHETYPES.map((a) => (
-              <ClassCard key={a} a={a} lvl={lvl} />
-            ))}
-          </Grid>
         </div>
         <Progression lvl={lvl} />
       </div>
