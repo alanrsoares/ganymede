@@ -30,24 +30,16 @@ import { ARCHETYPES, type Archetype, MAX_LEVEL } from "~/world";
 import { mountReactDialog } from "./dialog";
 import {
   ARCHETYPE_INFO,
+  CLASS_TINT,
   COUNTERED_BY,
   COUNTERS,
   statsFor,
   TIERS,
 } from "./shipStats";
 
-// The codex is team-neutral, so each class gets its own signature accent (the
-// hover card tints by team color instead). Chosen to echo each role: green
-// runner, cyan backbone, amber tank, pink hunter. `CLASS_TINT` drives the raw
-// SVG art; `CLASS_VARIANT` maps the same identity onto Astryx's semantic Card /
-// Badge color variants (they ship green/cyan/orange/pink out of the box).
-const CLASS_TINT: Record<Archetype, string> = {
-  scout: "#7cff9e",
-  fighter: "#3fd8ff",
-  heavy: "#ffb545",
-  interceptor: "#ff6fae",
-};
-
+// `CLASS_TINT` (shared, from shipStats) drives the raw SVG art; `CLASS_VARIANT`
+// maps the same identity onto Astryx's semantic Card / Badge color variants
+// (they ship green/cyan/orange/pink out of the box).
 const cap = (a: string) => a[0].toUpperCase() + a.slice(1);
 
 type ClassVariant = "green" | "cyan" | "orange" | "pink";

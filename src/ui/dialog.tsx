@@ -12,9 +12,9 @@ import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
 import { SelectableCard } from "@astryxdesign/core/SelectableCard";
-import { VStack } from "@astryxdesign/core/Stack";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { AstryxRoot } from "~/astryx";
@@ -83,13 +83,18 @@ export interface ChoiceCardProps {
   blurb: string;
   pressed: boolean;
   onClick: () => void;
+  /** Per-option accent (e.g. a class tint); defaults to the theme accent. */
+  tint?: string;
+  /** Optional leading glyph (e.g. a hull silhouette). */
+  icon?: ReactNode;
 }
 
-// Accent-tinted translucency (game cyan / drydock green), mixed in OKLab.
-// Inline (not a stylesheet rule) on purpose: Bun's CSS bundler downlevels
-// color-mix() in a property to a solid fallback, but leaves inline styles alone.
-const accentMix = (pct: number) =>
-  `color-mix(in oklab, var(--color-accent) ${pct}%, transparent)`;
+// Accent-tinted translucency (game cyan / drydock green, or a per-card `tint`),
+// mixed in OKLab. Inline (not a stylesheet rule) on purpose: Bun's CSS bundler
+// downlevels color-mix() in a property to a solid fallback, but leaves inline
+// styles alone.
+const tintMix = (base: string, pct: number) =>
+  `color-mix(in oklab, ${base} ${pct}%, transparent)`;
 
 /**
  * One selectable option, styled as the welcome-screen mode CTA: a translucent
@@ -105,19 +110,11 @@ export const ChoiceCard = ({
   blurb,
   pressed,
   onClick,
-}: ChoiceCardProps) => (
-  <SelectableCard
-    label={title}
-    isSelected={pressed}
-    onChange={() => onClick()}
-    padding={4}
-    className="transition-shadow after:!bg-transparent hover:shadow-[0_0_14px_-4px_var(--color-accent)]"
-    style={{
-      border: `1px solid ${accentMix(pressed ? 66 : 32)}`,
-      background: accentMix(pressed ? 20 : 8),
-      boxShadow: pressed ? "0 0 18px -3px var(--color-accent)" : undefined,
-    }}
-  >
+  tint,
+  icon,
+}: ChoiceCardProps) => {
+  const base = tint ?? "var(--color-accent)";
+  const text = (
     <VStack gap={0.5}>
       <Text
         size="sm"
@@ -131,8 +128,34 @@ export const ChoiceCard = ({
         {blurb}
       </Text>
     </VStack>
-  </SelectableCard>
-);
+  );
+  return (
+    <SelectableCard
+      label={title}
+      isSelected={pressed}
+      onChange={() => onClick()}
+      padding={4}
+      className="transition-shadow after:!bg-transparent hover:shadow-[0_0_14px_-4px_var(--card-glow)]"
+      style={
+        {
+          "--card-glow": base,
+          border: `1px solid ${tintMix(base, pressed ? 66 : 32)}`,
+          background: tintMix(base, pressed ? 20 : 8),
+          boxShadow: pressed ? `0 0 18px -3px ${base}` : undefined,
+        } as CSSProperties
+      }
+    >
+      {icon ? (
+        <HStack gap={2} vAlign="center">
+          {icon}
+          {text}
+        </HStack>
+      ) : (
+        text
+      )}
+    </SelectableCard>
+  );
+};
 
 /** The one filled element in the dialog — the launch action. */
 export const Cta = ({

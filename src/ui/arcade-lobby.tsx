@@ -4,6 +4,7 @@
 
 import { Grid } from "@astryxdesign/core/Grid";
 import { useState } from "react";
+import { hullSilhouettePath } from "~/hull/silhouette";
 import {
   ARCHETYPES,
   type ArcadeDifficulty,
@@ -20,6 +21,19 @@ import {
   mountReactDialog,
   SectionHeading,
 } from "./dialog";
+import { CLASS_TINT } from "./shipStats";
+
+// The hull's top-down silhouette in its class tint — the arcade picker's glyph.
+const HullGlyph = ({ a }: { a: Archetype }) => (
+  <svg viewBox="0 0 24 24" className="h-8 w-8 shrink-0" aria-hidden="true">
+    <path
+      d={hullSilhouettePath(a)}
+      fill={`${CLASS_TINT[a]}3a`}
+      stroke={CLASS_TINT[a]}
+      strokeWidth="1.4"
+    />
+  </svg>
+);
 
 // Arcade tempo runs a touch faster than the autobattle default — one ship, so
 // the field can move quicker without becoming unreadable.
@@ -126,6 +140,8 @@ const LobbyView = ({
             blurb={hull.blurb}
             pressed={selected === hull.key}
             onClick={() => setSelected(hull.key)}
+            tint={CLASS_TINT[hull.key]}
+            icon={<HullGlyph a={hull.key} />}
           />
         ))}
       </Grid>

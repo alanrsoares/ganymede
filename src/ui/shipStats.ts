@@ -31,6 +31,16 @@ export interface ArchetypeInfo {
   blurb: string; // longer archetypal description
 }
 
+// Per-class signature accent (codex glyphs + counter web, arcade hull picker):
+// green runner, cyan backbone, amber tank, pink hunter. Team-neutral — the live
+// hover card tints by team color instead.
+export const CLASS_TINT: Record<Archetype, string> = {
+  scout: "#7cff9e",
+  fighter: "#3fd8ff",
+  heavy: "#ffb545",
+  interceptor: "#ff6fae",
+};
+
 export const ARCHETYPE_INFO: Record<Archetype, ArchetypeInfo> = {
   scout: {
     label: "Recon Dart",
