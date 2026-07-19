@@ -110,6 +110,8 @@ export interface ArcadeState {
   // fighting. Picking one banks it into `augments` and clears the offer.
   readonly augments: AugmentStacks;
   readonly offer: readonly AugmentId[] | null;
+  // Gens until the escort wing (Wing augment) replaces a fallen drone.
+  readonly wingCd: number;
 }
 
 // Ship class archetypes. Each is a distinct hull silhouette + stat path + weapon

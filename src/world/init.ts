@@ -42,6 +42,7 @@ const initArcadeRun = (cfg: ArcadeConfig): ArcadeState => ({
   woundedWave: false,
   augments: {},
   offer: null,
+  wingCd: 0,
 });
 
 // Half-width of the square each fresh ship spawns in, centred on its team base

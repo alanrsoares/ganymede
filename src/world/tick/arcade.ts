@@ -4,7 +4,7 @@
 // No-op unless `world.config.format === "arcade"`. See docs/arcade-mode-plan.md.
 
 import { nextRange } from "~/engine/rng";
-import { augMul, rollOffer } from "~/world/augments";
+import { augCount, augMul, rollOffer } from "~/world/augments";
 import { rollShip } from "~/world/factory";
 import {
   activeTeams,
@@ -14,12 +14,15 @@ import {
   HANDICAP_DEATH_STEP,
   MAX_ENEMY_SHIPS,
   SPAWN_INVULN_GENS,
+  WING_MAX,
+  WING_RESPAWN_CD,
 } from "~/world/tuning";
 import {
   type ArcadeConfig,
   type ArcadeState,
   baseByName,
   type LightCycle,
+  MAX_LEVEL,
   type World,
 } from "~/world/types";
 
@@ -210,12 +213,63 @@ function advanceWave(
   return { ...next, arcade: { ...a, waveRemaining: alive, pending, kills } };
 }
 
+// Roll one escort drone at the player base and flag it a droneShip (a small,
+// short-firing AI wingman). Reuses spawnAt so it inherits the fleet's hull/
+// plating augments and the base-spawn spread.
+const spawnWingDrone = (
+  world: World,
+  cfg: ArcadeConfig,
+  level: number,
+): World => {
+  const { world: w2, id } = spawnAt(
+    world,
+    cfg.playerTeam,
+    level,
+    "scout",
+    SPAWN_INVULN_GENS,
+  );
+  return {
+    ...w2,
+    ships: {
+      ...w2.ships,
+      items: w2.ships.items.map((s) =>
+        s.id === id ? { ...s, droneShip: true } : s,
+      ),
+    },
+  };
+};
+
+// Keep the escort wing (Wing augment) staffed: hold up to WING_MAX drones at the
+// pilot's side, respawning one on a cooldown when the count drops. Stacks past
+// the cap level the drones up instead of adding more. No-op without the augment.
+const maintainWing = (world: World, cfg: ArcadeConfig): World => {
+  const a = world.arcade;
+  if (!a) return world;
+  const wing = augCount(a.augments, "wing");
+  if (wing <= 0) return world;
+  const target = Math.min(wing, WING_MAX);
+  const alive = world.ships.items.filter(
+    (s) =>
+      s.droneShip &&
+      s.colorName === cfg.playerTeam &&
+      s.id !== world.controlledShipId,
+  ).length;
+  if (alive >= target) return world;
+  if (a.wingCd > 0) return { ...world, arcade: { ...a, wingCd: a.wingCd - 1 } };
+  const level = Math.min(MAX_LEVEL, 1 + Math.max(0, wing - WING_MAX));
+  const spawned = spawnWingDrone(world, cfg, level);
+  return {
+    ...spawned,
+    arcade: { ...a, wingCd: WING_RESPAWN_CD },
+  };
+};
+
 export function arcadeStep(world: World): World {
   const a = world.arcade;
   const cfg = world.config.arcade;
   if (!a || !cfg || a.over) return world;
 
-  if (!playerAlive(world)) return loseLife(world, a, cfg);
+  if (!playerAlive(world)) return maintainWing(loseLife(world, a, cfg), cfg);
 
   // Stash the live pilot's rank so a respawn can restore it (see loseLife).
   const me = world.ships.items.find((s) => s.id === world.controlledShipId);
@@ -224,7 +278,9 @@ export function arcadeStep(world: World): World {
 
   const enemyCount = countTeams(world.ships.items, new Set(cfg.enemyTeams));
   // Intermission (a2.phase === "intermission") arrives in Phase 2.
-  return a2.phase === "fight"
-    ? advanceWave(world, a2, cfg, enemyCount)
-    : { ...world, arcade: a2 };
+  const stepped =
+    a2.phase === "fight"
+      ? advanceWave(world, a2, cfg, enemyCount)
+      : { ...world, arcade: a2 };
+  return maintainWing(stepped, cfg);
 }

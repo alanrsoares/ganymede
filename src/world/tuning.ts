@@ -255,6 +255,12 @@ export const NOVA_RADIUS_STEP = 12; // per extra stack
 export const NOVA_ARC = 0.9; // cone half-angle (radians, ~51°), at 1 stack
 export const NOVA_ARC_STEP = 0.35; // per extra stack (clamped to a full circle)
 
+// Escort wing (arcade Wing augment): each stack keeps one more scout drone at
+// the pilot's side, respawned this many gens after it falls. Past WING_MAX the
+// count holds and further stacks level the drones instead (see maintainWing).
+export const WING_MAX = 4;
+export const WING_RESPAWN_CD = 90; // ~1.7s at 52 gen/s
+
 // --- Per-archetype firing patterns ------------------------------------------
 // Each class shoots differently: a "single" bolt, a "parallel" salvo of wing-
 // mounted barrels fired abreast (wide hulls), or a "burst" — a quick stream of

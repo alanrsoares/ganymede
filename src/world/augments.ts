@@ -26,7 +26,8 @@ export type AugmentId =
   | "nanofoam"
   | "thrusters"
   | "spread"
-  | "nova";
+  | "nova"
+  | "wing";
 
 // "stat" augments fold into augMul (a compounding multiplier on a derived stat);
 // "unlock"/"summon" augments are read by raw stack count at their own tick sites
@@ -99,6 +100,12 @@ export const AUGMENTS: Record<AugmentId, AugmentSpec> = {
     kind: "unlock",
     label: "Nova",
     blurb: "R: cone blast · wider",
+  },
+  wing: {
+    id: "wing",
+    kind: "summon",
+    label: "Wing",
+    blurb: "+1 escort drone",
   },
 };
 
