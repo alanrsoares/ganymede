@@ -13,6 +13,14 @@ import {
 
 // --- Field + gameplay tuning ------------------------------------------------
 export const MAX_SHIPS = 12;
+// Arcade runs a bigger array cap than autobattle so the enemy field (below),
+// the pilot, and player-side summons/escorts all fit without the ship trim
+// evicting anyone. Autobattle is unaffected — it keeps MAX_SHIPS.
+export const MAX_ARCADE_SHIPS = 16;
+// On-field enemy budget per arcade wave. Waves that ask for more than this
+// spawn up to the budget and trickle the remainder in as enemies die (see
+// advanceWave), so late waves stay dense but never overflow the array cap.
+export const MAX_ENEMY_SHIPS = 11;
 // Generations of reinforcement before sudden death (~60s at 45 gen/s). After
 // this, no respawns/reinforcements — teams get wiped until one is left standing.
 export const MATCH_REINFORCE_GENS = 2700;
@@ -230,6 +238,28 @@ export const boltRange = (level: number, archetype?: Archetype): number =>
 // a bolt fired at the fire boundary still reaches its mark.
 export const fireRangeFor = (level: number, archetype?: Archetype): number =>
   Math.round(boltRange(level, archetype) * 0.9);
+
+// Cone/fan weapon (arcade Spread augment): each stack adds a barrel and the whole
+// volley diverges by this angle per barrel off the aim line — a true shotgun
+// spread (bolts rotate apart), unlike the parallel-offset `spread` field.
+export const FAN_ANGLE_STEP = 0.14; // radians (~8°) between adjacent barrels
+
+// Nova (arcade Nova augment): a fuel-gated forward-cone blast that thins a
+// saturated front. Each stack past the first widens the arc and adds reach +
+// damage; at high stacks the arc saturates toward a full-circle panic nova.
+export const NOVA_FUEL_COST = 350;
+export const NOVA_DAMAGE = 3; // to each enemy in the cone, at 1 stack
+export const NOVA_DAMAGE_STEP = 1.5; // per extra stack
+export const NOVA_RADIUS = 55; // reach in cells, at 1 stack
+export const NOVA_RADIUS_STEP = 12; // per extra stack
+export const NOVA_ARC = 0.9; // cone half-angle (radians, ~51°), at 1 stack
+export const NOVA_ARC_STEP = 0.35; // per extra stack (clamped to a full circle)
+
+// Escort wing (arcade Wing augment): each stack keeps one more scout drone at
+// the pilot's side, respawned this many gens after it falls. Past WING_MAX the
+// count holds and further stacks level the drones instead (see maintainWing).
+export const WING_MAX = 4;
+export const WING_RESPAWN_CD = 90; // ~1.7s at 52 gen/s
 
 // --- Per-archetype firing patterns ------------------------------------------
 // Each class shoots differently: a "single" bolt, a "parallel" salvo of wing-

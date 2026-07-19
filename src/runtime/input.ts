@@ -115,12 +115,15 @@ const triggerManualAction = (
   dispatch: (msg: Msg) => void,
 ): boolean => {
   // 1-7 = fire/mine/missile/buffs; q = the whip special (action 8), gated off
-  // while the whip is unplugged from gameplay.
+  // while the whip is unplugged from gameplay; r = the arcade Nova cone blast
+  // (action 9, a no-op without the Nova augment).
   const actionId = /^[1-7]$/.test(key)
     ? Number.parseInt(key, 10)
     : key === "q" && WHIP_ENABLED
       ? 8
-      : 0;
+      : key === "r"
+        ? 9
+        : 0;
   if (actionId === 0) return false;
   const world = getWorld();
   if (world.controlledShipId !== null) {
@@ -163,8 +166,9 @@ const handleKeyDown = (
 ) => {
   if (typingInField(e)) return;
   // Freeze all game input while the pause menu is up (ESC is owned by the
-  // capture-phase handleEscape listener, which runs before this).
-  if (pause.isOpen()) return;
+  // capture-phase handleEscape listener, which runs before this) or while the
+  // arcade wave-clear augment offer is pending its pick.
+  if (pause.isOpen() || getWorld().arcade?.offer != null) return;
   const key = e.key.toLowerCase();
   if (key === "c") return toggleCodex(codex, isSetupOpen);
   if (codex.isOpen() || isSetupOpen()) return;

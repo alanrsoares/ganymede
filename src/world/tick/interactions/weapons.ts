@@ -1,6 +1,7 @@
 import { wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
+import { augCount, augMul } from "~/world/augments";
 import {
   acquireTarget,
   spawnBullet,
@@ -23,6 +24,7 @@ import {
   carriesArc,
   carriesMissiles,
   EMP_MISSILE_LOCK,
+  FAN_ANGLE_STEP,
   fireCooldownFor,
   fireRangeFor,
   MISSILE_FIRE_CHANCE,
@@ -105,17 +107,57 @@ const spawnSalvo = (
   bullets: Mutable<Bullet>[],
   bulletId: number,
   wp: WeaponProfile,
+  coneStep = 0,
 ): number => {
   const shots = wp.pattern === "burst" ? 1 : wp.barrels;
   const mid = (shots - 1) / 2;
+  // The pilot's bolts carry the run's Caliber augment; every other shooter (and
+  // all of autobattle) fires at 1×.
+  const dmgMul =
+    s.id === ctx.world.controlledShipId
+      ? augMul(ctx.world.arcade?.augments ?? {}, "damage")
+      : 1;
+  // For a cone (coneStep > 0) we rotate each barrel's aim apart into a shotgun
+  // spread; otherwise barrels offset perpendicular (a parallel wall).
+  const ax = wrapDelta(s.x, aim.x, ARENA.w);
+  const ay = wrapDelta(s.y, aim.y, ARENA.h);
   let id = bulletId;
   for (let i = 0; i < shots; i++) {
-    const bolt = spawnBullet(id, s, aim.x, aim.y, (i - mid) * wp.spread);
-    bullets.push(bolt);
+    const off = i - mid;
+    const ca = Math.cos(off * coneStep);
+    const sa = Math.sin(off * coneStep);
+    const bolt =
+      coneStep > 0
+        ? spawnBullet(id, s, s.x + ax * ca - ay * sa, s.y + ax * sa + ay * ca)
+        : spawnBullet(id, s, aim.x, aim.y, off * wp.spread);
+    bullets.push(
+      dmgMul === 1 ? bolt : { ...bolt, damage: bolt.damage * dmgMul },
+    );
     muzzleFlash(ctx, s, bolt.angle);
     id += 1;
   }
   return id;
+};
+
+// The pilot's live weapon: its archetype profile, fanned wider by each Spread
+// augment stack (extra barrels + a diverging cone). No augment = the base profile.
+const pilotWeapon = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+): { wp: WeaponProfile; coneStep: number } => {
+  const base = weaponFor(s.archetype, s.level);
+  const fan = augCount(ctx.world.arcade?.augments ?? {}, "spread");
+  return fan > 0
+    ? {
+        wp: {
+          ...base,
+          pattern: "parallel",
+          barrels: base.barrels + fan,
+          spread: 0,
+        },
+        coneStep: FAN_ANGLE_STEP,
+      }
+    : { wp: base, coneStep: 0 };
 };
 
 /**
@@ -239,9 +281,12 @@ export const fireWeapon = (
     // than the base cadence, so waves clear faster / you're exposed less.
     if (ctx.world.controlKeys.space && s.fireCooldown <= 0) {
       const aim = pilotAim(ctx, s);
-      const wp = weaponFor(s.archetype, s.level);
-      const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp);
-      s.fireCooldown = applyFireCadence(s, wp) * PILOT_FIRE_MULT;
+      const { wp, coneStep } = pilotWeapon(ctx, s);
+      const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp, coneStep);
+      s.fireCooldown =
+        applyFireCadence(s, wp) *
+        PILOT_FIRE_MULT *
+        augMul(ctx.world.arcade?.augments ?? {}, "cooldown");
       return nextId;
     }
     return bulletId;

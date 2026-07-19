@@ -4,6 +4,7 @@
 
 import type { Entity, EntityList } from "~/engine/entities";
 import type { Seed } from "~/engine/rng";
+import type { AugmentId, AugmentStacks } from "~/world/augments";
 
 export const DEFAULT_GRID_W = 480;
 export const DEFAULT_GRID_H = 270;
@@ -85,7 +86,11 @@ export interface ArcadeConfig {
 export interface ArcadeState {
   readonly lives: number;
   readonly wave: number;
-  readonly waveRemaining: number; // enemies left to kill this wave
+  readonly waveRemaining: number; // enemies currently alive on the field
+  // Enemies rolled for this wave but not yet spawned — held back when the field
+  // is at MAX_ENEMY_SHIPS, then trickled in as enemies die (see advanceWave).
+  readonly pending: number;
+  readonly waveMaxLevel: number; // level cap for this wave's (trickled) spawns
   readonly phase: "fight" | "intermission";
   readonly intermissionGens: number; // gens elapsed in the current intermission
   readonly kills: number; // enemies destroyed this run (run stat)
@@ -99,6 +104,14 @@ export interface ArcadeState {
   // died since the current wave began (so a clean clear can ease difficulty).
   readonly adapt: number;
   readonly woundedWave: boolean;
+  // Per-run augment stack: permanent, compounding pilot upgrades that survive
+  // death (see src/world/augments.ts). `offer` holds the 3 ids rolled at a wave
+  // clear; while non-null the sim freezes and the pick dialog is up. null =
+  // fighting. Picking one banks it into `augments` and clears the offer.
+  readonly augments: AugmentStacks;
+  readonly offer: readonly AugmentId[] | null;
+  // Gens until the escort wing (Wing augment) replaces a fallen drone.
+  readonly wingCd: number;
 }
 
 // Ship class archetypes. Each is a distinct hull silhouette + stat path + weapon
@@ -516,6 +529,7 @@ export type Msg =
     }
   | { readonly kind: "action"; readonly actionId: number }
   | { readonly kind: "cycleTarget"; readonly dir: 1 | -1 }
-  | { readonly kind: "arcadeSkipIntermission" };
+  | { readonly kind: "arcadeSkipIntermission" }
+  | { readonly kind: "pickAugment"; readonly id: AugmentId };
 
 export type { Mutable } from "~/engine/entities";

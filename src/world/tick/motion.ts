@@ -6,6 +6,7 @@ import {
   normalize,
   wrapDelta,
 } from "~/engine/physics";
+import { augMul } from "~/world/augments";
 import { advanceAsteroid, advanceMissile } from "~/world/factory";
 import { wrap } from "~/world/math";
 import { flockSteer, fuelCarriers } from "~/world/steering";
@@ -116,7 +117,13 @@ const advanceShip = (
   // Out of fuel = dead engine: no thrust, just a slow aimless drift like a
   // power-up orb — defenseless flotsam until it's tugged home or picked off.
   const empty = s.fuel <= 0;
-  const cruise = shipCruise(s, empty);
+  // The piloted arcade ship carries the run's speed/regen augments; empty stack
+  // (everyone else, and all of autobattle) = identity, so these are no-ops.
+  const augStacks =
+    world.arcade && world.controlledShipId === s.id
+      ? world.arcade.augments
+      : {};
+  const cruise = shipCruise(s, empty) * augMul(augStacks, "speed");
   const [ax, ay] = shipAccel(s, empty, world, baseHp, neighbors, carriers);
   const bvx = s.vx + ax * steps;
   const bvy = s.vy + ay * steps;
@@ -147,7 +154,10 @@ const advanceShip = (
     overchargeTime: Math.max(0, s.overchargeTime - steps),
     invulnTime: Math.max(0, s.invulnTime - steps),
     forceFieldTime: Math.max(0, s.forceFieldTime - steps),
-    hp: Math.min(s.maxHp, s.hp + regenForLevel(s.level) * steps),
+    hp: Math.min(
+      s.maxHp,
+      s.hp + regenForLevel(s.level) * augMul(augStacks, "regen") * steps,
+    ),
     boostTime: Math.max(0, s.boostTime - steps),
     portalCooldown: Math.max(0, s.portalCooldown - steps),
     fireCooldown: Math.max(0, s.fireCooldown - steps),

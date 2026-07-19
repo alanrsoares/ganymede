@@ -1,10 +1,11 @@
-import { cap, type EntityList, retain, spawn } from "~/engine/entities";
+import { capExcept, type EntityList, retain, spawn } from "~/engine/entities";
 import { nextInt, type Seed } from "~/engine/rng";
 import { rollAsteroid, rollMany, rollPickup } from "~/world/factory";
 import { resolveLock } from "~/world/lock";
 import {
   EXPLOSION_DURATION,
   EXPLOSION_VARIANTS,
+  MAX_ARCADE_SHIPS,
   MAX_SHIPS,
   NUM_ASTEROIDS,
   NUM_PICKUPS,
@@ -133,6 +134,15 @@ const commitDrones = (ctx: TickCtx, motion: MotionState): EntityList<Drone> => {
   };
 };
 
+// Ships the trim must never evict: the piloted ship and (in arcade) any
+// player-team ship, summons included — trimming one reads downstream as a death.
+const trimProtected =
+  (world: World) =>
+  (s: LightCycle): boolean =>
+    s.id === world.controlledShipId ||
+    (world.config.arcade?.playerTeam !== undefined &&
+      s.colorName === world.config.arcade.playerTeam);
+
 /** Commit entity pools, bursts, respawns, and match outcome after all phases. */
 export const finalizeTick = (
   ctx: TickCtx,
@@ -143,9 +153,12 @@ export const finalizeTick = (
 ): World => {
   const { world, steps, now, spawned } = ctx;
   const survivors = ctx.moved.filter((s) => !ctx.removed.has(s.id));
-  const ships = cap(
+  // Arcade gets a bigger array cap and never evicts the pilot or its player-team
+  // summons; autobattle keeps MAX_SHIPS (matches `cap` with no controlled ship).
+  const ships = capExcept(
     { items: [...survivors, ...spawned], nextId: ctx.nextId },
-    MAX_SHIPS,
+    world.config.format === "arcade" ? MAX_ARCADE_SHIPS : MAX_SHIPS,
+    trimProtected(world),
   );
   const [bursts, sBursts] = commitBursts(
     world.bursts,
