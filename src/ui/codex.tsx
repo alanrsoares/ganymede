@@ -442,7 +442,10 @@ const CodexPanel = ({ store }: { store: CodexStore }) => {
       purpose="info"
       aria-label="Ship codex"
     >
-      <div className="flex flex-col gap-4">
+      {/* astryx wraps Dialog children in an overflow-hidden flex column, so the
+          codex owns its own scroll: fill the bounded wrapper (flex-1 + min-h-0)
+          and scroll the tall content within it. */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
         <HStack justify="between" vAlign="center" className="flex-wrap gap-3">
           <VStack gap={0}>
             <Heading level={3}>Ship Codex</Heading>
