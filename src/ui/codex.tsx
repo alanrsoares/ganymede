@@ -23,6 +23,7 @@ import {
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
+import { Tooltip } from "@astryxdesign/core/Tooltip";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { AstryxRoot } from "~/astryx";
@@ -47,6 +48,8 @@ const CLASS_TINT: Record<Archetype, string> = {
   heavy: "#ffb545",
   interceptor: "#ff6fae",
 };
+
+const cap = (a: string) => a[0].toUpperCase() + a.slice(1);
 
 type ClassVariant = "green" | "cyan" | "orange" | "pink";
 const CLASS_VARIANT: Record<Archetype, ClassVariant> = {
@@ -271,110 +274,166 @@ const CounterArrow = ({ a }: { a: Archetype }) => {
   );
 };
 
-const CounterNode = ({ a }: { a: Archetype }) => {
+// HTML node (positioned over the SVG arrow layer) so it can carry an Astryx
+// tooltip and click-to-select. Shows the class hull silhouette in its tint; the
+// node for the active tab is ringed. Clicking a node selects that class.
+const CounterNode = ({
+  a,
+  active,
+  onSelect,
+}: {
+  a: Archetype;
+  active: Archetype;
+  onSelect: (a: Archetype) => void;
+}) => {
   const [cx, cy] = NODE_POS[a];
   const tint = CLASS_TINT[a];
+  const on = active === a;
   return (
-    <g>
-      <circle
-        cx={cx}
-        cy={cy}
-        r={15}
-        fill={`${tint}22`}
-        stroke={tint}
-        strokeWidth="1.4"
-      />
-      <text
-        x={cx}
-        y={cy + 3}
-        textAnchor="middle"
-        fill={tint}
-        fontSize="8"
-        fontFamily="ui-monospace,monospace"
-        fontWeight="700"
+    <Tooltip
+      placement="above"
+      content={`${cap(a)} — presses ${COUNTERS[a]}, wary of ${COUNTERED_BY[a]}`}
+    >
+      <button
+        type="button"
+        aria-label={`${cap(a)}: presses ${COUNTERS[a]}, wary of ${COUNTERED_BY[a]}`}
+        onClick={() => onSelect(a)}
+        className="absolute grid h-9 w-9 -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full transition-transform hover:scale-110"
+        style={{
+          left: cx,
+          top: cy,
+          background: `${tint}1f`,
+          border: `1px solid ${on ? tint : `${tint}88`}`,
+          boxShadow: on ? `0 0 10px -1px ${tint}` : undefined,
+        }}
       >
-        {a.slice(0, 4).toUpperCase()}
-      </text>
-    </g>
+        <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
+          <path
+            d={hullSilhouettePath(a)}
+            fill={`${tint}3a`}
+            stroke={tint}
+            strokeWidth="1.4"
+          />
+        </svg>
+      </button>
+    </Tooltip>
   );
 };
 
-const CounterWeb = () => (
+const CounterWeb = ({
+  active,
+  onSelect,
+}: {
+  active: Archetype;
+  onSelect: (a: Archetype) => void;
+}) => (
   <div className="flex flex-col items-center gap-1">
     <Text size="4xs" color="secondary" className="uppercase tracking-[0.28em]">
       counter web
     </Text>
-    <svg
-      viewBox="0 0 240 188"
-      className="h-[188px] w-[240px]"
-      aria-hidden="true"
-    >
-      <defs>
-        <marker
-          id="codex-arrow"
-          viewBox="0 0 10 10"
-          refX="8"
-          refY="5"
-          markerWidth="6"
-          markerHeight="6"
-          orient="auto-start-reverse"
-        >
-          <path d="M0 0 L10 5 L0 10 z" fill="#cfeee2aa" />
-        </marker>
-      </defs>
+    <div className="relative h-[188px] w-[240px]">
+      <svg
+        viewBox="0 0 240 188"
+        className="absolute inset-0 h-full w-full"
+        aria-hidden="true"
+      >
+        <defs>
+          <marker
+            id="codex-arrow"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M0 0 L10 5 L0 10 z" fill="#cfeee2aa" />
+          </marker>
+        </defs>
+        {ARCHETYPES.map((a) => (
+          <CounterArrow key={`arrow-${a}`} a={a} />
+        ))}
+      </svg>
       {ARCHETYPES.map((a) => (
-        <CounterArrow key={`arrow-${a}`} a={a} />
+        <CounterNode
+          key={`node-${a}`}
+          a={a}
+          active={active}
+          onSelect={onSelect}
+        />
       ))}
-      {ARCHETYPES.map((a) => (
-        <CounterNode key={`node-${a}`} a={a} />
-      ))}
-    </svg>
+    </div>
     <Text size="3xs" color="secondary">
       arrow → the class it presses
     </Text>
   </div>
 );
 
-// --- Progression tree -------------------------------------------------------
+// --- Progression ladder -----------------------------------------------------
+// A vertical timeline: nodes fill with the accent up to the selected rank, the
+// current rank glows, and the connecting spine tracks how far you've climbed.
+const DIM = "rgba(230, 251, 241, 0.22)"; // unreached rail + hollow node border
+const LAST_LEVEL = TIERS[TIERS.length - 1].level;
+
+const TierNode = ({ reached, here }: { reached: boolean; here: boolean }) => (
+  <span
+    className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+    style={
+      reached
+        ? {
+            background: "var(--color-accent)",
+            boxShadow: here ? "0 0 8px var(--color-accent)" : undefined,
+          }
+        : { border: `1px solid ${DIM}` }
+    }
+  />
+);
+
 const TierRow = ({ t, lvl }: { t: (typeof TIERS)[number]; lvl: number }) => {
   const here = t.level === lvl;
   const reached = t.level <= lvl;
+  const isLast = t.level === LAST_LEVEL;
   return (
-    <div
-      className={`flex flex-wrap items-baseline gap-x-2 rounded px-1.5 py-[2px] ${here ? "bg-white/10" : ""}`}
-    >
-      <span
-        className="w-4 shrink-0 text-center font-bold tabular-nums"
-        style={{
-          color: reached ? "#8fe6ff" : undefined,
-          opacity: reached ? 1 : 0.35,
-        }}
+    <div className="flex gap-3">
+      <div className="flex w-3 shrink-0 flex-col items-center">
+        <TierNode reached={reached} here={here} />
+        {!isLast && (
+          <span
+            className="w-px flex-1"
+            style={{ background: t.level < lvl ? "var(--color-accent)" : DIM }}
+          />
+        )}
+      </div>
+      <div
+        className={`flex flex-1 flex-wrap items-baseline gap-x-2 gap-y-1 ${isLast ? "" : "pb-3"}`}
       >
-        {here ? "▸" : t.level}
-      </span>
-      <Text
-        size="2xs"
-        weight="semibold"
-        className={`w-14 shrink-0 ${reached ? "" : "opacity-45"}`}
-      >
-        {t.title}
-      </Text>
-      <Text size="3xs" color="secondary">
-        {t.note}
-      </Text>
-      {(t.gated ?? []).map((g) => (
-        <Badge
-          key={g.archetype}
-          variant={CLASS_VARIANT[g.archetype]}
-          label={`${g.archetype}: ${g.note}`}
-        />
-      ))}
+        <Text
+          size="2xs"
+          weight={here ? "bold" : "semibold"}
+          style={{
+            color: here ? "var(--color-accent)" : undefined,
+            opacity: reached ? 1 : 0.5,
+          }}
+        >
+          L{t.level} · {t.title}
+        </Text>
+        <Text size="3xs" color="secondary">
+          {t.note}
+        </Text>
+        {(t.gated ?? []).map((g) => (
+          <Badge
+            key={g.archetype}
+            variant={CLASS_VARIANT[g.archetype]}
+            label={`${g.archetype}: ${g.note}`}
+          />
+        ))}
+      </div>
     </div>
   );
 };
 
 const Progression = ({ lvl }: { lvl: number }) => (
-  <div className="flex flex-col gap-0.5">
+  <div className="flex flex-col gap-1">
     <Text size="4xs" color="secondary" className="uppercase tracking-[0.28em]">
       progression — every class shares this ladder
     </Text>
@@ -428,7 +487,7 @@ const ClassTabs = ({
       <Tab
         key={a}
         value={a}
-        label={a[0].toUpperCase() + a.slice(1)}
+        label={cap(a)}
         icon={
           <span
             className="inline-block h-2 w-2 rounded-full"
@@ -472,6 +531,7 @@ const CodexPanel = ({ store }: { store: CodexStore }) => {
       }}
       width="min(760px, 92vw)"
       maxHeight="90dvh"
+      padding={8}
       purpose="info"
       aria-label="Ship codex"
     >
@@ -506,7 +566,7 @@ const CodexPanel = ({ store }: { store: CodexStore }) => {
           <div className="flex-1">
             <ClassCard a={active} lvl={lvl} />
           </div>
-          <CounterWeb />
+          <CounterWeb active={active} onSelect={setActive} />
         </div>
         <Progression lvl={lvl} />
       </div>
