@@ -18,6 +18,7 @@ import {
 import { createRoot } from "react-dom/client";
 import { AstryxRoot } from "~/astryx";
 import { hullSilhouettePath } from "~/hull/silhouette";
+import { HUD, HudButton, HudPanel } from "~/ui/hud";
 import { type Signal, signal, useSignal } from "~/ui/signal";
 import type { LightCycle } from "~/world";
 import { carriesMissiles } from "~/world/tuning";
@@ -101,7 +102,7 @@ export interface Ui {
 }
 
 const HUD_LIVE = "mt-1 text-[12px] text-[#a9e8d6]";
-const CYAN = "#3fd8ff";
+const CYAN = HUD.cyan;
 
 interface KnobRange {
   min: number;
@@ -113,7 +114,7 @@ interface KnobRange {
 const HudTitle = memo(function HudTitle({ title }: { title: Signal<string> }) {
   const val = useSignal(title);
   return (
-    <h1 className="text-[14px] font-semibold uppercase tracking-[0.08em] text-[#d3f5e9]">
+    <h1 className="text-[14px] font-semibold uppercase tracking-[0.08em] text-mint">
       {val}
     </h1>
   );
@@ -183,7 +184,7 @@ const Knob = ({
         step={attrs.step}
         defaultValue={attrs.value}
         aria-valuetext={shown}
-        className="w-[128px] cursor-pointer rounded-full outline-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#040a0e]"
+        className="w-[128px] cursor-pointer rounded-full outline-none [touch-action:manipulation] [-webkit-tap-highlight-color:transparent] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-deep"
         style={
           {
             accentColor: accent,
@@ -231,7 +232,7 @@ const Toggle = memo(function Toggle({
         type="button"
         role="switch"
         aria-checked={val}
-        className={`w-[128px] cursor-pointer rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] [touch-action:manipulation] transition-colors ${val ? "text-[#040a0e]" : "text-[#8fe6ff] opacity-70"}`}
+        className={`w-[128px] cursor-pointer rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] [touch-action:manipulation] transition-colors ${val ? "text-deep" : "text-frost opacity-70"}`}
         style={
           val
             ? { background: accent, borderColor: accent }
@@ -362,22 +363,21 @@ const Controls = ({
 }) => {
   const [controlsOpen, setControlsOpen] = useState(true);
   return (
-    <div className="hud-controls absolute bottom-4 left-4 rounded-lg border border-[#3fd8ff]/25 bg-[#040a0e]/75 px-3.5 py-3 font-mono text-[11px] text-[#8fe6ff] [touch-action:manipulation] backdrop-blur-[4px]">
+    <HudPanel className="hud-controls absolute bottom-4 left-4 bg-deep/75 px-3.5 py-3 text-[11px] text-frost [touch-action:manipulation]">
       <div
         className={`flex items-center justify-between gap-3 ${controlsOpen ? "mb-2" : ""}`}
       >
-        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d3f5e9]">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mint">
           controls
         </span>
-        <button
-          type="button"
-          className="cursor-pointer rounded border border-[#3fd8ff]/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#8fe6ff] transition-colors hover:bg-[#3fd8ff]/10"
+        <HudButton
+          className="px-1.5 py-0.5 text-[10px]"
           aria-expanded={controlsOpen}
           aria-controls="controls-body"
           onClick={() => setControlsOpen((o) => !o)}
         >
           {controlsOpen ? "▾" : "▸"}
-        </button>
+        </HudButton>
       </div>
       <div
         id="controls-body"
@@ -388,7 +388,7 @@ const Controls = ({
           <Toggle id="k-hp" text="hp bars" state={hpOn} accent={CYAN} />
         </div>
       </div>
-    </div>
+    </HudPanel>
   );
 };
 
@@ -474,7 +474,7 @@ const RowRight = ({
       </span>
     ) : null}
     <span
-      className={`tabular-nums font-bold ${leader ? "text-[13px] text-[#ffe9a6] [text-shadow:0_0_8px_#ffb83f66]" : "text-[#ffe08a]"}`}
+      className={`tabular-nums font-bold ${leader ? "text-[13px] text-[#ffe9a6] [text-shadow:0_0_8px_#ffb83f66]" : "text-gold-ink"}`}
     >
       {val}
     </span>
@@ -571,22 +571,21 @@ const ScoreBox = ({
 }) => {
   const [scoreOpen, setScoreOpen] = useState(true);
   return (
-    <div className="hud-score absolute left-1/2 top-3 min-w-[216px] -translate-x-1/2 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/70 px-2.5 py-2 font-mono text-[11px] [text-shadow:0_0_8px_#04070a] backdrop-blur-[3px]">
+    <HudPanel className="hud-score absolute left-1/2 top-3 min-w-[216px] -translate-x-1/2 bg-deep/70 px-2.5 py-2 text-[11px] [text-shadow:0_0_8px_#04070a]">
       <div
         className={`flex items-center justify-between gap-3 ${scoreOpen ? "mb-1" : ""}`}
       >
         <span className="text-[9px] font-semibold uppercase tracking-[0.32em] text-[#7fc4b1]">
           scoreboard
         </span>
-        <button
-          type="button"
+        <HudButton
           aria-label="Toggle scoreboard"
-          className="cursor-pointer rounded border border-[#3fd8ff]/30 px-2 py-1 text-[10px] leading-none uppercase tracking-[0.1em] text-[#8fe6ff] transition-colors hover:bg-[#3fd8ff]/10 [touch-action:manipulation]"
+          className="px-2 py-1 text-[10px] leading-none"
           aria-expanded={scoreOpen}
           onClick={() => setScoreOpen((o) => !o)}
         >
           {scoreOpen ? "▾" : "▸"}
-        </button>
+        </HudButton>
       </div>
       {scoreOpen ? (
         <ScoreRows
@@ -599,7 +598,7 @@ const ScoreBox = ({
       ) : (
         <div />
       )}
-    </div>
+    </HudPanel>
   );
 };
 
@@ -613,7 +612,7 @@ const Banner = memo(function Banner({ banner }: { banner: Signal<string> }) {
       }`}
     >
       <span
-        className="inline-block rounded-xl border border-[#3fd8ff]/40 bg-[#040a0e]/80 px-8 py-4 text-[28px] font-bold uppercase tracking-[0.2em] text-[#d3f5e9] [text-shadow:0_0_16px_#3fd8ff] backdrop-blur-[4px]"
+        className="inline-block rounded-xl border border-signal/40 bg-deep/80 px-8 py-4 text-[28px] font-bold uppercase tracking-[0.2em] text-mint [text-shadow:0_0_16px_#3fd8ff] backdrop-blur-[4px]"
         style={{ animation: "scorePop 0.5s ease-out" }}
       >
         {val}
@@ -626,7 +625,7 @@ const ManualHeader = ({ s }: { s: LightCycle }) => {
   const archetypeLabel = s.archetype.toUpperCase();
   const levelLabel = `L${s.level}`;
   return (
-    <div className="flex justify-between items-center border-b border-[#ffb83f]/20 pb-1">
+    <div className="flex justify-between items-center border-b border-gold/20 pb-1">
       <span className="font-bold text-[12px] uppercase text-[#ffc66d]">
         🎮 CONTROL: {archetypeLabel} {levelLabel}
       </span>
@@ -691,8 +690,8 @@ const ManualActions = ({ s }: { s: LightCycle }) => {
   const fieldStatus = s.fuel > 300 ? "Ready (300 F)" : "Low Fuel";
 
   return (
-    <div className="mt-1 flex flex-col gap-1 border-t border-[#ffb83f]/10 pt-1.5">
-      <div className="text-[9px] uppercase tracking-wider text-[#ffb83f]/60 font-semibold">
+    <div className="mt-1 flex flex-col gap-1 border-t border-gold/10 pt-1.5">
+      <div className="text-[9px] uppercase tracking-wider text-gold/60 font-semibold">
         quick actions
       </div>
       <ActionRow keyLabel="Space" label="Fire Blasters" status={bulletStatus} />
@@ -719,8 +718,9 @@ const ManualPanel = memo(function ManualPanel({
 }) {
   const s = useSignal(controlledShip);
   return (
-    <div
-      className={`hud-manual absolute bottom-4 right-4 rounded-lg border border-[#ffb83f]/20 bg-[#040a0e]/85 px-4 py-3 font-mono text-[11px] text-[#ffe08a] backdrop-blur-[4px] transition-opacity duration-200 ${s ? "opacity-100 block" : "opacity-0 hidden"}`}
+    <HudPanel
+      accent="amber"
+      className={`hud-manual absolute bottom-4 right-4 bg-deep/85 px-4 py-3 text-[11px] text-gold-ink transition-opacity duration-200 ${s ? "opacity-100 block" : "opacity-0 hidden"}`}
       style={{
         width: 270,
         boxShadow: "0 0 15px rgba(255, 184, 63, 0.15)",
@@ -736,16 +736,14 @@ const ManualPanel = memo(function ManualPanel({
       ) : (
         <div />
       )}
-    </div>
+    </HudPanel>
   );
 });
 
 const HelpRow = ({ keys, action }: { keys: string; action: string }) => (
   <div className="flex justify-between items-start gap-4 text-[10px]">
-    <span className="text-[#8fe6ff]/80 font-bold whitespace-nowrap">
-      {keys}
-    </span>
-    <span className="text-[#d3f5e9]/70 text-right">{action}</span>
+    <span className="text-frost/80 font-bold whitespace-nowrap">{keys}</span>
+    <span className="text-mint/70 text-right">{action}</span>
   </div>
 );
 
@@ -757,7 +755,7 @@ const HelpSection = ({
   rows: { keys: string; action: string }[];
 }) => (
   <div className="flex flex-col gap-1">
-    <div className="text-[9px] uppercase tracking-wider text-[#3fd8ff]/60 font-semibold border-b border-[#3fd8ff]/10 pb-0.5 mb-0.5">
+    <div className="text-[9px] uppercase tracking-wider text-signal/60 font-semibold border-b border-signal/10 pb-0.5 mb-0.5">
       {title}
     </div>
     {rows.map((r) => (
@@ -770,24 +768,23 @@ const ControlsInfoPanel = () => {
   const [open, setOpen] = useState(false);
 
   return (
-    <div
-      className="hud-guide absolute top-12 left-4 rounded-lg border border-[#3fd8ff]/20 bg-[#040a0e]/75 px-3 py-2 font-mono text-[11px] backdrop-blur-[4px]"
+    <HudPanel
+      className="hud-guide absolute top-12 left-4 bg-deep/75 px-3 py-2 text-[11px]"
       style={{ boxShadow: "0 0 15px rgba(63, 216, 255, 0.1)", zIndex: 10 }}
     >
       <div className="flex items-center justify-between gap-4">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#d3f5e9]">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mint">
           ⌨️ GUIDE
         </span>
-        <button
-          type="button"
-          className="cursor-pointer rounded border border-[#3fd8ff]/30 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[#8fe6ff] transition-colors hover:bg-[#3fd8ff]/10"
+        <HudButton
+          className="px-1.5 py-0.5 text-[10px]"
           onClick={() => setOpen((o) => !o)}
         >
           {open ? "▾" : "▸"}
-        </button>
+        </HudButton>
       </div>
       <div
-        className={`${open ? "flex" : "hidden"} flex-col gap-3 mt-2 border-t border-[#3fd8ff]/20 pt-2`}
+        className={`${open ? "flex" : "hidden"} flex-col gap-3 mt-2 border-t border-signal/20 pt-2`}
         style={{ width: 230 }}
       >
         <HelpSection
@@ -815,7 +812,7 @@ const ControlsInfoPanel = () => {
           ]}
         />
       </div>
-    </div>
+    </HudPanel>
   );
 };
 
