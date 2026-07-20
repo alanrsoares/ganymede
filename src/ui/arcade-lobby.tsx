@@ -87,13 +87,17 @@ interface HullBlurb {
 }
 
 const HULLS: readonly HullBlurb[] = [
-  { key: "scout", title: "Scout", blurb: "Fast · fragile skirmisher" },
-  { key: "fighter", title: "Fighter", blurb: "Balanced · twin cannons" },
-  { key: "heavy", title: "Heavy", blurb: "Armored · mines, big tank" },
+  { key: "scout", title: "Recon Dart", blurb: "Fastest hull · thin armor" },
+  {
+    key: "fighter",
+    title: "Line Fighter",
+    blurb: "Balanced · tightest fire rate",
+  },
+  { key: "heavy", title: "Carrier", blurb: "Armored · mines · big tank" },
   {
     key: "interceptor",
     title: "Interceptor",
-    blurb: "Nimble · homing missiles",
+    blurb: "Nimble · seeking missiles",
   },
 ];
 

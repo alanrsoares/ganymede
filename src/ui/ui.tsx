@@ -696,7 +696,7 @@ const ManualActions = ({ s }: { s: LightCycle }) => {
       </div>
       <ActionRow keyLabel="Space" label="Fire Blasters" status={bulletStatus} />
       <ActionRow keyLabel="2" label="Drop Mine" status={mineStatus} />
-      <ActionRow keyLabel="3" label="Homing Missile" status={missileStatus} />
+      <ActionRow keyLabel="3" label="Seeking Missile" status={missileStatus} />
       <ActionRow keyLabel="4" label="Nitro Boost" status={boostStatus} />
       <ActionRow keyLabel="5" label="Shield Recharge" status={shieldStatus} />
       <ActionRow keyLabel="6" label="Cloak Device" status={cloakStatus} />
