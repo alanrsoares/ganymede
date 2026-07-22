@@ -16,7 +16,7 @@ phases ship (repo convention).
 | Phase | Commit | Status |
 |---|---|---|
 | 1 — delete whip module | `refactor(world): delete dead whip module` | ☑ |
-| 2 — offer-freeze guard in sim | `fix(arcade): enforce offer freeze inside update` | ☐ |
+| 2 — offer-freeze guard in sim | `fix(arcade): enforce offer freeze inside update` | ☑ |
 | 3 — pilot-mods read model | `refactor(arcade): deepen augments behind pilotMods read model` | ☐ |
 
 ## Decisions (grilled 2026-07-23)

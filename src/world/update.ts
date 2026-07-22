@@ -489,7 +489,15 @@ function handleUserAction(world: World, actionId: number): World {
   };
 }
 
+// A pending wave-clear offer freezes the sim: ticks and manual actions are
+// identity until the pilot picks. Enforced at the sim's interface so no caller
+// can keep the fight running under the offer dialog. World-replacing msgs
+// (pickAugment, reset, …) still pass.
+const frozenByOffer = (msg: Msg, world: World): boolean =>
+  world.arcade?.offer != null && (msg.kind === "tick" || msg.kind === "action");
+
 export function update(msg: Msg, world: World): World {
+  if (frozenByOffer(msg, world)) return world;
   // Rotate the field furniture ring to this world's age before any handler
   // reads a base/portal/pad position (deterministic — derived only from age).
   setOrbitPhase(world.age);
