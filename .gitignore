@@ -15,3 +15,6 @@ bun-cache
 
 # chrome-driver verification screenshots
 chromium_cli/
+
+
+.serena/
