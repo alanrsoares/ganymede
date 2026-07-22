@@ -116,9 +116,6 @@ const retainPools = (
     ),
     nextId: motion.missileId,
   },
-  // Whips expire / orphan-drop inside advanceWhips, so survivors pass straight
-  // through — a lash never destroys the whip itself, so no removal set.
-  whips: { items: motion.whips, nextId: motion.whipId },
 });
 
 // Commit escort drones: motion advanced/expired the existing ones; new ones

@@ -10,7 +10,6 @@ import { createRoot } from "react-dom/client";
 import { AstryxRoot } from "~/astryx";
 import { type Signal, signal, useSignal } from "~/ui/signal";
 import type { LightCycle } from "~/world";
-import { WHIP_ENABLED } from "~/world/tuning";
 
 // Live boolean set the stick + fire button write into; mirrors World.controlKeys.
 export interface Keys {
@@ -48,7 +47,6 @@ export const isTouchPrimary = (): boolean =>
   matchMedia("(hover: none) and (pointer: coarse)").matches;
 
 const ABILITIES: readonly { id: number; label: string; icon: string }[] = [
-  { id: 8, label: "Whip", icon: "🐙" },
   { id: 2, label: "Mine", icon: "💣" },
   { id: 3, label: "Missile", icon: "🚀" },
   { id: 4, label: "Boost", icon: "⚡" },
@@ -303,7 +301,7 @@ const MobileControls = ({
         <div className="flex flex-col items-end gap-2">
           <CycleButton onCycle={onCycle} />
           <div className="grid grid-cols-3 gap-1.5">
-            {ABILITIES.filter((a) => a.id !== 8 || WHIP_ENABLED).map((a) => (
+            {ABILITIES.map((a) => (
               <AbilityButton key={a.id} ability={a} onAction={onAction} />
             ))}
           </div>

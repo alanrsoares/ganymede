@@ -2,7 +2,6 @@ import { assertNever } from "@onrails/pattern";
 import { wrapDelta } from "~/engine/physics";
 import { nextInt } from "~/engine/rng";
 import { type AugmentId, augCount, augMul } from "~/world/augments";
-import { spawnWhip } from "~/world/tick/whips";
 import {
   hurtShip,
   rollShip,
@@ -32,9 +31,6 @@ import {
   shieldForLevel,
   shipRadius,
   speedForLevel,
-  WHIP_DAMAGE,
-  WHIP_FUEL_COST,
-  WHIP_REACH,
   weaponFor,
 } from "./tuning";
 import {
@@ -52,7 +48,6 @@ import {
   type RallyBeacon,
   setOrbitPhase,
   TEAMS,
-  type Whip,
   type World,
 } from "./types";
 
@@ -293,46 +288,6 @@ function handleMissile(
   return missileId;
 }
 
-// Nearest live enemy within `range` (naive, matches findNearestMissileTarget).
-function findNearestEnemy(
-  s: LightCycle,
-  ships: readonly LightCycle[],
-  range: number,
-): LightCycle | null {
-  let best: LightCycle | null = null;
-  let bestD2 = range * range;
-  for (const other of ships) {
-    if (other.id === s.id || other.colorName === s.colorName) continue;
-    const dx = other.x - s.x;
-    const dy = other.y - s.y;
-    const d2 = dx * dx + dy * dy;
-    if (d2 < bestD2) {
-      bestD2 = d2;
-      best = other;
-    }
-  }
-  return best;
-}
-
-// Pilot special: crack a verlet whip toward the nearest enemy. One whip per
-// ship at a time (its short life is the cooldown) and it costs fuel. Returns
-// the next whip id (unchanged if it didn't fire).
-function handleWhip(
-  s: LightCycle,
-  nextShips: LightCycle[],
-  idx: number,
-  nextWhips: Whip[],
-  whipId: number,
-  ships: readonly LightCycle[],
-  alreadyActive: boolean,
-): number {
-  if (alreadyActive || s.fuel < WHIP_FUEL_COST) return whipId;
-  const target = findNearestEnemy(s, ships, WHIP_REACH);
-  nextWhips.push(spawnWhip(whipId, s, target, WHIP_DAMAGE));
-  nextShips[idx] = { ...s, fuel: Math.max(0, s.fuel - WHIP_FUEL_COST) };
-  return whipId + 1;
-}
-
 function handleBuffs(
   s: LightCycle,
   nextShips: LightCycle[],
@@ -375,12 +330,10 @@ type ActionPools = {
   missiles: Missile[];
   mines: Mine[];
   bursts: Burst[];
-  whips: Whip[];
   idBullets: number;
   idMissiles: number;
   idMines: number;
   idBursts: number;
-  idWhips: number;
   scoreGain: number; // points banked this action (nova kills)
 };
 
@@ -489,17 +442,6 @@ function dispatchAction(
         world.ships.items,
       );
       break;
-    case 8:
-      p.idWhips = handleWhip(
-        s,
-        p.ships,
-        idx,
-        p.whips,
-        p.idWhips,
-        world.ships.items,
-        world.whips.items.some((w) => w.owner === s.id),
-      );
-      break;
     case 9:
       handleNova(world, s, p);
       break;
@@ -522,12 +464,10 @@ function handleUserAction(world: World, actionId: number): World {
     missiles: [...world.missiles.items],
     mines: [...world.mines.items],
     bursts: [...world.bursts.items],
-    whips: [...world.whips.items],
     idBullets: world.bullets.nextId,
     idMissiles: world.missiles.nextId,
     idMines: world.mines.nextId,
     idBursts: world.bursts.nextId,
-    idWhips: world.whips.nextId,
     scoreGain: 0,
   };
   dispatchAction(world, s, idx, actionId, p);
@@ -539,7 +479,6 @@ function handleUserAction(world: World, actionId: number): World {
     missiles: { ...world.missiles, items: p.missiles, nextId: p.idMissiles },
     mines: { ...world.mines, items: p.mines, nextId: p.idMines },
     bursts: { ...world.bursts, items: p.bursts, nextId: p.idBursts },
-    whips: { ...world.whips, items: p.whips, nextId: p.idWhips },
     score:
       p.scoreGain > 0
         ? {

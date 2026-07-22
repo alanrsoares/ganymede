@@ -33,7 +33,6 @@ import { drawMines, drawPickupOrbs, drawRocks, drawShrapnel } from "./hazards";
 import { drawBolts, drawBursts, drawDrones, drawMissiles } from "./projectiles";
 import { createPusher, type PushFn } from "./push";
 import { drawShips } from "./ships";
-import { drawWhips } from "./whips";
 
 export interface OverlayFrame {
   w: number;
@@ -120,7 +119,6 @@ const drawDynamicEntities = (
     world,
     showHp,
   );
-  drawWhips(push, cellPx, cellPy, now, world);
   drawDrones(push, cellPx, cellPy, now, world);
   drawBursts(push, cellPx, cellPy, now, world);
 
