@@ -1,7 +1,6 @@
 import { wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
-import { augCount, augMul } from "~/world/augments";
 import {
   acquireTarget,
   spawnBullet,
@@ -113,10 +112,7 @@ const spawnSalvo = (
   const mid = (shots - 1) / 2;
   // The pilot's bolts carry the run's Caliber augment; every other shooter (and
   // all of autobattle) fires at 1×.
-  const dmgMul =
-    s.id === ctx.world.controlledShipId
-      ? augMul(ctx.world.arcade?.augments ?? {}, "damage")
-      : 1;
+  const dmgMul = s.id === ctx.world.controlledShipId ? ctx.mods.damageMul : 1;
   // For a cone (coneStep > 0) we rotate each barrel's aim apart into a shotgun
   // spread; otherwise barrels offset perpendicular (a parallel wall).
   const ax = wrapDelta(s.x, aim.x, ARENA.w);
@@ -146,7 +142,7 @@ const pilotWeapon = (
   s: Mutable<LightCycle>,
 ): { wp: WeaponProfile; coneStep: number } => {
   const base = weaponFor(s.archetype, s.level);
-  const fan = augCount(ctx.world.arcade?.augments ?? {}, "spread");
+  const fan = ctx.mods.fanBarrels;
   return fan > 0
     ? {
         wp: {
@@ -284,9 +280,7 @@ export const fireWeapon = (
       const { wp, coneStep } = pilotWeapon(ctx, s);
       const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp, coneStep);
       s.fireCooldown =
-        applyFireCadence(s, wp) *
-        PILOT_FIRE_MULT *
-        augMul(ctx.world.arcade?.augments ?? {}, "cooldown");
+        applyFireCadence(s, wp) * PILOT_FIRE_MULT * ctx.mods.cooldownMul;
       return nextId;
     }
     return bulletId;

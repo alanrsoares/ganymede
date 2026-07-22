@@ -1,8 +1,7 @@
 import { assertNever } from "@onrails/pattern";
 import { wrapDelta } from "~/engine/physics";
 import { nextInt } from "~/engine/rng";
-import { type AugmentId, augCount, augMul } from "~/world/augments";
-import { spawnWhip } from "~/world/tick/whips";
+import { type AugmentId, bakeCaps, pilotMods } from "~/world/augments";
 import {
   hurtShip,
   rollShip,
@@ -32,9 +31,6 @@ import {
   shieldForLevel,
   shipRadius,
   speedForLevel,
-  WHIP_DAMAGE,
-  WHIP_FUEL_COST,
-  WHIP_REACH,
   weaponFor,
 } from "./tuning";
 import {
@@ -52,7 +48,6 @@ import {
   type RallyBeacon,
   setOrbitPhase,
   TEAMS,
-  type Whip,
   type World,
 } from "./types";
 
@@ -293,46 +288,6 @@ function handleMissile(
   return missileId;
 }
 
-// Nearest live enemy within `range` (naive, matches findNearestMissileTarget).
-function findNearestEnemy(
-  s: LightCycle,
-  ships: readonly LightCycle[],
-  range: number,
-): LightCycle | null {
-  let best: LightCycle | null = null;
-  let bestD2 = range * range;
-  for (const other of ships) {
-    if (other.id === s.id || other.colorName === s.colorName) continue;
-    const dx = other.x - s.x;
-    const dy = other.y - s.y;
-    const d2 = dx * dx + dy * dy;
-    if (d2 < bestD2) {
-      bestD2 = d2;
-      best = other;
-    }
-  }
-  return best;
-}
-
-// Pilot special: crack a verlet whip toward the nearest enemy. One whip per
-// ship at a time (its short life is the cooldown) and it costs fuel. Returns
-// the next whip id (unchanged if it didn't fire).
-function handleWhip(
-  s: LightCycle,
-  nextShips: LightCycle[],
-  idx: number,
-  nextWhips: Whip[],
-  whipId: number,
-  ships: readonly LightCycle[],
-  alreadyActive: boolean,
-): number {
-  if (alreadyActive || s.fuel < WHIP_FUEL_COST) return whipId;
-  const target = findNearestEnemy(s, ships, WHIP_REACH);
-  nextWhips.push(spawnWhip(whipId, s, target, WHIP_DAMAGE));
-  nextShips[idx] = { ...s, fuel: Math.max(0, s.fuel - WHIP_FUEL_COST) };
-  return whipId + 1;
-}
-
 function handleBuffs(
   s: LightCycle,
   nextShips: LightCycle[],
@@ -375,12 +330,10 @@ type ActionPools = {
   missiles: Missile[];
   mines: Mine[];
   bursts: Burst[];
-  whips: Whip[];
   idBullets: number;
   idMissiles: number;
   idMines: number;
   idBursts: number;
-  idWhips: number;
   scoreGain: number; // points banked this action (nova kills)
 };
 
@@ -441,14 +394,12 @@ const applyNova = (
 // damage, so fuel is the only rate limit. Kills are removed here and counted by
 // the arcade wave machine's death-diff next tick (see advanceWave).
 function handleNova(world: World, s: LightCycle, p: ActionPools): void {
-  const stacks = world.arcade ? augCount(world.arcade.augments, "nova") : 0;
-  if (stacks <= 0 || s.fuel < NOVA_FUEL_COST) return;
+  const rank = world.arcade ? pilotMods(world.arcade.augments).novaRank : 0;
+  if (rank <= 0 || s.fuel < NOVA_FUEL_COST) return;
   const cone: NovaCone = {
-    cosArc: Math.cos(
-      Math.min(Math.PI, NOVA_ARC + (stacks - 1) * NOVA_ARC_STEP),
-    ),
-    radius: NOVA_RADIUS + (stacks - 1) * NOVA_RADIUS_STEP,
-    dmg: NOVA_DAMAGE + (stacks - 1) * NOVA_DAMAGE_STEP,
+    cosArc: Math.cos(Math.min(Math.PI, NOVA_ARC + (rank - 1) * NOVA_ARC_STEP)),
+    radius: NOVA_RADIUS + (rank - 1) * NOVA_RADIUS_STEP,
+    dmg: NOVA_DAMAGE + (rank - 1) * NOVA_DAMAGE_STEP,
   };
   const { survivors, dead } = applyNova(s, p.ships, cone);
   p.ships = survivors;
@@ -489,17 +440,6 @@ function dispatchAction(
         world.ships.items,
       );
       break;
-    case 8:
-      p.idWhips = handleWhip(
-        s,
-        p.ships,
-        idx,
-        p.whips,
-        p.idWhips,
-        world.ships.items,
-        world.whips.items.some((w) => w.owner === s.id),
-      );
-      break;
     case 9:
       handleNova(world, s, p);
       break;
@@ -522,12 +462,10 @@ function handleUserAction(world: World, actionId: number): World {
     missiles: [...world.missiles.items],
     mines: [...world.mines.items],
     bursts: [...world.bursts.items],
-    whips: [...world.whips.items],
     idBullets: world.bullets.nextId,
     idMissiles: world.missiles.nextId,
     idMines: world.mines.nextId,
     idBursts: world.bursts.nextId,
-    idWhips: world.whips.nextId,
     scoreGain: 0,
   };
   dispatchAction(world, s, idx, actionId, p);
@@ -539,7 +477,6 @@ function handleUserAction(world: World, actionId: number): World {
     missiles: { ...world.missiles, items: p.missiles, nextId: p.idMissiles },
     mines: { ...world.mines, items: p.mines, nextId: p.idMines },
     bursts: { ...world.bursts, items: p.bursts, nextId: p.idBursts },
-    whips: { ...world.whips, items: p.whips, nextId: p.idWhips },
     score:
       p.scoreGain > 0
         ? {
@@ -550,7 +487,15 @@ function handleUserAction(world: World, actionId: number): World {
   };
 }
 
+// A pending wave-clear offer freezes the sim: ticks and manual actions are
+// identity until the pilot picks. Enforced at the sim's interface so no caller
+// can keep the fight running under the offer dialog. World-replacing msgs
+// (pickAugment, reset, …) still pass.
+const frozenByOffer = (msg: Msg, world: World): boolean =>
+  world.arcade?.offer != null && (msg.kind === "tick" || msg.kind === "action");
+
 export function update(msg: Msg, world: World): World {
+  if (frozenByOffer(msg, world)) return world;
   // Rotate the field furniture ring to this world's age before any handler
   // reads a base/portal/pad position (deterministic — derived only from age).
   setOrbitPhase(world.age);
@@ -620,12 +565,13 @@ function pickAugment(world: World, id: AugmentId): World {
   const a = world.arcade;
   if (!a?.offer?.includes(id)) return world;
   const augments = { ...a.augments, [id]: (a.augments[id] ?? 0) + 1 };
-  const hpMul = augMul(augments, "hp");
-  const shMul = augMul(augments, "shield");
+  const mods = pilotMods(augments);
   const items = world.ships.items.map((s) => {
     if (s.id !== world.controlledShipId) return s;
-    const maxHp = Math.round(maxHpFor(s.archetype, s.level) * hpMul);
-    const maxShield = Math.round(shieldForLevel(s.level) * shMul);
+    const { maxHp, maxShield } = bakeCaps(mods, {
+      maxHp: maxHpFor(s.archetype, s.level),
+      maxShield: shieldForLevel(s.level),
+    });
     return { ...s, maxHp, maxShield, hp: maxHp, shield: maxShield };
   });
   return {

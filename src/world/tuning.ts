@@ -637,29 +637,6 @@ export const ARC_MAX_LINKS = 6; // total struck nodes (primary + up to 5 forks)
 export const ARC_CHAIN_FALLOFF = 0.8; // bolt damage × this each successive hop
 export const ARC_DAMAGE = 2; // pierce damage dealt at the primary node
 
-// Pilot special — the verlet WHIP: a chain of WHIP_NODES linked nodes anchored to
-// the pilot's nose that lashes out toward the nearest enemy under verlet
-// integration + distance-constraint relaxation, then retracts over WHIP_LIFE
-// gens (a sin envelope: extends to full reach mid-life, recoils by the end). Any
-// enemy a node sweeps within WHIP_HIT_RADIUS of takes WHIP_DAMAGE once. Costs
-// fuel; only one whip per ship at a time (its lifetime is the cooldown). Pure
-// float physics — deterministic, no RNG.
-// Master switch for the whip special. Off = unplugged from gameplay (no key /
-// no ability button, nothing ever spawns) while the whole implementation stays
-// in the tree for further trial. Flip to true to re-arm it.
-export const WHIP_ENABLED = false;
-export const WHIP_NODES = 14; // links in the chain (anchor + 13 trailing)
-export const WHIP_SEG_LEN = 3.0; // rest length per segment → ~39-cell reach
-export const WHIP_LIFE = 30; // gens the lash lives before it clears (~0.45s)
-export const WHIP_DAMAGE = 4; // pierce dealt to each enemy the lash sweeps (once)
-export const WHIP_HIT_RADIUS = 4.0; // node→enemy contact radius (cells)
-export const WHIP_REACH = 48; // tip target-seek range at fire time (cells)
-export const WHIP_FUEL_COST = 220; // fuel spent to crack the whip
-export const WHIP_DAMP = 0.7; // verlet velocity retention per gen — snappier
-export const WHIP_STIFF = 0.8; // distance-constraint relaxation factor per pass
-export const WHIP_SEEK = 0.32; // pull toward the extend/retract spine per gen
-export const WHIP_ARC = 8; // lateral bow (cells) — the lash sweeps a crescent
-
 // Rammers hit bases harder on a hull slam; everyone else does the flat ram.
 export const BASE_RAM_MULT = 3; // rammer base-ram multiplier over BASE_RAM_DAMAGE
 

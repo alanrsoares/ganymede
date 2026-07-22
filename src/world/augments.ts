@@ -161,6 +161,50 @@ export const augMul = (stacks: AugmentStacks, stat: AugmentStat): number => {
 export const augCount = (stacks: AugmentStacks, id: AugmentId): number =>
   stacks[id] ?? 0;
 
+/**
+ * Pilot mods: everything the augment stack does to the pilot, as one derived
+ * stat block — the sim's single answer to "what does augment X do". Derived
+ * from the stacks on demand (never stored on World; determinism stays with the
+ * stacks). An empty stack is the identity block: all muls 1, all counts 0.
+ */
+export interface PilotMods {
+  readonly hpMul: number;
+  readonly shieldMul: number;
+  /** Floored at MIN_COOLDOWN_MUL — overclock can't zero the fire interval. */
+  readonly cooldownMul: number;
+  readonly damageMul: number;
+  readonly regenMul: number;
+  readonly speedMul: number;
+  readonly fanBarrels: number; // spread stacks: extra barrels on the pilot's gun
+  readonly novaRank: number; // nova stacks: 0 = the blast is locked
+  readonly wingSize: number; // wing stacks: escort head-count target
+}
+
+export const pilotMods = (stacks: AugmentStacks): PilotMods => ({
+  hpMul: augMul(stacks, "hp"),
+  shieldMul: augMul(stacks, "shield"),
+  cooldownMul: augMul(stacks, "cooldown"),
+  damageMul: augMul(stacks, "damage"),
+  regenMul: augMul(stacks, "regen"),
+  speedMul: augMul(stacks, "speed"),
+  fanBarrels: augCount(stacks, "spread"),
+  novaRank: augCount(stacks, "nova"),
+  wingSize: augCount(stacks, "wing"),
+});
+
+/**
+ * Multiply-and-round base caps by the block — the one hp/shield bake rule.
+ * Callers always feed caps from the level tables, never the stored values, so
+ * stacking re-bakes cleanly instead of compounding on itself.
+ */
+export const bakeCaps = (
+  mods: PilotMods,
+  caps: { readonly maxHp: number; readonly maxShield: number },
+): { maxHp: number; maxShield: number } => ({
+  maxHp: Math.round(caps.maxHp * mods.hpMul),
+  maxShield: Math.round(caps.maxShield * mods.shieldMul),
+});
+
 /** Total stacks owned — the prestige "Mk N" readout on the HUD. */
 export const augmentTier = (stacks: AugmentStacks): number => {
   let t = 0;

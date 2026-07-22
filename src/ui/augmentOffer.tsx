@@ -44,15 +44,16 @@ const createOfferStore = (): OfferStore => {
 };
 
 // Card accent by what the augment does — defense cyan, offense amber, mobility
-// lime — so the three choices read apart at a glance.
-const STAT_TINT: Record<AugmentStat, string> = {
+// lime — so the three choices read apart at a glance. `satisfies` keeps this
+// exhaustive: a new AugmentStat in the sim fails the build here until tinted.
+const STAT_TINT = {
   hp: "var(--color-accent)",
   shield: "var(--color-accent)",
   regen: "#34d399",
   damage: "#f59e0b",
   cooldown: "#f59e0b",
   speed: "#a3e635",
-};
+} satisfies Record<AugmentStat, string>;
 
 const OfferView = ({
   store,
