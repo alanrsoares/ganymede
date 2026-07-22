@@ -4,7 +4,7 @@
 // No-op unless `world.config.format === "arcade"`. See docs/arcade-mode-plan.md.
 
 import { nextRange } from "~/engine/rng";
-import { augCount, augMul, rollOffer } from "~/world/augments";
+import { bakeCaps, pilotMods, rollOffer } from "~/world/augments";
 import { rollShip } from "~/world/factory";
 import {
   activeTeams,
@@ -64,17 +64,16 @@ function spawnAt(
   // pilot, respawns, mustered escorts). Empty stack = identity, so this is a
   // no-op until a pick lands. Offense augments apply at the pilot's per-shot
   // read sites, not here.
-  const stacks =
+  const mods =
     world.arcade && color === world.config.arcade?.playerTeam
-      ? world.arcade.augments
+      ? pilotMods(world.arcade.augments)
       : null;
-  const placed = stacks
+  const placed = mods
     ? {
         ...spot,
-        maxHp: Math.round(spot.maxHp * augMul(stacks, "hp")),
-        hp: Math.round(spot.hp * augMul(stacks, "hp")),
-        maxShield: Math.round(spot.maxShield * augMul(stacks, "shield")),
-        shield: Math.round(spot.shield * augMul(stacks, "shield")),
+        ...bakeCaps(mods, spot),
+        hp: Math.round(spot.hp * mods.hpMul),
+        shield: Math.round(spot.shield * mods.shieldMul),
       }
     : spot;
   return {
@@ -245,7 +244,7 @@ const spawnWingDrone = (
 const maintainWing = (world: World, cfg: ArcadeConfig): World => {
   const a = world.arcade;
   if (!a) return world;
-  const wing = augCount(a.augments, "wing");
+  const wing = pilotMods(a.augments).wingSize;
   if (wing <= 0) return world;
   const target = Math.min(wing, WING_MAX);
   const alive = world.ships.items.filter(

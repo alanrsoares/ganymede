@@ -1,6 +1,6 @@
 import type { Seed } from "~/engine/rng";
 import { nextInt } from "~/engine/rng";
-import { augMul } from "~/world/augments";
+import { bakeCaps, type PilotMods, pilotMods } from "~/world/augments";
 import { hurtShip, rollShip } from "~/world/factory";
 import { toroidalDist } from "~/world/math";
 import {
@@ -55,6 +55,9 @@ export interface TickCtx {
   readonly world: World;
   readonly suddenDeath: boolean;
   readonly levelScale: number; // XP-requirement multiplier (age ramp; 1 in arcade)
+  /** The run's augment stack as a derived stat block, computed once per tick.
+   * Identity block outside arcade (empty stack), so reads are always safe. */
+  readonly mods: PilotMods;
 
   moved: Mutable<LightCycle>[];
   seed: Seed;
@@ -77,6 +80,7 @@ export const createTickCtx = (
   world,
   suddenDeath: world.age >= world.config.reinforceGens,
   levelScale: levelUpScale(world.age, world.config.format),
+  mods: pilotMods(world.arcade?.augments ?? {}),
   moved: [],
   seed: world.seed,
   nextId: world.ships.nextId,
@@ -297,10 +301,9 @@ export function promote(
   // Fold the pilot's run augments into the fresh caps (from the tables, so no
   // compounding on the stored value). Empty stack = identity — no-op otherwise.
   if (ctx.world.arcade && s.id === ctx.world.controlledShipId) {
-    s.maxHp = Math.round(s.maxHp * augMul(ctx.world.arcade.augments, "hp"));
-    s.maxShield = Math.round(
-      s.maxShield * augMul(ctx.world.arcade.augments, "shield"),
-    );
+    const baked = bakeCaps(ctx.mods, s);
+    s.maxHp = baked.maxHp;
+    s.maxShield = baked.maxShield;
   }
   if (heal) {
     s.hp = s.maxHp;

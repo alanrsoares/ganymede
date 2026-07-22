@@ -1,7 +1,7 @@
 import { assertNever } from "@onrails/pattern";
 import { wrapDelta } from "~/engine/physics";
 import { nextInt } from "~/engine/rng";
-import { type AugmentId, augCount, augMul } from "~/world/augments";
+import { type AugmentId, bakeCaps, pilotMods } from "~/world/augments";
 import {
   hurtShip,
   rollShip,
@@ -394,14 +394,12 @@ const applyNova = (
 // damage, so fuel is the only rate limit. Kills are removed here and counted by
 // the arcade wave machine's death-diff next tick (see advanceWave).
 function handleNova(world: World, s: LightCycle, p: ActionPools): void {
-  const stacks = world.arcade ? augCount(world.arcade.augments, "nova") : 0;
-  if (stacks <= 0 || s.fuel < NOVA_FUEL_COST) return;
+  const rank = world.arcade ? pilotMods(world.arcade.augments).novaRank : 0;
+  if (rank <= 0 || s.fuel < NOVA_FUEL_COST) return;
   const cone: NovaCone = {
-    cosArc: Math.cos(
-      Math.min(Math.PI, NOVA_ARC + (stacks - 1) * NOVA_ARC_STEP),
-    ),
-    radius: NOVA_RADIUS + (stacks - 1) * NOVA_RADIUS_STEP,
-    dmg: NOVA_DAMAGE + (stacks - 1) * NOVA_DAMAGE_STEP,
+    cosArc: Math.cos(Math.min(Math.PI, NOVA_ARC + (rank - 1) * NOVA_ARC_STEP)),
+    radius: NOVA_RADIUS + (rank - 1) * NOVA_RADIUS_STEP,
+    dmg: NOVA_DAMAGE + (rank - 1) * NOVA_DAMAGE_STEP,
   };
   const { survivors, dead } = applyNova(s, p.ships, cone);
   p.ships = survivors;
@@ -567,12 +565,13 @@ function pickAugment(world: World, id: AugmentId): World {
   const a = world.arcade;
   if (!a?.offer?.includes(id)) return world;
   const augments = { ...a.augments, [id]: (a.augments[id] ?? 0) + 1 };
-  const hpMul = augMul(augments, "hp");
-  const shMul = augMul(augments, "shield");
+  const mods = pilotMods(augments);
   const items = world.ships.items.map((s) => {
     if (s.id !== world.controlledShipId) return s;
-    const maxHp = Math.round(maxHpFor(s.archetype, s.level) * hpMul);
-    const maxShield = Math.round(shieldForLevel(s.level) * shMul);
+    const { maxHp, maxShield } = bakeCaps(mods, {
+      maxHp: maxHpFor(s.archetype, s.level),
+      maxShield: shieldForLevel(s.level),
+    });
     return { ...s, maxHp, maxShield, hp: maxHp, shield: maxShield };
   });
   return {

@@ -1,5 +1,11 @@
 import { expect, test } from "bun:test";
-import { augMul, augmentTier, MIN_COOLDOWN_MUL } from "~/world/augments";
+import {
+  augMul,
+  augmentTier,
+  bakeCaps,
+  MIN_COOLDOWN_MUL,
+  pilotMods,
+} from "~/world/augments";
 
 test("augMul is 1 for an empty stack", () => {
   expect(augMul({}, "hp")).toBe(1);
@@ -28,4 +34,49 @@ test("overclock lowers the cooldown multiplier but is floored", () => {
 test("augmentTier sums all owned stacks", () => {
   expect(augmentTier({})).toBe(0);
   expect(augmentTier({ hull: 2, caliber: 1, thrusters: 3 })).toBe(6);
+});
+
+test("pilotMods of an empty stack is the identity block", () => {
+  const mods = pilotMods({});
+  expect(mods.hpMul).toBe(1);
+  expect(mods.shieldMul).toBe(1);
+  expect(mods.cooldownMul).toBe(1);
+  expect(mods.damageMul).toBe(1);
+  expect(mods.regenMul).toBe(1);
+  expect(mods.speedMul).toBe(1);
+  expect(mods.fanBarrels).toBe(0);
+  expect(mods.novaRank).toBe(0);
+  expect(mods.wingSize).toBe(0);
+});
+
+test("pilotMods compounds per stack, same as augMul", () => {
+  const mods = pilotMods({ hull: 2, caliber: 3, nanofoam: 1, thrusters: 2 });
+  expect(mods.hpMul).toBeCloseTo(1.18 ** 2, 5);
+  expect(mods.damageMul).toBeCloseTo(1.15 ** 3, 5);
+  expect(mods.regenMul).toBeCloseTo(1.5, 5);
+  expect(mods.speedMul).toBeCloseTo(1.08 ** 2, 5);
+  expect(mods.shieldMul).toBe(1); // untouched stat stays identity
+});
+
+test("the cooldown floor holds through the block", () => {
+  expect(pilotMods({ overclock: 20 }).cooldownMul).toBe(MIN_COOLDOWN_MUL);
+});
+
+test("unlock/summon stacks surface as counts", () => {
+  const mods = pilotMods({ spread: 2, nova: 1, wing: 3 });
+  expect(mods.fanBarrels).toBe(2);
+  expect(mods.novaRank).toBe(1);
+  expect(mods.wingSize).toBe(3);
+});
+
+test("bakeCaps multiplies base caps by the block and rounds", () => {
+  const mods = pilotMods({ hull: 1, plating: 2 });
+  const baked = bakeCaps(mods, { maxHp: 10, maxShield: 7 });
+  expect(baked.maxHp).toBe(Math.round(10 * 1.18));
+  expect(baked.maxShield).toBe(Math.round(7 * 1.15 ** 2));
+  // Identity block = identity caps.
+  expect(bakeCaps(pilotMods({}), { maxHp: 10, maxShield: 7 })).toEqual({
+    maxHp: 10,
+    maxShield: 7,
+  });
 });

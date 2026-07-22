@@ -35,6 +35,12 @@ superseded; that lineage has been removed. All live code lives under `src`.)
   value the overlay hands the renderer. Built purely from the World (plus
   `now`), so the whole projection is testable without a GPUDevice.
 - **Pass**: one GPU draw stage (background, sprites, 3D rocks, shields).
+- **Pilot mods** (`world/augments.ts`, `pilotMods`): the derived per-run stat
+  block — the sim's one answer to "what does the augment stack do to the
+  pilot". Six compounding multipliers (hp/shield/cooldown/damage/regen/speed)
+  plus the unlock/summon counts (fan barrels, nova rank, wing size). Derived
+  from `AugmentStacks` on demand, never stored on the World; `bakeCaps` is the
+  one hp/shield bake rule (level table × block, rounded).
 - **Ship stats** (`ui/shipStats.ts`, `statsFor`): the UI read model answering
   "what does the HUD say about a ship of archetype A at rank N" — stat gauge
   rows, trait chips, counter relations, flavor, and the tier ladder. Derived
