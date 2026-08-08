@@ -85,18 +85,6 @@
         content: "";
         pointer-events: none;
       }
-      .panel::after {
-        position: absolute;
-        top: 0.7rem;
-        right: 0.7rem;
-        width: 7px;
-        height: 7px;
-        border-top: 1px solid var(--drydock-accent);
-        border-right: 1px solid var(--drydock-accent);
-        content: "";
-        opacity: 0.72;
-        pointer-events: none;
-      }
       .panel > * {
         position: relative;
         z-index: 1;
@@ -110,24 +98,31 @@
         width: 1.45rem;
         height: 1.45rem;
         place-items: center;
-        border: 1px solid var(--drydock-line);
-        border-radius: 5px;
-        background: rgba(3, 12, 9, 0.72);
+        border: 0;
+        background: transparent;
         color: var(--drydock-soft);
         cursor: pointer;
-        font-size: 17px;
+        font-size: 20px;
         line-height: 1;
-        transition: border-color 150ms ease, color 150ms ease, background 150ms ease;
+        transition: color 150ms ease;
+      }
+      .panel-collapse-toggle > span {
+        position: relative;
+        z-index: 1;
+        display: block;
+        transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
       }
       .panel-collapse-toggle:hover,
       .panel-collapse-toggle:focus-visible {
-        border-color: var(--drydock-accent);
-        background: rgba(57, 99, 45, 0.56);
         color: var(--drydock-accent);
         outline: none;
       }
+      .panel-left.is-collapsed .panel-collapse-toggle > span {
+        transform: rotate(180deg);
+      }
       .panel-left.is-collapsed {
         display: grid;
+        place-items: center;
         width: 3rem;
         min-height: 3rem;
         max-height: 3rem;

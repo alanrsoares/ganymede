@@ -77,6 +77,7 @@ export const view = {
   orbitYaw: 0,
   orbitPitch: 0,
   design: false,
+  controlDeckCollapsed: false,
   /** Set when WebGPU init fails; the UI swaps to an error screen. */
   gpuError: "",
 };
@@ -183,6 +184,11 @@ export const togglePause = (): void => {
 
 export const setDesign = (on: boolean): void => {
   view.design = on;
+  notify();
+};
+
+export const toggleControlDeck = (): void => {
+  view.controlDeckCollapsed = !view.controlDeckCollapsed;
   notify();
 };
 

@@ -7,6 +7,7 @@ import {
   setCls,
   setDesign,
   toggleBank,
+  toggleControlDeck,
   toggleMono,
   togglePause,
   view,
@@ -32,6 +33,10 @@ const KEY_ACTIONS: Record<string, (e: KeyboardEvent) => boolean> = {
   },
   b: () => {
     toggleBank();
+    return true;
+  },
+  c: () => {
+    toggleControlDeck();
     return true;
   },
   " ": (e) => {

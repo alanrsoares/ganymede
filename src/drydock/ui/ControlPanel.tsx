@@ -74,6 +74,7 @@ const SHORTCUTS: Array<[keys: string, action: string]> = [
   ["space", "pause"],
   ["m", "mono tint"],
   ["b", "bank sweep"],
+  ["c", "collapse control deck"],
   ["escape", "exit design"],
 ];
 
@@ -205,7 +206,9 @@ const Shortcuts = (): ReactElement => (
   <details className="shortcut-drawer">
     <summary>
       <span>keyboard map</span>
-      <span className="shortcut-drawer__hint">6 shortcuts</span>
+      <span className="shortcut-drawer__hint">
+        {SHORTCUTS.length} shortcuts
+      </span>
     </summary>
     <VStack gap={1} className="shortcut-list">
       {SHORTCUTS.map(([keys, action]) => (

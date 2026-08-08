@@ -1,16 +1,16 @@
 // Drydock UI root: astryx gothic theme over the floating panels. The WebGPU
 // canvas lives outside React (scene.ts owns it); panels overlay it.
 
-import { type ReactElement, useState } from "react";
+import type { ReactElement } from "react";
 import { AstryxRoot } from "~/astryx";
-import { view } from "~/drydock/store";
+import { toggleControlDeck, view } from "~/drydock/store";
 import { ControlPanel } from "./ControlPanel";
 import { DesignerPanel } from "./DesignerPanel";
 import { useDrydock } from "./hooks";
 
 export const App = (): ReactElement => {
   useDrydock();
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const leftCollapsed = view.controlDeckCollapsed;
   return view.gpuError ? (
     <div className="err">Drydock needs WebGPU: {view.gpuError}</div>
   ) : (
@@ -25,9 +25,9 @@ export const App = (): ReactElement => {
             leftCollapsed ? "expand control deck" : "collapse control deck"
           }
           aria-expanded={!leftCollapsed}
-          onClick={() => setLeftCollapsed((collapsed) => !collapsed)}
+          onClick={toggleControlDeck}
         >
-          <span aria-hidden="true">{leftCollapsed ? "›" : "‹"}</span>
+          <span aria-hidden="true">‹</span>
         </button>
         {!leftCollapsed && <ControlPanel />}
       </div>
