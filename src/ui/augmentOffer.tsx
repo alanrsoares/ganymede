@@ -6,7 +6,6 @@
 // un-freezes. No dismiss affordance — you must choose.
 
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
-import { Grid } from "@astryxdesign/core/Grid";
 import { useSyncExternalStore } from "react";
 import { AUGMENTS, type AugmentId, type AugmentStat } from "~/world/augments";
 import { ChoiceCard, mountReactDialog } from "./dialog";
@@ -69,7 +68,8 @@ const OfferView = ({
       isOpen={open}
       // Forced choice: swallow Escape / backdrop dismiss, the pick is the only exit.
       onOpenChange={() => {}}
-      width={480}
+      width="min(480px, 92vw)"
+      maxHeight="90dvh"
       purpose="info"
       aria-label="Choose an augment"
     >
@@ -77,21 +77,23 @@ const OfferView = ({
         title="Wave cleared"
         subtitle="Choose an augment — it's yours for the rest of the run."
       />
-      <Grid columns={3} gap={2}>
-        {(offer ?? []).map((id) => {
-          const spec = AUGMENTS[id];
-          return (
-            <ChoiceCard
-              key={id}
-              title={spec.label}
-              blurb={spec.blurb}
-              pressed={false}
-              tint={spec.stat ? STAT_TINT[spec.stat] : undefined}
-              onClick={() => onPick(id)}
-            />
-          );
-        })}
-      </Grid>
+      <div className="-mx-1 flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto px-1 py-1">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {(offer ?? []).map((id) => {
+            const spec = AUGMENTS[id];
+            return (
+              <ChoiceCard
+                key={id}
+                title={spec.label}
+                blurb={spec.blurb}
+                pressed={false}
+                tint={spec.stat ? STAT_TINT[spec.stat] : undefined}
+                onClick={() => onPick(id)}
+              />
+            );
+          })}
+        </div>
+      </div>
     </Dialog>
   );
 };

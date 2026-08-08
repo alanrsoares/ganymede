@@ -298,8 +298,6 @@ export interface ShipCard {
   render(ship: LightCycle | null, px: number, py: number): void;
 }
 
-const CARD_W = 272; // px, for edge-flip math
-
 const ShipCardView = ({
   target,
   pos,
@@ -313,9 +311,10 @@ const ShipCardView = ({
   // Flip to the cursor's left near the right edge; clamp within viewport.
   const style: CSSProperties = (() => {
     if (!s || !t) return { left: -9999, top: 0 };
-    const flip = s.px + 18 + CARD_W > window.innerWidth;
-    const left = flip ? s.px - 18 - CARD_W : s.px + 18;
-    const top = Math.max(8, Math.min(window.innerHeight - 360, s.py - 20));
+    const cardWidth = window.innerWidth < 640 ? 240 : 272;
+    const flip = s.px + 18 + cardWidth > window.innerWidth;
+    const left = flip ? s.px - 18 - cardWidth : s.px + 18;
+    const top = Math.max(8, Math.min(window.innerHeight - 340, s.py - 20));
     const edge = rgbCss(t.color, 0.35);
     return {
       left: Math.max(8, left),
@@ -330,7 +329,7 @@ const ShipCardView = ({
 
   return (
     <div
-      className={`pointer-events-none fixed z-50 w-[272px] origin-top rounded-lg border bg-[#050b0f]/92 p-3 font-mono text-mint-soft backdrop-blur-[6px] transition-[opacity,transform] duration-150 ${t ? "scale-100 opacity-100" : "scale-[0.97] opacity-0"}`}
+      className={`pointer-events-none fixed z-50 w-[240px] sm:w-[272px] origin-top rounded-lg border bg-[#050b0f]/92 p-2.5 sm:p-3 font-mono text-mint-soft backdrop-blur-[6px] transition-[opacity,transform] duration-150 ${t ? "scale-100 opacity-100" : "scale-[0.97] opacity-0"}`}
       style={style}
     >
       {body}

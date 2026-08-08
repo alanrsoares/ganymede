@@ -5,7 +5,6 @@
 
 import { Grid } from "@astryxdesign/core/Grid";
 import { Slider } from "@astryxdesign/core/Slider";
-import { VStack } from "@astryxdesign/core/Stack";
 import { Switch } from "@astryxdesign/core/Switch";
 import { useState } from "react";
 import { MAX_TEAMS, type MatchConfig } from "~/world";
@@ -187,27 +186,31 @@ const SLIDERS: readonly SliderSpec[] = [
 type Patch = (p: Partial<Fields>) => void;
 
 const MatchControls = ({ fields, patch }: { fields: Fields; patch: Patch }) => (
-  <VStack gap={3} className="mt-2">
-    {SLIDERS.map((s) => (
-      <Slider
-        key={s.label}
-        label={s.label}
-        min={s.min}
-        max={s.max}
-        step={s.step}
-        value={s.get(fields)}
-        onChange={(v: number) => patch(s.set(v))}
-        formatValue={s.fmt}
-      />
-    ))}
-    <Switch
-      label={
-        fields.endless ? "endless — no winner" : "standard — last team wins"
-      }
-      value={fields.endless}
-      onChange={(v) => patch({ endless: v })}
-    />
-  </VStack>
+  <div className="mt-1 flex flex-col gap-2">
+    <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+      {SLIDERS.map((s) => (
+        <Slider
+          key={s.label}
+          label={s.label}
+          min={s.min}
+          max={s.max}
+          step={s.step}
+          value={s.get(fields)}
+          onChange={(v: number) => patch(s.set(v))}
+          formatValue={s.fmt}
+        />
+      ))}
+      <div className="flex items-center pt-1 sm:pt-2">
+        <Switch
+          label={
+            fields.endless ? "endless — no winner" : "standard — last team wins"
+          }
+          value={fields.endless}
+          onChange={(v) => patch({ endless: v })}
+        />
+      </div>
+    </div>
+  </div>
 );
 
 const PresetGrid = ({
@@ -217,7 +220,7 @@ const PresetGrid = ({
   fields: Fields;
   onPick: (c: MatchConfig) => void;
 }) => (
-  <Grid columns={2} gap={2}>
+  <Grid columns={2} gap={1.5}>
     {PRESETS.map((preset) => (
       <ChoiceCard
         key={preset.name}

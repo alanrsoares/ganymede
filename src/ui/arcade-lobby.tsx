@@ -25,7 +25,11 @@ import { CLASS_TINT } from "./shipStats";
 
 // The hull's top-down silhouette in its class tint — the arcade picker's glyph.
 const HullGlyph = ({ a }: { a: Archetype }) => (
-  <svg viewBox="0 0 24 24" className="h-8 w-8 shrink-0" aria-hidden="true">
+  <svg
+    viewBox="0 0 24 24"
+    className="h-6 w-6 sm:h-7 sm:w-7 shrink-0"
+    aria-hidden="true"
+  >
     <path
       d={hullSilhouettePath(a)}
       fill={`${CLASS_TINT[a]}3a`}

@@ -115,16 +115,21 @@ export const ChoiceCard = ({
 }: ChoiceCardProps) => {
   const base = tint ?? "var(--color-accent)";
   const text = (
-    <VStack gap={0.5}>
+    <VStack gap={0.5} className="min-w-0 flex-1">
       <Text
         size="sm"
         weight="bold"
         display="block"
-        className="uppercase tracking-[0.08em]"
+        className="truncate uppercase tracking-[0.06em] text-[11px] sm:text-xs"
       >
         {title}
       </Text>
-      <Text size="2xs" color="secondary" display="block">
+      <Text
+        size="3xs"
+        color="secondary"
+        display="block"
+        className="line-clamp-2 leading-snug text-[9px] sm:text-[10px]"
+      >
         {blurb}
       </Text>
     </VStack>
@@ -134,8 +139,8 @@ export const ChoiceCard = ({
       label={title}
       isSelected={pressed}
       onChange={() => onClick()}
-      padding={4}
-      className="transition-shadow after:!bg-transparent hover:shadow-[0_0_14px_-4px_var(--card-glow)]"
+      padding={2}
+      className="transition-shadow after:!bg-transparent hover:shadow-[0_0_14px_-4px_var(--card-glow)] !p-2 sm:!p-2.5"
       style={
         {
           "--card-glow": base,
@@ -146,7 +151,7 @@ export const ChoiceCard = ({
       }
     >
       {icon ? (
-        <HStack gap={2} vAlign="center">
+        <HStack gap={1.5} vAlign="center" className="min-w-0">
           {icon}
           {text}
         </HStack>
@@ -170,7 +175,7 @@ export const Cta = ({
     size="lg"
     label={label}
     onClick={onClick}
-    className="mt-6 w-full"
+    className="mt-3 w-full"
   />
 );
 
@@ -205,7 +210,7 @@ export const DialogShell = ({
     <Dialog
       isOpen={open}
       onOpenChange={requestClose}
-      width={440}
+      width="min(440px, 92vw)"
       maxHeight="90dvh"
       purpose="info"
       aria-label={label}
@@ -215,7 +220,9 @@ export const DialogShell = ({
         subtitle={subtitle}
         onOpenChange={requestClose}
       />
-      {children}
+      <div className="-mx-1 flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto px-1 py-1 outline-none focus:outline-none focus-visible:outline-none">
+        {children}
+      </div>
     </Dialog>
   );
 };

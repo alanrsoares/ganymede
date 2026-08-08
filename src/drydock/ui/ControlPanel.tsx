@@ -26,7 +26,32 @@ import {
   view,
 } from "~/drydock/store";
 import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
+import { hullSilhouettePath } from "~/hull/silhouette";
 import { TEAMS } from "~/world/types";
+
+const ArchetypeGlyph = ({
+  cls,
+  isSelected,
+}: {
+  cls: ShipClass;
+  isSelected: boolean;
+}) => (
+  <svg
+    viewBox="0 0 24 24"
+    className="h-4 w-4 shrink-0 transition-colors"
+    fill="none"
+    strokeLinejoin="round"
+    strokeLinecap="round"
+    aria-hidden="true"
+  >
+    <path
+      d={hullSilhouettePath(cls)}
+      fill={isSelected ? "var(--color-accent)" : "rgba(255, 255, 255, 0.25)"}
+      stroke={isSelected ? "var(--color-accent)" : "rgba(255, 255, 255, 0.6)"}
+      strokeWidth="1.6"
+    />
+  </svg>
+);
 
 const GEAR: Record<ShipClass, { title: string; desc: string }> = {
   scout: {
@@ -128,41 +153,92 @@ export const ControlPanel = (): ReactElement => {
   const gear = GEAR[view.cls];
   return (
     <VStack gap={3}>
-      <Text type="label" as="p" color="accent" weight="semibold">
-        Drydock — hull concept
-      </Text>
-      <SegmentedControl
-        label="ship class"
-        size="sm"
-        layout="fill"
-        value={view.cls}
-        onChange={(v) => setCls(v as ShipClass)}
+      <HStack justify="between" vAlign="center">
+        <Text type="label" as="p" color="accent" weight="semibold">
+          Drydock — Hull Concept
+        </Text>
+      </HStack>
+      <VStack gap={1}>
+        <Text type="supporting" display="block">
+          archetype
+        </Text>
+        <SegmentedControl
+          label="ship class"
+          size="sm"
+          layout="fill"
+          value={view.cls}
+          onChange={(v) => setCls(v as ShipClass)}
+        >
+          {SHIP_CLASSES.map((cls) => (
+            <Tooltip
+              key={cls}
+              content={`${cls} — ${GEAR[cls].title.split(" — ")[1]}`}
+            >
+              <SegmentedControlItem
+                value={cls}
+                label={cls}
+                isLabelHidden
+                icon={
+                  <ArchetypeGlyph cls={cls} isSelected={view.cls === cls} />
+                }
+              />
+            </Tooltip>
+          ))}
+        </SegmentedControl>
+      </VStack>
+      <HStack justify="between" vAlign="center" className="pt-1">
+        <VStack gap={1} className="flex-1">
+          <Text type="supporting" display="block">
+            team tint
+          </Text>
+          <TeamSwatches />
+        </VStack>
+        <VStack gap={1} className="w-32">
+          <Slider
+            label="tilt"
+            min={0}
+            max={60}
+            step={1}
+            value={view.tiltDeg}
+            onChange={setTiltDeg}
+            formatValue={(v) => `${v}°`}
+            valueDisplay="text"
+          />
+        </VStack>
+      </HStack>
+      <VStack gap={1}>
+        <Text type="supporting" display="block">
+          camera & view toggles
+        </Text>
+        <ViewToggles />
+      </VStack>
+      <Section
+        variant="muted"
+        padding={2}
+        className="border-l-2 border-l-[var(--color-accent)]"
       >
-        {SHIP_CLASSES.map((cls) => (
-          <SegmentedControlItem key={cls} value={cls} label={cls} />
-        ))}
-      </SegmentedControl>
-      <TeamSwatches />
-      <Slider
-        label="tilt"
-        min={0}
-        max={60}
-        step={1}
-        value={view.tiltDeg}
-        onChange={setTiltDeg}
-        formatValue={(v) => `${v}°`}
-        valueDisplay="text"
-      />
-      <ViewToggles />
-      <Section variant="muted" padding={2}>
-        <Text type="label" weight="semibold" display="block">
+        <Text
+          type="label"
+          weight="semibold"
+          display="block"
+          className="uppercase tracking-wider"
+        >
           {gear.title}
         </Text>
-        <Text type="supporting" display="block">
+        <Text
+          type="supporting"
+          display="block"
+          className="mt-0.5 leading-relaxed"
+        >
           {gear.desc}
         </Text>
       </Section>
-      <Shortcuts />
+      <VStack gap={1} className="pt-1">
+        <Text type="supporting" display="block">
+          shortcuts
+        </Text>
+        <Shortcuts />
+      </VStack>
     </VStack>
   );
 };
