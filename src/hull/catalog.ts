@@ -496,21 +496,10 @@ export interface EngineAnchor {
 // Nozzle exits per class, matching each recipe's acid nozzle parts (mirrored
 // pairs listed explicitly so the plume pass needs no mirror logic).
 export const ENGINES: Record<keyof typeof RECIPES, readonly EngineAnchor[]> = {
-  scout: [{ pos: [0, -1.24, 0], w: 0.16 }],
-  fighter: [
-    { pos: [0.22, -1.24, 0], w: 0.14 },
-    { pos: [-0.22, -1.24, 0], w: 0.14 },
-  ],
-  heavy: [
-    { pos: [0.58, -0.84, -0.02], w: 0.16 },
-    { pos: [-0.58, -0.84, -0.02], w: 0.16 },
-    { pos: [0.2, -1.36, -0.04], w: 0.14 },
-    { pos: [-0.2, -1.36, -0.04], w: 0.14 },
-  ],
-  interceptor: [
-    { pos: [0.14, -1.25, -0.02], w: 0.12 },
-    { pos: [-0.14, -1.25, -0.02], w: 0.12 },
-  ],
+  scout: [{ pos: [0, -1.22, 0], w: 0.17 }],
+  fighter: [{ pos: [0.2, -1.24, 0], w: 0.14 }, { pos: [-0.2, -1.24, 0], w: 0.14 }],
+  heavy: [{ pos: [0.55, -0.78, -0.02], w: 0.16 }, { pos: [-0.55, -0.78, -0.02], w: 0.16 }, { pos: [0.18, -1.3, -0.04], w: 0.14 }, { pos: [-0.18, -1.3, -0.04], w: 0.14 }],
+  interceptor: [{ pos: [0.13, -1.25, -0.02], w: 0.12 }, { pos: [-0.13, -1.25, -0.02], w: 0.12 }],
 };
 
 export type ShipClass = keyof typeof RECIPES;
@@ -538,8 +527,8 @@ export interface ArticulationDef {
 // interceptor "Stinger") swim visibly; fighter ripples; heavy barely flexes.
 // Tune live in /drydock, then export back here (clipboard round-trip).
 export const ARTICULATION: Record<ShipClass, ArticulationDef> = {
-  scout: { amp: 0.1, freq: 3.5, speed: 1, headStiff: 0.4, segLen: 0 },
+  scout: { amp: 0.05, freq: 2.6, speed: 1, headStiff: 0.4, segLen: 0 },
   fighter: { amp: 0.03, freq: 3, speed: 0.8, headStiff: 0.3, segLen: 0 },
   heavy: { amp: 0.015, freq: 2, speed: 0.4, headStiff: 0.2, segLen: 0 },
-  interceptor: { amp: 0.06, freq: 4.5, speed: 1.3, headStiff: 0.55, segLen: 0 },
+  interceptor: { amp: 0.035, freq: 2.9, speed: 1.3, headStiff: 0, segLen: 0 },
 };
