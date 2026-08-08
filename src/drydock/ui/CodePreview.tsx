@@ -4,7 +4,6 @@
 
 import { Button } from "@astryxdesign/core/Button";
 import { CodeBlock } from "@astryxdesign/core/CodeBlock";
-import { HStack } from "@astryxdesign/core/Stack";
 import { useToast } from "@astryxdesign/core/Toast";
 import type { ReactElement } from "react";
 import { hullToCatalogTs } from "~/drydock/codegen";
@@ -13,7 +12,16 @@ import { exportHull, hulls, importHull, view } from "~/drydock/store";
 export const CodePreview = (): ReactElement => {
   const toast = useToast();
   return (
-    <>
+    <div className="code-editor">
+      <div className="editor-note editor-note--export">
+        <span className="editor-note__mark" aria-hidden="true">
+          TS
+        </span>
+        <span>
+          Copy a catalog-ready recipe, or move the whole hull through the
+          clipboard as JSON.
+        </span>
+      </div>
       <CodeBlock
         code={hullToCatalogTs(view.cls, hulls[view.cls])}
         language="ts"
@@ -22,9 +30,9 @@ export const CodePreview = (): ReactElement => {
         width="100%"
         onCopy={() => toast({ body: "TS snippet copied" })}
       />
-      <HStack gap={1}>
+      <div className="code-actions">
         <Button
-          label="export json"
+          label="copy hull json"
           size="sm"
           variant="secondary"
           tooltip="whole hull as JSON — importable below"
@@ -38,7 +46,7 @@ export const CodePreview = (): ReactElement => {
           }
         />
         <Button
-          label="import json"
+          label="paste hull json"
           size="sm"
           variant="secondary"
           tooltip="replace this hull from clipboard JSON"
@@ -51,7 +59,7 @@ export const CodePreview = (): ReactElement => {
             )
           }
         />
-      </HStack>
-    </>
+      </div>
+    </div>
   );
 };

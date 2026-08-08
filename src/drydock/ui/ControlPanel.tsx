@@ -3,11 +3,6 @@
 // the store.
 
 import { Kbd } from "@astryxdesign/core/Kbd";
-import { Section } from "@astryxdesign/core/Section";
-import {
-  SegmentedControl,
-  SegmentedControlItem,
-} from "@astryxdesign/core/SegmentedControl";
 import { Slider } from "@astryxdesign/core/Slider";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
@@ -15,6 +10,7 @@ import { ToggleButton } from "@astryxdesign/core/ToggleButton";
 import { Tooltip } from "@astryxdesign/core/Tooltip";
 import type { ReactElement } from "react";
 import {
+  hulls,
   setCls,
   setDesign,
   setTeam,
@@ -81,22 +77,76 @@ const SHORTCUTS: Array<[keys: string, action: string]> = [
   ["escape", "exit design"],
 ];
 
-const TeamSwatches = (): ReactElement => (
-  <div className="swatch-row">
-    {TEAMS.map((team, i) => (
-      <Tooltip key={team.name} content={`team ${team.name}`}>
+const SectionLabel = ({
+  index,
+  children,
+}: {
+  index: string;
+  children: string;
+}): ReactElement => (
+  <div className="control-section-label">
+    <span className="control-section-index">{index}</span>
+    <span>{children}</span>
+  </div>
+);
+
+const StatusRail = (): ReactElement => (
+  <div className="status-rail" aria-live="polite">
+    <span className="status-rail__live">
+      <span className={`status-dot${view.paused ? " is-paused" : ""}`} />
+      {view.paused ? "paused" : "live preview"}
+    </span>
+    <span>{hulls[view.cls].parts.length} parts</span>
+    <span>{view.design ? "design mode" : "inspection"}</span>
+  </div>
+);
+
+const ClassPicker = (): ReactElement => (
+  <div className="class-grid">
+    {SHIP_CLASSES.map((cls, i) => {
+      const selected = view.cls === cls;
+      const callsign = GEAR[cls].title.split(" — ")[1];
+      return (
         <button
+          key={cls}
           type="button"
-          className={`swatch${i === view.team ? " on" : ""}`}
-          style={{
-            background: `rgb(${team.rgb.map((c) => Math.round(c * 255)).join(",")})`,
-          }}
-          aria-label={`team ${team.name}`}
-          aria-pressed={i === view.team}
-          onClick={() => setTeam(i)}
-        />
-      </Tooltip>
-    ))}
+          className={`class-card${selected ? " is-selected" : ""}`}
+          aria-pressed={selected}
+          onClick={() => setCls(cls)}
+        >
+          <span className="class-card__topline">
+            <span className="class-card__glyph">
+              <ArchetypeGlyph cls={cls} isSelected={selected} />
+            </span>
+            <span className="class-card__index">0{i + 1}</span>
+          </span>
+          <span className="class-card__name">{cls}</span>
+          <span className="class-card__callsign">{callsign}</span>
+        </button>
+      );
+    })}
+  </div>
+);
+
+const TeamSwatches = (): ReactElement => (
+  <div className="swatch-control">
+    <div className="swatch-row">
+      {TEAMS.map((team, i) => (
+        <Tooltip key={team.name} content={`team ${team.name}`}>
+          <button
+            type="button"
+            className={`swatch${i === view.team ? " on" : ""}`}
+            style={{
+              background: `rgb(${team.rgb.map((c) => Math.round(c * 255)).join(",")})`,
+            }}
+            aria-label={`team ${team.name}`}
+            aria-pressed={i === view.team}
+            onClick={() => setTeam(i)}
+          />
+        </Tooltip>
+      ))}
+    </div>
+    <span className="swatch-name">{TEAMS[view.team]?.name ?? "unknown"}</span>
   </div>
 );
 
@@ -126,119 +176,117 @@ const ViewToggles = (): ReactElement => (
       isPressed={view.paused}
       onPressedChange={togglePause}
     />
-    <ToggleButton
-      label="design"
-      size="sm"
-      isPressed={view.design}
-      onPressedChange={setDesign}
-    />
   </div>
 );
 
+const DesignLaunch = (): ReactElement => (
+  <button
+    type="button"
+    className={`design-launch${view.design ? " is-active" : ""}`}
+    aria-pressed={view.design}
+    onClick={() => setDesign(!view.design)}
+  >
+    <span className="design-launch__mark" aria-hidden="true">
+      {view.design ? "●" : "↗"}
+    </span>
+    <span className="design-launch__copy">
+      <strong>{view.design ? "designer open" : "open hull designer"}</strong>
+      <small>
+        {view.design ? "esc to return to inspection" : "shape, tune, export"}
+      </small>
+    </span>
+    <span className="design-launch__key" aria-hidden="true">
+      D
+    </span>
+  </button>
+);
+
 const Shortcuts = (): ReactElement => (
-  <VStack gap={1}>
-    {SHORTCUTS.map(([keys, action]) => (
-      <HStack key={keys} gap={2} vAlign="center">
-        <Kbd keys={keys} />
-        <Text type="supporting">{action}</Text>
-      </HStack>
-    ))}
-    <Text type="supporting" display="block">
-      drag hull to orbit — x yaw · y pitch
-    </Text>
-  </VStack>
+  <details className="shortcut-drawer">
+    <summary>
+      <span>keyboard map</span>
+      <span className="shortcut-drawer__hint">6 shortcuts</span>
+    </summary>
+    <VStack gap={1} className="shortcut-list">
+      {SHORTCUTS.map(([keys, action]) => (
+        <HStack key={keys} gap={2} vAlign="center">
+          <Kbd keys={keys} />
+          <Text type="supporting">{action}</Text>
+        </HStack>
+      ))}
+      <Text type="supporting" display="block" className="orbit-note">
+        drag hull to orbit — x yaw · y pitch
+      </Text>
+    </VStack>
+  </details>
 );
 
 export const ControlPanel = (): ReactElement => {
   const gear = GEAR[view.cls];
   return (
-    <VStack gap={3}>
-      <HStack justify="between" vAlign="center">
-        <Text type="label" as="p" color="accent" weight="semibold">
-          Drydock — Hull Concept
-        </Text>
-      </HStack>
-      <VStack gap={1}>
-        <Text type="supporting" display="block">
-          archetype
-        </Text>
-        <SegmentedControl
-          label="ship class"
-          size="sm"
-          layout="fill"
-          value={view.cls}
-          onChange={(v) => setCls(v as ShipClass)}
-        >
-          {SHIP_CLASSES.map((cls) => (
-            <Tooltip
-              key={cls}
-              content={`${cls} — ${GEAR[cls].title.split(" — ")[1]}`}
-            >
-              <SegmentedControlItem
-                value={cls}
-                label={cls}
-                isLabelHidden
-                icon={
-                  <ArchetypeGlyph cls={cls} isSelected={view.cls === cls} />
-                }
-              />
-            </Tooltip>
-          ))}
-        </SegmentedControl>
-      </VStack>
-      <HStack justify="between" vAlign="center" className="pt-1">
-        <VStack gap={1} className="flex-1">
-          <Text type="supporting" display="block">
-            team tint
+    <div className="control-column">
+      <header className="drydock-header">
+        <div className="drydock-eyebrow">
+          <span className="eyebrow-mark" aria-hidden="true" />
+          live hull laboratory
+        </div>
+        <div className="drydock-title-row">
+          <Text
+            type="label"
+            as="p"
+            color="accent"
+            weight="semibold"
+            className="drydock-title"
+          >
+            drydock
           </Text>
-          <TeamSwatches />
-        </VStack>
-        <VStack gap={1} className="w-32">
-          <Slider
-            label="tilt"
-            min={0}
-            max={60}
-            step={1}
-            value={view.tiltDeg}
-            onChange={setTiltDeg}
-            formatValue={(v) => `${v}°`}
-            valueDisplay="text"
-          />
-        </VStack>
-      </HStack>
-      <VStack gap={1}>
-        <Text type="supporting" display="block">
-          camera & view toggles
-        </Text>
+          <span className="header-code">01 / 02</span>
+        </div>
+        <p className="drydock-lede">
+          Inspect the silhouette. Then make it strange.
+        </p>
+      </header>
+
+      <StatusRail />
+      <DesignLaunch />
+
+      <section className="control-section control-section--class">
+        <SectionLabel index="01">hull class</SectionLabel>
+        <ClassPicker />
+        <div className="class-readout">
+          <span className="class-readout__title">{gear.title}</span>
+          <span className="class-readout__desc">{gear.desc}</span>
+        </div>
+      </section>
+
+      <section className="control-section">
+        <SectionLabel index="02">presentation</SectionLabel>
+        <div className="presentation-grid">
+          <div className="presentation-control">
+            <span className="field-caption">team tint</span>
+            <TeamSwatches />
+          </div>
+          <div className="presentation-control tilt-control">
+            <Slider
+              label="tilt"
+              min={0}
+              max={60}
+              step={1}
+              value={view.tiltDeg}
+              onChange={setTiltDeg}
+              formatValue={(v) => `${v}°`}
+              valueDisplay="text"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="control-section">
+        <SectionLabel index="03">camera & playback</SectionLabel>
         <ViewToggles />
-      </VStack>
-      <Section
-        variant="muted"
-        padding={2}
-        className="border-l-2 border-l-[var(--color-accent)]"
-      >
-        <Text
-          type="label"
-          weight="semibold"
-          display="block"
-          className="uppercase tracking-wider"
-        >
-          {gear.title}
-        </Text>
-        <Text
-          type="supporting"
-          display="block"
-          className="mt-0.5 leading-relaxed"
-        >
-          {gear.desc}
-        </Text>
-      </Section>
-      <VStack gap={1} className="pt-1">
-        <Text type="supporting" display="block">
-          shortcuts
-        </Text>
-        <Shortcuts />
-      </VStack>
-    </VStack>
+      </section>
+
+      <Shortcuts />
+    </div>
   );
 };
