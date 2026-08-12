@@ -87,7 +87,10 @@ fn fs(in: VSOut) -> @location(0) vec4f {
     // Sample the sprite atlas in uniform control flow. WGSL forbids textureSample
     // inside branches that depend on a non-uniform value (in.shape), so hoist it
     // here; only the sprite branch below actually consumes the result.
-    let tex_coord = vec2f((in.local.x + 1.0) / 2.0, (1.0 - in.local.y) / 2.0);
+    // local.y = +1 is the quad's bottom on screen (the vertex stage negates
+    // clip.y), so v tracks local.y directly — flipping it hangs the silhouette
+    // upside down.
+    let tex_coord = vec2f((in.local.x + 1.0) / 2.0, (in.local.y + 1.0) / 2.0);
     let layer_idx = u32(clamp(round(in.layer), 0.0, LAYER_MAX));
     let texColor = textureSample(t_array, s_sampler, tex_coord, layer_idx);
 

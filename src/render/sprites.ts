@@ -126,6 +126,14 @@ export const SPRITE_URLS: readonly string[] = [
   ...ATLAS_TAIL.flatMap((g) => g.urls),
 ];
 export const SPRITE_LAYER_COUNT = SPRITE_URLS.length;
+export const SILHOUETTE_LAYER0 = SPRITE_LAYER_COUNT;
+export const TEXTURE_LAYER_COUNT = SPRITE_LAYER_COUNT + HULL_ORDER.length;
+
+/** Texture-array layer for the catalog silhouette of a ship class. */
+export const silhouetteLayer = (archetype: string): number => {
+  const key: HullKey = archetype in HULLS ? (archetype as HullKey) : "scout";
+  return SILHOUETTE_LAYER0 + HULL_ORDER.indexOf(key);
+};
 
 // --- Ship sprite refs -------------------------------------------------------
 

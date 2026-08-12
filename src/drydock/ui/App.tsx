@@ -12,7 +12,9 @@ export const App = (): ReactElement => {
   useDrydock();
   const leftCollapsed = view.controlDeckCollapsed;
   return view.gpuError ? (
-    <div className="err">Drydock needs WebGPU: {view.gpuError}</div>
+    <div className="err">
+      WebGPU is required for the drydock: {view.gpuError}
+    </div>
   ) : (
     <AstryxRoot>
       <div

@@ -171,15 +171,15 @@ const Traits = ({ a, lvl }: { a: Archetype; lvl: number }) => {
   );
 };
 
-// Who this class presses (counters) and who presses it (countered by).
+// Which class this one counters, and which class counters it.
 const Matchup = ({ a }: { a: Archetype }) => (
   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
     <Text size="3xs" color="secondary">
-      presses
+      beats
     </Text>
     <Badge variant={CLASS_VARIANT[COUNTERS[a]]} label={COUNTERS[a]} />
     <Text size="3xs" color="secondary">
-      wary of
+      loses to
     </Text>
     <Badge variant={CLASS_VARIANT[COUNTERED_BY[a]]} label={COUNTERED_BY[a]} />
   </div>
@@ -283,11 +283,11 @@ const CounterNode = ({
   return (
     <Tooltip
       placement="above"
-      content={`${cap(a)} — presses ${COUNTERS[a]}, wary of ${COUNTERED_BY[a]}`}
+      content={`${cap(a)} · beats ${COUNTERS[a]}, loses to ${COUNTERED_BY[a]}`}
     >
       <button
         type="button"
-        aria-label={`${cap(a)}: presses ${COUNTERS[a]}, wary of ${COUNTERED_BY[a]}`}
+        aria-label={`${cap(a)}: beats ${COUNTERS[a]}, loses to ${COUNTERED_BY[a]}`}
         onClick={() => onSelect(a)}
         className="absolute grid h-9 w-9 -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full transition-transform hover:scale-110"
         style={{
@@ -320,7 +320,7 @@ const CounterWeb = ({
 }) => (
   <div className="flex flex-col items-center gap-1">
     <Text size="4xs" color="secondary" className="uppercase tracking-[0.28em]">
-      counter web
+      class counters
     </Text>
     <div className="relative h-[188px] w-[240px]">
       <svg
@@ -355,7 +355,7 @@ const CounterWeb = ({
       ))}
     </div>
     <Text size="3xs" color="secondary">
-      arrow → the class it presses
+      arrow points to the class it counters
     </Text>
   </div>
 );
@@ -426,7 +426,7 @@ const TierRow = ({ t, lvl }: { t: (typeof TIERS)[number]; lvl: number }) => {
 const Progression = ({ lvl }: { lvl: number }) => (
   <div className="flex flex-col gap-1">
     <Text size="4xs" color="secondary" className="uppercase tracking-[0.28em]">
-      progression — every class shares this ladder
+      progression · every class shares this ladder
     </Text>
     {TIERS.map((t) => (
       <TierRow key={t.level} t={t} lvl={lvl} />
@@ -545,7 +545,7 @@ const CodexPanel = ({ store }: { store: CodexStore }) => {
               color="secondary"
               className="uppercase tracking-[0.2em]"
             >
-              4 classes · rock-paper-scissors · ←/→ cycles rank
+              4 classes · counter cycle · ←/→ change rank
             </Text>
           </VStack>
           <HStack gap={2} vAlign="center">

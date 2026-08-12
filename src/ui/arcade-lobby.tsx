@@ -91,17 +91,17 @@ interface HullBlurb {
 }
 
 const HULLS: readonly HullBlurb[] = [
-  { key: "scout", title: "Recon Dart", blurb: "Fastest hull · thin armor" },
+  { key: "scout", title: "Recon Dart", blurb: "Fastest · light armor" },
   {
     key: "fighter",
     title: "Line Fighter",
-    blurb: "Balanced · tightest fire rate",
+    blurb: "Balanced · rapid fire",
   },
-  { key: "heavy", title: "Carrier", blurb: "Armored · mines · big tank" },
+  { key: "heavy", title: "Carrier", blurb: "Armored · mines · fuel support" },
   {
     key: "interceptor",
     title: "Interceptor",
-    blurb: "Nimble · seeking missiles",
+    blurb: "Nimble · guided missiles",
   },
 ];
 
@@ -134,9 +134,9 @@ const LobbyView = ({
   return (
     <DialogShell
       store={store}
-      label="Arcade lobby"
+      label="Arcade setup"
       title="Arcade"
-      subtitle="Fly one ship. Survive escalating waves. Chase a high score."
+      subtitle="Pilot one ship through rising enemy waves. Set a high score."
       onClose={close}
     >
       <SectionHeading>choose your hull</SectionHeading>
@@ -165,7 +165,7 @@ const LobbyView = ({
           />
         ))}
       </Grid>
-      <Cta label="Launch run" onClick={start} />
+      <Cta label="Start run" onClick={start} />
     </DialogShell>
   );
 };

@@ -13,8 +13,7 @@ export const ArticulationControls = (): ReactElement => {
   return (
     <div className="motion-editor">
       <div className="editor-note">
-        Tune the living edge of the hull. Changes stream directly into the
-        preview and do not rebuild the mesh.
+        Tune the hull's motion. The preview updates without rebuilding the mesh.
       </div>
       <div className="motion-fields">
         <SliderField

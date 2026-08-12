@@ -98,13 +98,13 @@ export const AUGMENTS: Record<AugmentId, AugmentSpec> = {
     id: "spread",
     kind: "unlock",
     label: "Spread",
-    blurb: "cone shot · +1 barrel",
+    blurb: "wider cone fire · +1 barrel",
   },
   nova: {
     id: "nova",
     kind: "unlock",
     label: "Nova",
-    blurb: "R: cone blast · wider",
+    blurb: "R: cone blast · wider with each stack",
   },
   wing: {
     id: "wing",
@@ -120,7 +120,7 @@ export const AUGMENTS: Record<AugmentId, AugmentSpec> = {
     mul: 2,
     minTier: 6,
     label: "Aegis",
-    blurb: "capstone · ×2 shield",
+    blurb: "late run · 2× shield",
   },
   overdrive: {
     id: "overdrive",
@@ -129,7 +129,7 @@ export const AUGMENTS: Record<AugmentId, AugmentSpec> = {
     mul: 1.5,
     minTier: 6,
     label: "Overdrive",
-    blurb: "capstone · ×1.5 damage",
+    blurb: "late run · 1.5× damage",
   },
 };
 

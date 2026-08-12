@@ -51,19 +51,19 @@ const ArchetypeGlyph = ({
 
 const GEAR: Record<ShipClass, { title: string; desc: string }> = {
   scout: {
-    title: "scout — lamprey",
+    title: "scout · lamprey",
     desc: "speed 1.3× · recon · shredder bolts · cyclopean eye, barbed spine",
   },
   fighter: {
-    title: "fighter — ossuary",
+    title: "fighter · ossuary",
     desc: "cadence 1.39× · L5 arc lightning · bone-blade wings, tusk barrels",
   },
   heavy: {
-    title: "heavy — leviathan",
+    title: "heavy · leviathan",
     desc: "hp 1.5× · rammer/carrier · mine barnacles · eye is off-centre. it watches",
   },
   interceptor: {
-    title: "interceptor — stinger",
+    title: "interceptor · stinger",
     desc: "speed 1.12× · seeking missiles L3+ · egg-sac polyps about to hatch",
   },
 };
@@ -106,7 +106,7 @@ const ClassPicker = (): ReactElement => (
   <div className="class-grid">
     {SHIP_CLASSES.map((cls, i) => {
       const selected = view.cls === cls;
-      const callsign = GEAR[cls].title.split(" — ")[1];
+      const callsign = GEAR[cls].title.split(" · ")[1];
       return (
         <button
           key={cls}
@@ -205,7 +205,7 @@ const DesignLaunch = (): ReactElement => (
 const Shortcuts = (): ReactElement => (
   <details className="shortcut-drawer">
     <summary>
-      <span>keyboard map</span>
+      <span>keymap</span>
       <span className="shortcut-drawer__hint">
         {SHORTCUTS.length} shortcuts
       </span>
@@ -218,7 +218,7 @@ const Shortcuts = (): ReactElement => (
         </HStack>
       ))}
       <Text type="supporting" display="block" className="orbit-note">
-        drag hull to orbit — x yaw · y pitch
+        drag hull to orbit · x yaw · y pitch
       </Text>
     </VStack>
   </details>
@@ -231,7 +231,7 @@ export const ControlPanel = (): ReactElement => {
       <header className="drydock-header">
         <div className="drydock-eyebrow">
           <span className="eyebrow-mark" aria-hidden="true" />
-          live hull laboratory
+          hull lab
         </div>
         <div className="drydock-title-row">
           <Text

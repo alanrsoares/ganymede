@@ -711,7 +711,7 @@ export const shieldForLevel = (level: number): number =>
   SHIELD_BY_LEVEL[level - 1] ?? SHIELD_BY_LEVEL[0];
 export const minesForLevel = (level: number): number =>
   MINES_BY_LEVEL[level - 1] ?? 0;
-// --- Seeking missiles (L4+ heavy volley) ------------------------------------
+// --- Seeking missiles (L3+ interceptor volley) ------------------------------
 export const MISSILE_SPEED = 2.4; // cells/gen (slower than a bolt; it homes)
 export const MISSILE_TURN = 0.12; // heading ease toward the target per gen
 export const MISSILE_LIFE = 90; // gens before it fizzles
@@ -771,7 +771,7 @@ export const ARCADE_TIERS: Record<ArcadeDifficulty, ArcadeTier> = {
   easy: {
     key: "easy",
     label: "Easy",
-    blurb: "6 lives · gentle ramp",
+    blurb: "6 lives · slower climb",
     lives: 6,
     intermissionGens: 4 * 45,
     spawn: (w) => ({
@@ -782,7 +782,7 @@ export const ARCADE_TIERS: Record<ArcadeDifficulty, ArcadeTier> = {
   normal: {
     key: "normal",
     label: "Normal",
-    blurb: "5 lives · a fair fight",
+    blurb: "5 lives · standard pace",
     lives: 5,
     intermissionGens: 3 * 45,
     spawn: (w) => ({
@@ -793,7 +793,7 @@ export const ARCADE_TIERS: Record<ArcadeDifficulty, ArcadeTier> = {
   hard: {
     key: "hard",
     label: "Hard",
-    blurb: "3 lives · swarms fast",
+    blurb: "3 lives · dense waves",
     lives: 3,
     intermissionGens: 3 * 45,
     spawn: (w) => ({ count: 2 + w, maxLevel: levelCap(w, 2) }),
@@ -801,7 +801,7 @@ export const ARCADE_TIERS: Record<ArcadeDifficulty, ArcadeTier> = {
   endless: {
     key: "endless",
     label: "Endless",
-    blurb: "3 lives · relentless",
+    blurb: "3 lives · no final wave",
     lives: 3,
     intermissionGens: 2 * 45,
     spawn: (w) => ({

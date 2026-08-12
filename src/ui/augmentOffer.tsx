@@ -75,7 +75,7 @@ const OfferView = ({
     >
       <DialogHeader
         title="Wave cleared"
-        subtitle="Choose an augment — it's yours for the rest of the run."
+        subtitle="Choose one. It lasts until the run ends."
       />
       <div className="-mx-1 flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto px-1 py-1">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">

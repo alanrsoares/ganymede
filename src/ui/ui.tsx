@@ -677,32 +677,32 @@ const ActionRow = ({
 const ManualActions = ({ s }: { s: LightCycle }) => {
   const bulletStatus =
     s.fireCooldown <= 0 ? "Ready" : `Reloading (${Math.ceil(s.fireCooldown)}g)`;
-  const mineStatus = s.mines > 0 ? `Ready (${s.mines})` : "No Ammo";
+  const mineStatus = s.mines > 0 ? `Ready (${s.mines})` : "Empty";
   const missileStatus =
     s.level >= 3 || carriesMissiles(s.archetype)
       ? s.fuel > 150
-        ? "Ready (150 F)"
-        : "Low Fuel"
-      : "Requires L3";
-  const boostStatus = s.fuel > 200 ? "Ready (200 F)" : "Low Fuel";
-  const shieldStatus = s.fuel > 300 ? "Ready (300 F)" : "Low Fuel";
-  const cloakStatus = s.fuel > 400 ? "Ready (400 F)" : "Low Fuel";
-  const fieldStatus = s.fuel > 300 ? "Ready (300 F)" : "Low Fuel";
+        ? "Ready (150 fuel)"
+        : "Need fuel"
+      : "Unlocks at L3";
+  const boostStatus = s.fuel > 200 ? "Ready (200 fuel)" : "Need fuel";
+  const shieldStatus = s.fuel > 300 ? "Ready (300 fuel)" : "Need fuel";
+  const cloakStatus = s.fuel > 400 ? "Ready (400 fuel)" : "Need fuel";
+  const fieldStatus = s.fuel > 300 ? "Ready (300 fuel)" : "Need fuel";
 
   return (
     <div className="mt-1 flex flex-col gap-1 border-t border-gold/10 pt-1.5">
       <div className="text-[9px] uppercase tracking-wider text-gold/60 font-semibold">
-        quick actions
+        actions
       </div>
-      <ActionRow keyLabel="Space" label="Fire Blasters" status={bulletStatus} />
-      <ActionRow keyLabel="2" label="Drop Mine" status={mineStatus} />
-      <ActionRow keyLabel="3" label="Seeking Missile" status={missileStatus} />
-      <ActionRow keyLabel="4" label="Nitro Boost" status={boostStatus} />
-      <ActionRow keyLabel="5" label="Shield Recharge" status={shieldStatus} />
-      <ActionRow keyLabel="6" label="Cloak Device" status={cloakStatus} />
-      <ActionRow keyLabel="7" label="Force Field" status={fieldStatus} />
+      <ActionRow keyLabel="Space" label="Fire" status={bulletStatus} />
+      <ActionRow keyLabel="2" label="Mine" status={mineStatus} />
+      <ActionRow keyLabel="3" label="Missile" status={missileStatus} />
+      <ActionRow keyLabel="4" label="Boost" status={boostStatus} />
+      <ActionRow keyLabel="5" label="Shield" status={shieldStatus} />
+      <ActionRow keyLabel="6" label="Cloak" status={cloakStatus} />
+      <ActionRow keyLabel="7" label="Field" status={fieldStatus} />
       <div className="text-[9px] italic opacity-60 text-center mt-1.5">
-        WASD/ARROWS to move. Click empty space to exit.
+        WASD / arrows to steer. Click empty space to release control.
       </div>
     </div>
   );
@@ -774,7 +774,7 @@ const ControlsInfoPanel = () => {
     >
       <div className="flex items-center justify-between gap-4">
         <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-mint">
-          ⌨️ GUIDE
+          ⌨️ CONTROLS
         </span>
         <HudButton
           className="px-1.5 py-0.5 text-[10px]"
@@ -788,27 +788,30 @@ const ControlsInfoPanel = () => {
         style={{ width: 230 }}
       >
         <HelpSection
-          title="Flight Controls"
+          title="Flight"
           rows={[
-            { keys: "WASD / Arrows", action: "Steer Ship" },
-            { keys: "Space", action: "Fire Blasters" },
-            { keys: "1 - 7", action: "Quick Actions" },
+            { keys: "WASD / arrows", action: "Steer" },
+            { keys: "Space", action: "Fire" },
+            { keys: "1 - 7", action: "Weapons & abilities" },
           ]}
         />
         <HelpSection
-          title="General Hotkeys"
+          title="General"
           rows={[
-            { keys: "C", action: "Toggle Codex" },
-            { keys: "H", action: "Toggle HP Bars" },
-            { keys: "Z / X", action: "Reinforcements" },
+            { keys: "C", action: "Open codex" },
+            { keys: "H", action: "HP bars" },
+            { keys: "Z / X", action: "Launch reinforcements" },
           ]}
         />
         <HelpSection
-          title="Mouse Actions"
+          title="Mouse"
           rows={[
-            { keys: "Click Ship", action: "Manual Control" },
-            { keys: "Click Void", action: "Spawn / Exit" },
-            { keys: "Shift+Click", action: "Rally Beacon" },
+            { keys: "Click ship", action: "Take control" },
+            {
+              keys: "Click empty space",
+              action: "Drop ship / release control",
+            },
+            { keys: "Shift + click", action: "Set rally point" },
           ]}
         />
       </div>

@@ -3,8 +3,8 @@
 # Ganymede!
 
 **A deterministic WebGPU space autobattler.**
-Four AI fleets flock, fight, and raid each other's bases around a central
-gravity well — or take the stick and fly one ship through escalating waves.
+Four AI fleets fight around a central gravity well, raiding each other's bases.
+Or pilot one ship through escalating enemy waves.
 
 [![Play](https://img.shields.io/badge/▶%20play-live-3fd8ff?style=for-the-badge)](https://alanrsoares.github.io/ganymede/)
 &nbsp;
@@ -12,7 +12,7 @@ gravity well — or take the stick and fly one ship through escalating waves.
 [![Bun](https://img.shields.io/badge/Bun-1.3-fbf0df?logo=bun&logoColor=black)](https://bun.com)
 [![WebGPU](https://img.shields.io/badge/WebGPU-enabled-005a9c)](https://caniuse.com/webgpu)
 
-<img src="docs/hero.png" alt="Ganymede — four AI fleets battling around the central gravity well" width="820" />
+<img src="docs/hero.png" alt="Ganymede: four AI fleets battling around the central gravity well" width="820" />
 
 </div>
 
@@ -20,11 +20,11 @@ gravity well — or take the stick and fly one ship through escalating waves.
 
 ## Modes
 
-- **Autobattle** — up to 4 AI teams flock and fight to the last base. Tune tempo
-  and reinforcement rate live; click a ship to take control, or set a rally point.
-- **Arcade** — pilot a single ship, survive escalating enemy waves, chase a high
-  score. Pick a hull and a difficulty (Easy / Normal / Hard / Endless); the stage
-  sets spawn pressure and lives.
+- **Autobattle**: 2–4 AI teams fight until one team remains. Adjust tempo and
+  reinforcements, take control of a ship, or set a rally point.
+- **Arcade**: pilot one ship through escalating enemy waves and set a high score.
+  Pick a hull and difficulty (Easy / Normal / Hard / Endless); each tier sets
+  enemy pressure and lives.
 
 ## Controls
 
@@ -35,7 +35,7 @@ gravity well — or take the stick and fly one ship through escalating waves.
 | `Space` | Boost |
 | `1`–`7` | Weapon / ability actions |
 | Right-click / Shift-click | Set a team rally point (autobattle) |
-| Click empty space | Deselect, or drop a ship |
+| Click empty space | Release control, or drop a ship |
 | `Z` / `X` | Launch reinforcements |
 | `H` | Toggle HP bars |
 | `M` | Mute / unmute audio |
@@ -48,12 +48,12 @@ Four hulls, each on its own stat and weapon path:
 
 | Hull | Class | Role | Weapon |
 |:---:|-------|------|--------|
-| <img src="docs/hulls/scout.png" alt="Scout hull" width="48" /> | **Scout** | Fastest, fragile; shares base-raid progress with allies | `vulcan` |
+| <img src="docs/hulls/scout.png" alt="Scout hull" width="48" /> | **Scout** | Fastest and most fragile; shares base-raid progress with nearby allies | `vulcan` |
 | <img src="docs/hulls/fighter.png" alt="Fighter hull" width="48" /> | **Fighter** | Balanced gunner; extra barrel at max level | `vulcan` |
-| <img src="docs/hulls/heavy.png" alt="Heavy hull" width="48" /> | **Heavy** | Tank; drops mines and seeking missiles at rank | `proton` |
-| <img src="docs/hulls/interceptor.png" alt="Interceptor hull" width="48" /> | **Interceptor** | Nimble; hit-and-run | `plasma` |
+| <img src="docs/hulls/heavy.png" alt="Heavy hull" width="48" /> | **Heavy** | Armored; lays mines and refuels allies | `proton` |
+| <img src="docs/hulls/interceptor.png" alt="Interceptor hull" width="48" /> | **Interceptor** | Nimble; fires seeking missiles | `plasma` |
 
-Combat runs on a counter-web — each class beats the next:
+Classes counter one another in a four-way cycle:
 
 <p align="center">
   <img src="docs/hulls/scout.png" alt="Scout" width="40" /> →
@@ -63,21 +63,19 @@ Combat runs on a counter-web — each class beats the next:
   <img src="docs/hulls/scout.png" alt="Scout" width="40" />
 </p>
 
-A ship that counters its target rams harder and presses in; a countered ship
-chips lightly and holds off.
+A ship deals more damage and closes distance against the class it counters. A
+countered ship deals less damage and keeps its distance.
 
 ## Audio
 
-Sound is driven straight off the pure sim — every combat `Burst` the world
-already emits (muzzle, explosion, EMP, …) becomes a voice, so audio needs no
-state of its own and stays deterministic. Marquee hits play small pre-baked OGG
-samples; the dense cheap ones (muzzle, impact) are synthesised live so a
-firefight never thrashes the sample voices. A three-scene synthwave soundtrack
-(menu / battle / arcade) crossfades on game state and seam-crossfades its own
-loop. The corner **mixer** (🎚️) sets master / music / SFX faders + mute; every
-choice persists.
+Audio follows the deterministic sim. Combat events such as muzzle flashes,
+explosions, and EMP blasts become sounds without a separate gameplay state.
+Larger hits use pre-rendered OGG samples; frequent effects such as gunfire and
+impacts are synthesized to avoid exhausting audio voices. Menu, battle, and
+arcade tracks crossfade with the game state and loop without a gap. The corner
+**mixer** (🎚️) controls master, music, and SFX levels, plus mute; settings persist.
 
-- **SFX** are procedural — regenerate with `bun run scripts/gen-audio.ts`
+- **SFX** are procedural. Regenerate them with `bun run scripts/gen-audio.ts`
   (needs `ffmpeg`).
 - **Music** tracks are instrumental synthwave rendered offline with
   [ACE-Step](https://github.com/ace-step/ACE-Step), then trimmed to
@@ -109,15 +107,15 @@ the manual fallback.
 
 ## Architecture
 
-The simulation is a pure, seeded, Elm-style state machine — `update(msg, world)`
-returns a new immutable `World`; no `Date.now()` or `Math.random()` inside it, so
-runs are fully deterministic and testable.
+The simulation is a pure, seeded, Elm-style state machine. `update(msg, world)`
+returns a new immutable `World`; it never calls `Date.now()` or `Math.random()`,
+so runs are fully deterministic and testable.
 
 | Path | Responsibility |
 |------|----------------|
 | `src/world/` | The sim: `update`, per-system tick phases (`tick/*`), steering, tuning, factory |
-| `src/overlay/` | Pure view — turns a `World` into GPU instance buffers |
-| `src/gpu.ts` | WebGPU renderer (raw WebGPU + `typegpu/data` for buffer layouts) |
-| `src/runtime/` | Imperative edges — DOM input and the fixed-timestep loop |
+| `src/render/overlay/` | Pure view that turns a `World` into GPU instance buffers |
+| `src/render/gpu.ts` | WebGPU renderer (raw WebGPU + `typegpu/data` for buffer layouts) |
+| `src/runtime/` | Imperative edges: DOM input and the fixed-timestep loop |
 
-UI chrome is [VanJS](https://vanjs.org); styling is Tailwind v4.
+UI chrome is React, styled with Tailwind v4 and Astryx.

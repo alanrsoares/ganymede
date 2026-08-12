@@ -497,9 +497,20 @@ export interface EngineAnchor {
 // pairs listed explicitly so the plume pass needs no mirror logic).
 export const ENGINES: Record<keyof typeof RECIPES, readonly EngineAnchor[]> = {
   scout: [{ pos: [0, -1.22, 0], w: 0.17 }],
-  fighter: [{ pos: [0.2, -1.24, 0], w: 0.14 }, { pos: [-0.2, -1.24, 0], w: 0.14 }],
-  heavy: [{ pos: [0.55, -0.78, -0.02], w: 0.16 }, { pos: [-0.55, -0.78, -0.02], w: 0.16 }, { pos: [0.18, -1.3, -0.04], w: 0.14 }, { pos: [-0.18, -1.3, -0.04], w: 0.14 }],
-  interceptor: [{ pos: [0.13, -1.25, -0.02], w: 0.12 }, { pos: [-0.13, -1.25, -0.02], w: 0.12 }],
+  fighter: [
+    { pos: [0.2, -1.24, 0], w: 0.14 },
+    { pos: [-0.2, -1.24, 0], w: 0.14 },
+  ],
+  heavy: [
+    { pos: [0.55, -0.78, -0.02], w: 0.16 },
+    { pos: [-0.55, -0.78, -0.02], w: 0.16 },
+    { pos: [0.18, -1.3, -0.04], w: 0.14 },
+    { pos: [-0.18, -1.3, -0.04], w: 0.14 },
+  ],
+  interceptor: [
+    { pos: [0.13, -1.25, -0.02], w: 0.12 },
+    { pos: [-0.13, -1.25, -0.02], w: 0.12 },
+  ],
 };
 
 export type ShipClass = keyof typeof RECIPES;

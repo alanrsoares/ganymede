@@ -44,27 +44,27 @@ export const CLASS_TINT: Record<Archetype, string> = {
 export const ARCHETYPE_INFO: Record<Archetype, ArchetypeInfo> = {
   scout: {
     label: "Recon Dart",
-    tagline: "fast · fragile · recon",
+    tagline: "fast · fragile · scout",
     blurb:
-      "Thin-hulled sprinter. Fastest cruise of any class, smallest tank, no heavy ordnance. Shares its enemy-base raid progress with nearby allies, so the whole squad tracks the level-up goal.",
+      "Fastest cruise and the lightest hull. No heavy weapons. Nearby allies share its base-raid progress.",
   },
   fighter: {
     label: "Line Fighter",
-    tagline: "balanced · gunner · backbone",
+    tagline: "balanced · rapid fire · frontline",
     blurb:
-      "The all-rounder. Tightest fire cadence of the base classes, average speed and hull. No gimmick — just reliable trigger time. The spine of a squad.",
+      "The all-rounder. Average speed and hull, with the quickest guns among the base classes. Dependable firepower with no special trick.",
   },
   heavy: {
     label: "Carrier",
-    tagline: "tank · mines · refuels allies",
+    tagline: "armored · mines · fuel support",
     blurb:
-      "Slow armored hauler. 1.5× hull and a huge tank. Seeds proximity mines from L3, and tops up thirsty allies mid-flight. Anchors the push, feeds the fleet.",
+      "Slow, heavily armored support ship. Carries 1.5× hull, lays proximity mines from L3, and refuels nearby allies.",
   },
   interceptor: {
     label: "Interceptor",
-    tagline: "nimble · seeking missiles",
+    tagline: "nimble · guided missiles",
     blurb:
-      "Hit-and-run hunter. Above-average speed; from L4 it locks seeking missiles onto enemy aces. Orbits at gun range and peppers instead of ramming.",
+      "Hit-and-run hunter. Above-average speed and guided missiles from L3. Keeps its distance while it wears down enemy aces.",
   },
 };
 
@@ -81,24 +81,24 @@ export interface Tier {
 }
 
 export const TIERS: readonly Tier[] = [
-  { level: 1, title: "Rookie", note: "brawls solo — no flock sense" },
+  { level: 1, title: "Rookie", note: "flies solo · no squad tactics" },
   {
     level: 2,
     title: "Regular",
-    note: "raid all bases + cross center → rank",
-    gated: [{ archetype: "fighter", note: "chain-lightning arcs a cluster" }],
+    note: "raid every base, then hit the center pad to rank up",
+    gated: [{ archetype: "fighter", note: "chain lightning hits a cluster" }],
   },
   {
     level: 3,
     title: "Veteran",
-    note: "squad focus-fire",
+    note: "squad focus fire",
     gated: [
-      { archetype: "heavy", note: "proximity mines online" },
-      { archetype: "interceptor", note: "seeking missiles online" },
+      { archetype: "heavy", note: "proximity mines unlocked" },
+      { archetype: "interceptor", note: "guided missiles unlocked" },
     ],
   },
-  { level: 4, title: "Elite", note: "kites at standoff range" },
-  { level: 5, title: "Ace", note: "peak coordination + cadence" },
+  { level: 4, title: "Elite", note: "holds standoff range" },
+  { level: 5, title: "Ace", note: "maximum coordination and fire rate" },
 ];
 
 // --- Counter relations ------------------------------------------------------

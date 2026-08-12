@@ -151,8 +151,8 @@ const PrimitivePicker = ({ part }: { part: PartDef }): ReactElement => (
 export const PartControls = ({ part }: { part: PartDef }): ReactElement => (
   <div className="inspector-card">
     <div className="inspector-card__heading">
-      <span>component inspector</span>
-      <span>live bake</span>
+      <span>part inspector</span>
+      <span>updates live</span>
     </div>
     <CollapsibleGroup
       type="multiple"
@@ -162,13 +162,13 @@ export const PartControls = ({ part }: { part: PartDef }): ReactElement => (
       <Collapsible trigger="shape / geometry" value="shape">
         <div className="shape-editor">
           <div className="shape-subhead">
-            <span>primitive family</span>
+            <span>shape type</span>
             <span>changes the recipe</span>
           </div>
           <PrimitivePicker part={part} />
           <div className="shape-subhead">
-            <span>geometry profile</span>
-            <span>drag dial or type exact</span>
+            <span>shape profile</span>
+            <span>drag or enter a value</span>
           </div>
           <TaperFields prim={part.prim} />
           {part.prim.kind !== "orb" && (
@@ -191,8 +191,7 @@ export const PartControls = ({ part }: { part: PartDef }): ReactElement => (
           )}
           {part.prim.kind === "orb" && (
             <div className="shape-empty-note">
-              Orb geometry is already smooth — no taper or segmentation
-              controls.
+              Orbs have no taper or segment controls.
             </div>
           )}
         </div>

@@ -391,7 +391,7 @@ const BottomGroup = ({
   >
     <Hairline />
     <Label
-      text="Arcade — fly one ship, survive the waves. Autobattle — watch the war."
+      text="Arcade: fly one ship through enemy waves. Autobattle: tune the match and watch it fight."
       style={{
         fontSize: "clamp(11px,1.6vw,14px)",
         letterSpacing: ".14em",
@@ -400,7 +400,7 @@ const BottomGroup = ({
     />
     <CtaRow onBegin={onBegin} ctaRef={ctaRef} arcadeBtnRef={arcadeBtnRef} />
     <Label
-      text="choose your mode"
+      text="pick a mode"
       style={{
         marginTop: "2px",
         fontSize: "10px",
@@ -449,7 +449,7 @@ const Splash = forwardRef<HTMLDivElement, SplashProps>(({ onBegin }, ref) => {
       ref={ref}
       role="dialog"
       aria-modal="true"
-      aria-label="Ganymede — welcome"
+      aria-label="Ganymede welcome"
       tabIndex={-1}
       style={{
         position: "absolute",

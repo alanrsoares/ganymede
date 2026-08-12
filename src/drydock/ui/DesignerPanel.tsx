@@ -34,15 +34,15 @@ const ResetButton = (): ReactElement => {
   return (
     <>
       <Button
-        label="reset stock"
+        label="reset hull"
         size="sm"
         variant="secondary"
         onClick={() =>
           dialog.show({
-            title: `Reset ${view.cls} to stock?`,
+            title: `Reset ${view.cls} to the original?`,
             description:
-              "Discards this hull's local edits and restores the stock recipe. One undo step is kept.",
-            actionLabel: "reset",
+              "Discards this hull's edits and restores the original recipe. One undo step is kept.",
+            actionLabel: "reset hull",
             onAction: () => {
               resetClass();
               dialog.hide();
@@ -69,8 +69,8 @@ const PartList = (): ReactElement => {
   return (
     <div className="part-browser">
       <div className="browser-heading">
-        <span>hull components</span>
-        <span>{parts.length} total</span>
+        <span>hull parts</span>
+        <span>{parts.length} parts</span>
       </div>
       <VStack gap={0} className="part-list">
         {parts.map((part, i) => (
@@ -93,14 +93,19 @@ const PartOps = (): ReactElement => {
   const parts = hulls[view.cls].parts;
   return (
     <div className="part-actions">
-      <Button label="+ add part" size="sm" onClick={addPart} />
-      <Button label="clone" size="sm" variant="secondary" onClick={dupPart} />
+      <Button label="add part" size="sm" onClick={addPart} />
+      <Button
+        label="duplicate"
+        size="sm"
+        variant="secondary"
+        onClick={dupPart}
+      />
       <Button
         label="delete"
         size="sm"
         variant="destructive"
         isDisabled={parts.length <= 1}
-        tooltip="a hull keeps at least one part"
+        tooltip="A hull must keep one part"
         onClick={delPart}
       />
     </div>
@@ -121,36 +126,34 @@ const DesignerStats = (): ReactElement => {
       </div>
       <div>
         <span className="designer-stat__value designer-stat__live">●</span>
-        <span className="designer-stat__label">rebake live</span>
+        <span className="designer-stat__label">updates live</span>
       </div>
     </div>
   );
 };
 
-const SelectedPart = ({ part }: { part?: PartDef }): ReactElement | null => {
-  if (!part) return null;
-  return (
+const SelectedPart = ({ part }: { part?: PartDef }): ReactElement | null =>
+  !part ? null : (
     <div className="selected-part">
       <div className="selected-part__index">
         {String(sel.part + 1).padStart(2, "0")}
       </div>
       <div className="selected-part__copy">
-        <span className="selected-part__eyebrow">selected component</span>
+        <span className="selected-part__eyebrow">selected part</span>
         <strong>{part.prim.kind} assembly</strong>
-        <small>{partMeta(part) || "unassigned finish"}</small>
+        <small>{partMeta(part) || "no finish set"}</small>
       </div>
       <span className="selected-part__chevron" aria-hidden="true">
         ⌄
       </span>
     </div>
   );
-};
 
 const TAB_CONTEXT: Record<string, string> = {
-  parts: "Select a component to tune its silhouette.",
+  parts: "Select a part to tune its shape.",
   engines: "Place the plume anchors behind the hull.",
-  motion: "Shape the spine wave without rebuilding the mesh.",
-  code: "Copy the working recipe back into the catalog.",
+  motion: "Tune the spine motion without rebuilding the mesh.",
+  code: "Copy this recipe back to the catalog.",
 };
 
 const DesignerTabContent = ({
@@ -190,7 +193,7 @@ export const DesignerPanel = (): ReactElement => {
       <header className="designer-header">
         <div className="drydock-eyebrow">
           <span className="eyebrow-mark" aria-hidden="true" />
-          assembly bay / design mode
+          assembly bay / design
         </div>
         <div className="designer-title-row">
           <div>
@@ -203,7 +206,7 @@ export const DesignerPanel = (): ReactElement => {
             >
               hull designer
             </Text>
-            <p className="designer-subtitle">{view.cls} / live working copy</p>
+            <p className="designer-subtitle">{view.cls} / working copy</p>
           </div>
           <Badge label={view.cls} variant="green" />
         </div>
@@ -221,7 +224,7 @@ export const DesignerPanel = (): ReactElement => {
             onClick={undo}
           />
         ) : (
-          <span className="no-undo">no pending changes</span>
+          <span className="no-undo">no changes to undo</span>
         )}
         <ResetButton />
       </div>

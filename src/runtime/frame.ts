@@ -124,7 +124,7 @@ export const handleArcadeEnd = (
   const a = world.arcade;
   if (a?.over && !state.resetScheduled) {
     state.resetScheduled = true;
-    ui.banner.val = `GAME OVER — wave ${a.wave} · ${a.kills} kills`;
+    ui.banner.val = `GAME OVER · wave ${a.wave} · ${a.kills} kills`;
     setTimeout(() => {
       ui.banner.val = "";
       lobby.show();
@@ -196,8 +196,8 @@ const getHudPhaseText = (world: World): string => {
   if (world.config.format === "endless") return "endless";
   const remain = world.config.reinforceGens - world.age;
   return remain > 0
-    ? `reinforce ${Math.ceil(remain / world.config.tempo)}s`
-    : "sudden death";
+    ? `reinforcements ${Math.ceil(remain / world.config.tempo)}s`
+    : "no reinforcements";
 };
 
 // Push per-frame world state into the reactive HUD handles.
@@ -209,10 +209,10 @@ export const updateHud = (ui: Ui, world: World) => {
   }
   ui.counts.val = counts;
   const phase = getHudPhaseText(world);
-  const rallyText = world.rally ? ` — ${world.rally.team} rally` : "";
+  const rallyText = world.rally ? ` · ${world.rally.team} rally point` : "";
   ui.status.val =
-    `ships ${world.ships.items.length} — ${phase}` +
-    ` — HP bars: ${ui.hpOn.val ? "on (h)" : "off (h)"}` +
+    `ships ${world.ships.items.length} · ${phase}` +
+    ` · HP bars: ${ui.hpOn.val ? "on (h)" : "off (h)"}` +
     rallyText;
   ui.controlledShip.val =
     world.controlledShipId !== null
@@ -265,7 +265,7 @@ export const createStarters = (sim: Sim, ui: Ui, loopState: LoopState) => {
     reset(cfg);
     // Arcade: the stage/wave sets tempo + spawns, so hide the sim knobs.
     const diff = cfg.arcade?.difficulty ?? "normal";
-    ui.hudTitle.val = `Arcade — ${diff[0].toUpperCase()}${diff.slice(1)}`;
+    ui.hudTitle.val = `Arcade · ${diff[0].toUpperCase()}${diff.slice(1)}`;
     ui.setSimKnobsHidden(true);
     loopState.deployRemaining = 0;
     loopState.deployTimer = 0;

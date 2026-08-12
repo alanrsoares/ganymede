@@ -12,7 +12,7 @@ import {
   SHIP_CLASSES,
   type ShipClass,
 } from "~/hull/catalog";
-import { SHAPE, shipSprite } from "~/render/sprites";
+import { SHAPE, silhouetteLayer } from "~/render/sprites";
 import type { LightCycle, World } from "~/world";
 import { hasRaidedAllEnemyBases } from "~/world/math";
 import { MUSTER_DRONE_SIZE_MULT, SHIELD_FLASH } from "~/world/tuning";
@@ -540,17 +540,15 @@ function drawShipTeamDot(
   cellPx: number,
 ) {
   const dotR = barH * 1.45;
-  const sprite = shipSprite(cycle.archetype);
-  const midLayer = sprite.layer0 + Math.floor(sprite.frameCount / 2);
   push(
     scx - barW / 2 - dotR - 2.2 * cellPx,
     barY,
     dotR,
     dotR,
-    sprite.angleOffset + Math.PI,
+    0,
     SHAPE.silhouette,
     [...cycle.color, 0.95] as unknown as Rgba,
-    midLayer,
+    silhouetteLayer(cycle.archetype),
   );
 }
 

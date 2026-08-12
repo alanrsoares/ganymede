@@ -17,25 +17,22 @@ export const CodePreview = (): ReactElement => {
         <span className="editor-note__mark" aria-hidden="true">
           TS
         </span>
-        <span>
-          Copy a catalog-ready recipe, or move the whole hull through the
-          clipboard as JSON.
-        </span>
+        <span>Copy the recipe, or copy and paste the whole hull as JSON.</span>
       </div>
       <CodeBlock
         code={hullToCatalogTs(view.cls, hulls[view.cls])}
         language="ts"
-        title={`${view.cls} — catalog paste-back`}
+        title={`${view.cls} · catalog recipe`}
         size="sm"
         width="100%"
         onCopy={() => toast({ body: "TS snippet copied" })}
       />
       <div className="code-actions">
         <Button
-          label="copy hull json"
+          label="copy hull JSON"
           size="sm"
           variant="secondary"
-          tooltip="whole hull as JSON — importable below"
+          tooltip="copy the whole hull as JSON"
           onClick={() =>
             exportHull().then((msg) =>
               toast({
@@ -46,10 +43,10 @@ export const CodePreview = (): ReactElement => {
           }
         />
         <Button
-          label="paste hull json"
+          label="paste hull JSON"
           size="sm"
           variant="secondary"
-          tooltip="replace this hull from clipboard JSON"
+          tooltip="replace this hull with clipboard JSON"
           onClick={() =>
             importHull().then((msg) =>
               toast({

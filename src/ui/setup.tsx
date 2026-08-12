@@ -43,7 +43,7 @@ interface Preset {
 const PRESETS: readonly Preset[] = [
   {
     name: "Duel",
-    blurb: "2 teams · short, punchy",
+    blurb: "2 teams · quick finish",
     config: {
       teams: 2,
       initialShips: 4,
@@ -55,12 +55,12 @@ const PRESETS: readonly Preset[] = [
   },
   {
     name: "Standard",
-    blurb: "4 teams · the default",
+    blurb: "4 teams · default rules",
     config: DEFAULT_CONFIG,
   },
   {
     name: "Chaos",
-    blurb: "4 teams · swarms, fast",
+    blurb: "4 teams · crowded skies",
     config: {
       teams: 4,
       initialShips: 10,
@@ -72,7 +72,7 @@ const PRESETS: readonly Preset[] = [
   },
   {
     name: "Sandbox",
-    blurb: "4 teams · endless watch",
+    blurb: "4 teams · no timer",
     config: {
       teams: 4,
       initialShips: 8,
@@ -137,7 +137,7 @@ interface SliderSpec {
 
 const SLIDERS: readonly SliderSpec[] = [
   {
-    label: "players",
+    label: "teams",
     min: 2,
     max: MAX_TEAMS,
     step: 1,
@@ -164,16 +164,16 @@ const SLIDERS: readonly SliderSpec[] = [
     set: (v) => ({ tempo: v }),
   },
   {
-    label: "reinforce",
+    label: "spawn rate",
     min: 0,
     max: 10,
     step: 1,
-    fmt: (v) => (v === 0 ? "off" : `${v}/rate`),
+    fmt: (v) => (v === 0 ? "off" : `${v}/cycle`),
     get: (f) => f.reinforce,
     set: (v) => ({ reinforce: v }),
   },
   {
-    label: "length",
+    label: "window",
     min: 15,
     max: 180,
     step: 5,
@@ -203,7 +203,7 @@ const MatchControls = ({ fields, patch }: { fields: Fields; patch: Patch }) => (
       <div className="flex items-center pt-1 sm:pt-2">
         <Switch
           label={
-            fields.endless ? "endless — no winner" : "standard — last team wins"
+            fields.endless ? "endless · no winner" : "standard · last team wins"
           }
           value={fields.endless}
           onChange={(v) => patch({ endless: v })}
@@ -259,7 +259,7 @@ const SetupView = ({
       store={store}
       label="Match setup"
       title="Autobattle"
-      subtitle="Pick a preset or tune the match, then launch."
+      subtitle="Choose a preset, or set the match yourself."
       onClose={close}
     >
       <SectionHeading>presets</SectionHeading>

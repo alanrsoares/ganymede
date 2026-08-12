@@ -4,6 +4,7 @@
 import * as d from "typegpu/data";
 import { makePlumeMesh, makeShipMesh } from "~/hull/bake";
 import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
+import { hullSilhouettePath } from "~/hull/silhouette";
 // WGSL lives in .wgsl files (real syntax highlighting) and is imported as text.
 import backgroundWGSL from "~/shaders/background.wgsl" with { type: "text" };
 import baseWGSL from "~/shaders/base.wgsl" with { type: "text" };
@@ -42,7 +43,7 @@ import {
   SHIELD_LAYOUT,
   SHIP_LAYOUT,
 } from "./overlay/frame";
-import { SPRITE_LAYER_COUNT, SPRITE_URLS } from "./sprites";
+import { SPRITE_URLS, TEXTURE_LAYER_COUNT } from "./sprites";
 
 // Instance caps and layouts live in ./overlay/frame — they describe the
 // overlay's projection of the World; this module only consumes them.
@@ -160,7 +161,7 @@ const createSpritePipeline = (
       module: spriteModule,
       entryPoint: "fs",
       // Inject the atlas layer ceiling into the shader's LAYER_MAX override.
-      constants: { LAYER_MAX: SPRITE_LAYER_COUNT - 1 },
+      constants: { LAYER_MAX: TEXTURE_LAYER_COUNT - 1 },
       targets: [
         {
           format,
@@ -769,6 +770,18 @@ export const createRenderer = (
   };
 };
 
+const renderSilhouette = (cls: ShipClass): HTMLCanvasElement => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  ctx.fillStyle = "#fff";
+  ctx.scale(64 / 24, 64 / 24);
+  ctx.fill(new Path2D(hullSilhouettePath(cls)));
+  return canvas;
+};
+
 export const loadCycleTextures = async (
   device: GPUDevice,
 ): Promise<{ textureView: GPUTextureView; sampler: GPUSampler }> => {
@@ -800,7 +813,7 @@ export const loadCycleTextures = async (
     return canvas;
   };
 
-  const canvases = await Promise.all(
+  const spriteCanvases = await Promise.all(
     SPRITE_URLS.map((url) =>
       loadAndCenter(url).catch((err) => {
         console.warn(err);
@@ -808,9 +821,13 @@ export const loadCycleTextures = async (
       }),
     ),
   );
+  const canvases = [
+    ...spriteCanvases,
+    ...SHIP_CLASSES.map((cls) => renderSilhouette(cls)),
+  ];
 
   const texture = device.createTexture({
-    size: [64, 64, SPRITE_LAYER_COUNT],
+    size: [64, 64, TEXTURE_LAYER_COUNT],
     format: "rgba8unorm",
     usage:
       GPUTextureUsage.TEXTURE_BINDING |
