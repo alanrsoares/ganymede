@@ -205,6 +205,11 @@ body {
     bottom: max(0.75rem, env(safe-area-inset-bottom));
     right: max(0.75rem, env(safe-area-inset-right));
   }
+  /* The mixer button owns the bottom-right corner on a phone; the splash's
+     tech credit would sit under it, so drop the credit there. */
+  .splash-tech-tag {
+    display: none;
+  }
 }
 
 /* Touch-primary only. The keyboard-oriented panels carry no value here — the
