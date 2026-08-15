@@ -78,6 +78,14 @@ const SHORTCUTS: Array<[keys: string, action: string]> = [
   ["escape", "exit design"],
 ];
 
+// Design-mode transforms live in gizmo.ts — they need the projected gizmo frame.
+const DESIGN_SHORTCUTS: Array<[keys: string, action: string]> = [
+  ["w", "gizmo move mode"],
+  ["r", "gizmo scale mode"],
+  ["shift+left", "nudge part in view plane (any arrow)"],
+  ["shift+alt+up", "nudge part depth · z (up/down)"],
+];
+
 const SectionLabel = ({
   index,
   children,
@@ -207,11 +215,18 @@ const Shortcuts = (): ReactElement => (
     <summary>
       <span>keymap</span>
       <span className="shortcut-drawer__hint">
-        {SHORTCUTS.length} shortcuts
+        {SHORTCUTS.length + DESIGN_SHORTCUTS.length} shortcuts
       </span>
     </summary>
     <VStack gap={1} className="shortcut-list">
       {SHORTCUTS.map(([keys, action]) => (
+        <HStack key={keys} gap={2} vAlign="center">
+          <Kbd keys={keys} />
+          <Text type="supporting">{action}</Text>
+        </HStack>
+      ))}
+      <div className="shortcut-group__label">design mode</div>
+      {DESIGN_SHORTCUTS.map(([keys, action]) => (
         <HStack key={keys} gap={2} vAlign="center">
           <Kbd keys={keys} />
           <Text type="supporting">{action}</Text>

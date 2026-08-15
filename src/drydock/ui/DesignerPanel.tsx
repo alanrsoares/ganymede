@@ -14,13 +14,19 @@ import { type ReactElement, useState } from "react";
 import {
   addPart,
   delPart,
+  dirtyClasses,
   dupPart,
   hulls,
+  isDirty,
+  redo,
+  redoLabel,
   resetClass,
+  revertClass,
+  saveHulls,
   sel,
   selectPart,
   undo,
-  undoSlot,
+  undoLabel,
   view,
 } from "~/drydock/store";
 import type { PartDef } from "~/hull/catalog";
@@ -29,22 +35,44 @@ import { CodePreview } from "./CodePreview";
 import { EngineList } from "./EngineControls";
 import { PartControls } from "./PartControls";
 
-const ResetButton = (): ReactElement => {
+interface ConfirmButtonProps {
+  label: string;
+  variant?: "secondary" | "destructive";
+  isDisabled?: boolean;
+  tooltip?: string;
+  title: string;
+  description: string;
+  actionLabel: string;
+  onConfirm: () => void;
+}
+
+/** A button that gates a bulk discard behind a confirm dialog. */
+const ConfirmButton = ({
+  label,
+  variant,
+  isDisabled,
+  tooltip,
+  title,
+  description,
+  actionLabel,
+  onConfirm,
+}: ConfirmButtonProps): ReactElement => {
   const dialog = useImperativeAlertDialog();
   return (
     <>
       <Button
-        label="reset hull"
+        label={label}
         size="sm"
-        variant="secondary"
+        variant={variant}
+        isDisabled={isDisabled}
+        tooltip={tooltip}
         onClick={() =>
           dialog.show({
-            title: `Reset ${view.cls} to the original?`,
-            description:
-              "Discards this hull's edits and restores the original recipe. One undo step is kept.",
-            actionLabel: "reset hull",
+            title,
+            description,
+            actionLabel,
             onAction: () => {
-              resetClass();
+              onConfirm();
               dialog.hide();
             },
           })
@@ -52,6 +80,72 @@ const ResetButton = (): ReactElement => {
       />
       {dialog.element}
     </>
+  );
+};
+
+/** Save commits every dirty class — the store key holds all four together. */
+const saveLabel = (): string => {
+  const count = dirtyClasses().length;
+  if (count === 0) return "saved";
+  return count > 1 ? `save · ${count} hulls` : "save hull";
+};
+
+const CommitRow = (): ReactElement => {
+  const dirty = isDirty();
+  return (
+    <div className="designer-commit">
+      <Button
+        label={saveLabel()}
+        size="sm"
+        isDisabled={!dirty}
+        tooltip="Write the draft to browser storage"
+        onClick={saveHulls}
+      />
+      <ConfirmButton
+        label="revert"
+        variant="secondary"
+        isDisabled={!isDirty(view.cls)}
+        tooltip="Discard unsaved changes to this hull"
+        title={`Discard ${view.cls} changes?`}
+        description="Drops every unsaved edit to this hull and reloads the last saved version. The revert itself stays undoable."
+        actionLabel="revert"
+        onConfirm={revertClass}
+      />
+      <span className="designer-commit__state">
+        {dirty ? "unsaved changes" : "saved"}
+      </span>
+    </div>
+  );
+};
+
+const HistoryRow = (): ReactElement => {
+  const undoNext = undoLabel();
+  const redoNext = redoLabel();
+  return (
+    <div className="designer-actions">
+      <Button
+        label={undoNext ? `undo ${undoNext}` : "undo"}
+        size="sm"
+        isDisabled={!undoNext}
+        tooltip={undoNext ? `Undo ${undoNext}` : "Nothing to undo"}
+        onClick={undo}
+      />
+      <Button
+        label={redoNext ? `redo ${redoNext}` : "redo"}
+        size="sm"
+        isDisabled={!redoNext}
+        tooltip={redoNext ? `Redo ${redoNext}` : "Nothing to redo"}
+        onClick={redo}
+      />
+      <ConfirmButton
+        label="reset hull"
+        variant="secondary"
+        title={`Reset ${view.cls} to the original?`}
+        description="Loads the original recipe into your draft. Nothing is written until you save."
+        actionLabel="reset hull"
+        onConfirm={resetClass}
+      />
+    </div>
   );
 };
 
@@ -114,6 +208,7 @@ const PartOps = (): ReactElement => {
 
 const DesignerStats = (): ReactElement => {
   const hull = hulls[view.cls];
+  const dirty = isDirty();
   return (
     <div className="designer-stats">
       <div>
@@ -124,9 +219,17 @@ const DesignerStats = (): ReactElement => {
         <span className="designer-stat__value">{hull.engines.length}</span>
         <span className="designer-stat__label">engines</span>
       </div>
-      <div>
-        <span className="designer-stat__value designer-stat__live">●</span>
-        <span className="designer-stat__label">updates live</span>
+      <div role="status">
+        <span
+          className="designer-stat__value designer-stat__live"
+          data-state={dirty ? "dirty" : "clean"}
+          aria-hidden="true"
+        >
+          ●
+        </span>
+        <span className="designer-stat__label">
+          {dirty ? "unsaved" : "saved"}
+        </span>
       </div>
     </div>
   );
@@ -206,7 +309,9 @@ export const DesignerPanel = (): ReactElement => {
             >
               hull designer
             </Text>
-            <p className="designer-subtitle">{view.cls} / working copy</p>
+            <p className="designer-subtitle">
+              {view.cls} / {isDirty(view.cls) ? "unsaved draft" : "saved"}
+            </p>
           </div>
           <Badge label={view.cls} variant="green" />
         </div>
@@ -214,20 +319,8 @@ export const DesignerPanel = (): ReactElement => {
 
       <DesignerStats />
 
-      <div className="designer-actions">
-        {undoSlot ? (
-          <Button
-            label={
-              undoSlot.label === "redo" ? "redo" : `undo ${undoSlot.label}`
-            }
-            size="sm"
-            onClick={undo}
-          />
-        ) : (
-          <span className="no-undo">no changes to undo</span>
-        )}
-        <ResetButton />
-      </div>
+      <CommitRow />
+      <HistoryRow />
 
       <div className="designer-tabs">
         <TabList value={tab} onChange={setTab} size="sm" layout="fill">

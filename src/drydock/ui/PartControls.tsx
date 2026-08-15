@@ -1,15 +1,19 @@
 // Property editor for the selected hull part, grouped into collapsible
 // sections: shape (primitive + taper + segmentation), transform
 // (pos/scale/rot) and look (color + mirror). Fields mutate the part in
-// place; SliderField/Selector handlers trigger the debounced re-bake.
+// place; field and picker handlers trigger the debounced re-bake.
 
 import { Collapsible, CollapsibleGroup } from "@astryxdesign/core/Collapsible";
-import { Selector } from "@astryxdesign/core/Selector";
 import { VStack } from "@astryxdesign/core/Stack";
 import { Switch } from "@astryxdesign/core/Switch";
 import type { ReactElement } from "react";
-import { defaultPrim, touchHull } from "~/drydock/store";
-import { PALETTE_KEYS, type PartDef, type PrimDef } from "~/hull/catalog";
+import { beginEdit, defaultPrim, pushUndo, touchHull } from "~/drydock/store";
+import {
+  PALETTE,
+  PALETTE_KEYS,
+  type PartDef,
+  type PrimDef,
+} from "~/hull/catalog";
 import { AxisKnobFields, ScalarKnobFields, Vec3Fields } from "./fields";
 
 const SlabProfile = ({
@@ -94,8 +98,10 @@ const TaperFields = ({ prim }: { prim: PrimDef }): ReactElement | null => {
 };
 
 const RotationFields = ({ part }: { part: PartDef }): ReactElement => {
-  part.rot ??= [0, 0, 0];
-  const rot = part.rot;
+  // Read through a fallback rather than materialising `part.rot` here: writing
+  // to the draft during render marks a hull unsaved just for looking at a part,
+  // and stock recipes leave `rot` off entirely.
+  const rot = part.rot ?? ([0, 0, 0] as const);
   return (
     <AxisKnobFields
       label="rotation"
@@ -111,11 +117,74 @@ const RotationFields = ({ part }: { part: PartDef }): ReactElement => {
       step={1}
       unit="°"
       onChange={(i, value) => {
-        rot[i] = (value * Math.PI) / 180;
+        const next = part.rot ?? [0, 0, 0];
+        next[i] = (value * Math.PI) / 180;
+        part.rot = next;
       }}
     />
   );
 };
+
+/**
+ * Palette entries are linear values written straight to a non-sRGB swapchain,
+ * so a clamped 0–255 conversion is what the hull actually shows. Emissive
+ * entries overshoot 1 and bloom in the render — normalise those to their hue so
+ * the swatch reads as the bright colour it becomes rather than clipped white.
+ */
+const swatchCss = (rgb: readonly number[]): string => {
+  const peak = Math.max(...rgb, 1);
+  const channel = (v: number): number => Math.round((v / peak) * 255);
+  return `rgb(${channel(rgb[0])}, ${channel(rgb[1])}, ${channel(rgb[2])})`;
+};
+
+const isEmissive = (rgb: readonly number[]): boolean => rgb.some((v) => v > 1);
+
+const ColorPicker = ({ part }: { part: PartDef }): ReactElement => (
+  <div className="color-picker">
+    <span className="color-picker__label">color</span>
+    {/* Real radios rather than buttons: it is a one-of-N choice, and it buys
+        arrow-key traversal across the palette for free. */}
+    <fieldset className="color-swatches">
+      <legend className="drydock-sr-only">part color</legend>
+      {PALETTE_KEYS.map((key) => {
+        const rgb = PALETTE[key];
+        const emissive = isEmissive(rgb);
+        return (
+          <label
+            key={key}
+            className="color-swatch"
+            title={emissive ? `${key} · glows` : key}
+          >
+            <input
+              type="radio"
+              name="part-color"
+              className="drydock-sr-only"
+              value={key}
+              checked={part.color === key}
+              onChange={() => {
+                // Coalesced, not discrete: arrow-keying across the palette is a
+                // sweep, and it should cost one undo step, not one per hue.
+                beginEdit("part color");
+                part.color = key;
+                touchHull();
+              }}
+            />
+            <span
+              className={`color-swatch__chip${emissive ? " is-emissive" : ""}`}
+              // `color` drives the emissive glow's box-shadow via currentColor.
+              style={{ background: swatchCss(rgb), color: swatchCss(rgb) }}
+              aria-hidden="true"
+            />
+            <span className="color-swatch__name">
+              {key}
+              {emissive ? <span aria-hidden="true"> ✦</span> : null}
+            </span>
+          </label>
+        );
+      })}
+    </fieldset>
+  </div>
+);
 
 const PrimitivePicker = ({ part }: { part: PartDef }): ReactElement => (
   <div className="primitive-picker">
@@ -129,6 +198,7 @@ const PrimitivePicker = ({ part }: { part: PartDef }): ReactElement => (
         aria-pressed={part.prim.kind === kind}
         onClick={() => {
           if (part.prim.kind === kind) return;
+          pushUndo(`part shape ${kind}`);
           part.prim = defaultPrim(kind);
           touchHull();
         }}
@@ -207,20 +277,12 @@ export const PartControls = ({ part }: { part: PartDef }): ReactElement => (
       </Collapsible>
       <Collapsible trigger="look / finish" value="look">
         <VStack gap={1}>
-          <Selector
-            label="color"
-            options={PALETTE_KEYS as unknown as string[]}
-            value={part.color}
-            onChange={(v) => {
-              if (!v) return;
-              part.color = v as PartDef["color"];
-              touchHull();
-            }}
-          />
+          <ColorPicker part={part} />
           <Switch
             label="mirror x"
             value={!!part.mirror}
             onChange={(checked) => {
+              pushUndo("part mirror");
               part.mirror = checked;
               touchHull();
             }}

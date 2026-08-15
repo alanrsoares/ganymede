@@ -8,13 +8,19 @@ import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
 import type { HullOp } from "./ops";
 import {
   applyOps,
+  dirtyClasses,
   hulls,
+  redo,
+  redoLabel,
   resetClass,
+  revertClass,
+  saveHulls,
   sel,
   selectPart,
   setCls,
   setDesign,
   undo,
+  undoLabel,
   view,
 } from "./store";
 
@@ -27,6 +33,10 @@ const snapshot = () => ({
   engineCount: hulls[view.cls].engines.length,
   selected: sel.part,
   hull: hulls[view.cls],
+  // Edits are drafts now: an agent has to call `save` to persist them.
+  dirty: dirtyClasses(),
+  undoLabel: undoLabel(),
+  redoLabel: redoLabel(),
 });
 
 const isClass = (c: unknown): c is ShipClass =>
@@ -69,6 +79,18 @@ const COMMANDS: Record<string, Command> = {
     undo();
     return snapshot();
   },
+  redo: () => {
+    redo();
+    return snapshot();
+  },
+  save: () => {
+    saveHulls();
+    return snapshot();
+  },
+  revert: () => {
+    revertClass();
+    return snapshot();
+  },
   setDesign: ({ on }) => {
     setDesign(!!on);
     return snapshot();
@@ -92,7 +114,7 @@ const handle = async (
 };
 
 /** Connect to the relay and serve commands. Auto-reconnects; only runs on the
- * dev host (the relay only exists under `bun run web`). */
+ * dev host (the relay only exists under `bun run dev`). */
 export const startAgentBridge = (canvas: HTMLCanvasElement): void => {
   const { hostname, host } = location;
   if (hostname !== "localhost" && hostname !== "127.0.0.1") return;
