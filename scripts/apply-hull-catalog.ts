@@ -182,7 +182,7 @@ const readHulls = async (file: string | null, port: string): Promise<Hulls> => {
   if (!res.ok || data.error || !data.result) {
     throw new Error(
       data.error ??
-        "no hulls from drydock — is `bun run web` up with /drydock open?",
+        "no hulls from drydock — is `bun run dev` up with /drydock open?",
     );
   }
   return data.result;

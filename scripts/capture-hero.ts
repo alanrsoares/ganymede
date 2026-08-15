@@ -7,7 +7,7 @@
 //   CAP_PRESET=Standard bun run hero   # different preset
 //   CAP_FRAMES=6 bun run hero          # burst mode: hero-0.png … for picking
 //
-// Needs the dev server up (`bun run web`) and `bunx playwright install chromium`.
+// Needs the dev server up (`bun run dev`) and `bunx playwright install chromium`.
 import { chromium } from "playwright";
 
 const URL = process.env.CAP_URL ?? "http://localhost:3000/";
