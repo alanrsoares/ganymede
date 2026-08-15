@@ -31,6 +31,7 @@
         --drydock-line-strong: rgba(181, 244, 112, 0.42);
         --drydock-accent: #b5f06e;
         --drydock-hot: #f7a35b;
+        --drydock-warn: #f0c86e;
       }
       html,
       body {
@@ -566,10 +567,17 @@
         text-transform: uppercase;
       }
       .designer-stat__live {
-        color: var(--drydock-accent);
         font-size: 12px;
-        text-shadow: 0 0 10px rgba(181, 240, 110, 0.7);
       }
+      .designer-stat__live[data-state="dirty"] {
+        color: var(--drydock-warn);
+        text-shadow: 0 0 10px rgba(240, 200, 110, 0.7);
+      }
+      .designer-stat__live[data-state="clean"] {
+        color: var(--drydock-muted);
+        text-shadow: none;
+      }
+      .designer-commit,
       .designer-actions,
       .part-actions,
       .engine-actions,
@@ -578,14 +586,22 @@
         flex-wrap: wrap;
         gap: 0.45rem;
       }
+      .designer-commit,
       .designer-actions {
         align-items: center;
         justify-content: flex-end;
       }
-      .no-undo {
+      .designer-commit__state {
         margin-right: auto;
         color: var(--drydock-muted);
         font-size: 9px;
+      }
+      .shortcut-group__label {
+        padding-top: 0.35rem;
+        color: var(--drydock-muted);
+        font-size: 8px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
       }
       .designer-tabs {
         margin-top: 0.05rem;
@@ -738,6 +754,84 @@
         font-weight: 400;
         letter-spacing: 0.02em;
         text-transform: none;
+      }
+      .color-picker {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .color-picker__label {
+        color: var(--drydock-muted);
+        font-size: 9px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .drydock-sr-only {
+        position: absolute;
+        overflow: hidden;
+        width: 1px;
+        height: 1px;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+      .color-swatches {
+        display: grid;
+        min-width: 0;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.3rem;
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+      .color-swatch {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.35rem 0.2rem;
+        border: 1px solid var(--drydock-line);
+        border-radius: 7px;
+        background: rgba(2, 11, 8, 0.58);
+        color: var(--drydock-muted);
+        cursor: pointer;
+        transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+      }
+      .color-swatch:hover {
+        border-color: var(--drydock-line-strong);
+        background: rgba(24, 49, 29, 0.62);
+        transform: translateY(-1px);
+      }
+      .color-swatch:has(:focus-visible) {
+        outline: 2px solid var(--drydock-accent);
+        outline-offset: 2px;
+      }
+      .color-swatch:has(:checked) {
+        border-color: var(--drydock-accent);
+        background: linear-gradient(135deg, rgba(57, 99, 45, 0.56), rgba(10, 29, 20, 0.82));
+        color: var(--drydock-ink);
+        box-shadow: inset 0 0 0 1px rgba(181, 240, 110, 0.12);
+      }
+      .color-swatch__chip {
+        display: block;
+        width: 100%;
+        height: 18px;
+        border: 1px solid rgba(228, 245, 233, 0.22);
+        border-radius: 4px;
+      }
+      /* Emissive palette entries bloom in the render; the ring is the only cue
+         that a swatch is a light source rather than a surface tint. */
+      .color-swatch__chip.is-emissive {
+        border-color: rgba(255, 255, 255, 0.75);
+        box-shadow: 0 0 9px 1px currentColor, inset 0 0 5px rgba(255, 255, 255, 0.4);
+      }
+      .color-swatch__name {
+        overflow: hidden;
+        max-width: 100%;
+        font-size: 8px;
+        letter-spacing: 0.04em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .primitive-picker {
         display: grid;
@@ -999,6 +1093,260 @@
       .axis-knob__unit {
         color: var(--drydock-muted);
         font-size: 8px;
+      }
+      /* Object-relative design gizmo. The layer sits between the WebGPU scene
+         and the glass panels; only its button hit targets accept pointer input. */
+      .drydock-gizmo {
+        position: fixed;
+        z-index: 1;
+        inset: 0;
+        pointer-events: none;
+        visibility: hidden;
+        opacity: 0;
+        /* `visibility` must be animated too: without it the handles stay
+           clickable (and tabbable) over the canvas while faded out. */
+        transition: opacity 140ms ease, visibility 0s linear 140ms;
+      }
+      .drydock-gizmo.is-visible {
+        visibility: visible;
+        opacity: 1;
+        transition: opacity 140ms ease, visibility 0s;
+      }
+      .drydock-gizmo__artwork,
+      .drydock-gizmo__hits {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .drydock-gizmo__artwork {
+        overflow: visible;
+        pointer-events: none;
+      }
+      .drydock-gizmo__frame {
+        fill: rgba(181, 240, 110, 0.02);
+        stroke: rgba(228, 245, 233, 0.5);
+        stroke-dasharray: 3 5;
+        stroke-width: 1;
+        vector-effect: non-scaling-stroke;
+      }
+      .drydock-gizmo[data-mode="move"] .drydock-gizmo__frame {
+        display: none;
+      }
+      .drydock-gizmo__caption {
+        fill: var(--drydock-soft);
+        font-size: 8px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .drydock-gizmo__move-line,
+      .drydock-gizmo__scale-line {
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        vector-effect: non-scaling-stroke;
+      }
+      .drydock-gizmo__move-line {
+        opacity: 0.88;
+      }
+      .drydock-gizmo__scale-line {
+        stroke-dasharray: 4 3;
+        opacity: 0.78;
+      }
+      .drydock-gizmo__move-line.is-axis-0,
+      .drydock-gizmo__scale-line.is-axis-0,
+      .drydock-gizmo__axis-label.is-axis-0,
+      .drydock-gizmo__scale-label.is-axis-0 {
+        stroke: #ff6b63;
+        fill: #ff6b63;
+      }
+      .drydock-gizmo__move-line.is-axis-1,
+      .drydock-gizmo__scale-line.is-axis-1,
+      .drydock-gizmo__axis-label.is-axis-1,
+      .drydock-gizmo__scale-label.is-axis-1 {
+        stroke: var(--drydock-accent);
+        fill: var(--drydock-accent);
+      }
+      .drydock-gizmo__move-line.is-axis-2,
+      .drydock-gizmo__scale-line.is-axis-2,
+      .drydock-gizmo__axis-label.is-axis-2,
+      .drydock-gizmo__scale-label.is-axis-2 {
+        stroke: #62b7ff;
+        fill: #62b7ff;
+      }
+      .drydock-gizmo__axis-label,
+      .drydock-gizmo__scale-label {
+        pointer-events: none;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .drydock-gizmo__scale-label {
+        font-size: 8px;
+      }
+      .drydock-gizmo[data-mode="move"] .drydock-gizmo__scale-line,
+      .drydock-gizmo[data-mode="move"] .drydock-gizmo__scale-label,
+      .drydock-gizmo[data-mode="move"] [data-kind^="scale-"] {
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .drydock-gizmo[data-mode="scale"] .drydock-gizmo__move-line,
+      .drydock-gizmo[data-mode="scale"] .drydock-gizmo__axis-label,
+      .drydock-gizmo[data-mode="scale"] [data-kind^="move-"] {
+        visibility: hidden;
+        pointer-events: none;
+      }
+      .drydock-gizmo__mode-rail {
+        position: absolute;
+        display: flex;
+        gap: 2px;
+        padding: 3px;
+        border: 1px solid rgba(228, 245, 233, 0.32);
+        border-radius: 5px;
+        background: rgba(5, 16, 12, 0.92);
+        box-shadow: 0 5px 18px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+      }
+      .drydock-gizmo__mode {
+        position: relative;
+        min-width: 52px;
+        height: 25px;
+        padding: 0 14px 0 7px;
+        border: 0;
+        border-radius: 3px;
+        background: transparent;
+        color: var(--drydock-muted);
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-align: left;
+      }
+      .drydock-gizmo__mode::after {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        content: attr(data-key);
+        color: var(--drydock-muted);
+        font-size: 7px;
+      }
+      .drydock-gizmo__mode:hover,
+      .drydock-gizmo__mode:focus-visible,
+      .drydock-gizmo__mode.is-active {
+        background: rgba(181, 240, 110, 0.16);
+        color: var(--drydock-ink);
+      }
+      .drydock-gizmo__mode:focus-visible {
+        outline: 2px solid var(--drydock-ink);
+        outline-offset: 1px;
+      }
+      .drydock-gizmo__handle {
+        position: absolute;
+        display: grid;
+        width: 44px;
+        height: 44px;
+        margin: -22px 0 0 -22px;
+        place-items: center;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--drydock-ink);
+        cursor: grab;
+        font-family: inherit;
+        font-size: 8px;
+        font-weight: 700;
+        line-height: 1;
+        pointer-events: auto;
+        text-transform: uppercase;
+        transition: transform 120ms ease;
+      }
+      .drydock-gizmo__handle:hover,
+      .drydock-gizmo__handle:focus-visible {
+        z-index: 1;
+        transform: scale(1.14);
+      }
+      .drydock-gizmo__handle:focus-visible {
+        outline: 2px solid var(--drydock-ink);
+        outline-offset: 2px;
+      }
+      .drydock-gizmo__handle:active {
+        cursor: grabbing;
+        transform: scale(1.08);
+      }
+      .drydock-gizmo__handle::before {
+        position: absolute;
+        display: block;
+        content: "";
+        background: rgba(5, 16, 12, 0.92);
+        box-shadow: 0 0 0 2px rgba(5, 16, 12, 0.25), 0 0 14px rgba(181, 240, 110, 0.14);
+      }
+      .drydock-gizmo__handle.is-move::after {
+        position: relative;
+        z-index: 1;
+        content: attr(data-axis);
+      }
+      .drydock-gizmo__handle.is-move::before {
+        width: 25px;
+        height: 25px;
+        border: 1px solid currentColor;
+        border-radius: 50%;
+      }
+      .drydock-gizmo__handle.is-move[data-axis="x"] {
+        color: #ff6b63;
+      }
+      .drydock-gizmo__handle.is-move[data-axis="y"] {
+        color: var(--drydock-accent);
+      }
+      .drydock-gizmo__handle.is-move[data-axis="z"] {
+        color: #62b7ff;
+      }
+      .drydock-gizmo__handle.is-move-free {
+        color: var(--drydock-ink);
+        font-size: 13px;
+      }
+      .drydock-gizmo__handle.is-move-free::before {
+        width: 27px;
+        height: 27px;
+        border: 1px solid currentColor;
+        border-radius: 50%;
+      }
+      .drydock-gizmo__handle.is-move-free::after {
+        position: relative;
+        z-index: 1;
+        content: "✣";
+      }
+      .drydock-gizmo__handle.is-scale {
+        color: var(--drydock-accent);
+        font-size: 7px;
+      }
+      .drydock-gizmo__handle.is-scale::before {
+        width: 20px;
+        height: 20px;
+        border: 1px solid currentColor;
+        border-radius: 3px;
+      }
+      .drydock-gizmo__handle.is-scale::after {
+        position: relative;
+        z-index: 1;
+        content: attr(data-axis);
+      }
+      .drydock-gizmo__handle.is-scale-uniform {
+        color: var(--drydock-ink);
+      }
+      .drydock-gizmo__handle.is-scale-uniform::before {
+        width: 23px;
+        height: 23px;
+        border: 1px solid currentColor;
+        border-radius: 4px;
+      }
+      .drydock-gizmo__handle.is-scale-uniform::after {
+        position: relative;
+        z-index: 1;
+        content: "↗";
+        font-size: 13px;
       }
       .engine-list,
       .motion-editor,

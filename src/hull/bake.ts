@@ -199,7 +199,8 @@ export const buildPrim = (def: PrimDef): Prim => {
 
 // --- assembler ----------------------------------------------------------------
 
-const rotMat = ([ax, ay, az]: V3): number[] => {
+/** Part-local rotation matrix, shared by the baker and drydock gizmos. */
+export const partRotMat = ([ax, ay, az]: V3): number[] => {
   const cx = Math.cos(ax);
   const sx = Math.sin(ax);
   const cy = Math.cos(ay);
@@ -239,7 +240,7 @@ const PLATE_TUCK = 0.85; // extra nose taper so each plate nests into the next
 const expandSeg = (def: PartDef): PartDef[] => {
   const n = Math.round(def.seg ?? 1);
   if (n <= 1 || def.prim.kind === "orb") return [def];
-  const m = rotMat(def.rot ?? [0, 0, 0]);
+  const m = partRotMat(def.rot ?? [0, 0, 0]);
   // Cross-section factor at t (0 base → 1 nose) of the original prim.
   const [nx, nz] =
     def.prim.kind === "slab"
@@ -276,7 +277,7 @@ const expandSeg = (def: PartDef): PartDef[] => {
 
 /** Bake one part (and its optional mirror) into flat-shaded triangles. */
 const bakePart = (def: PartDef, prim: Prim, out: Tri[], colors: V3[]): void => {
-  const m = rotMat(def.rot ?? [0, 0, 0]);
+  const m = partRotMat(def.rot ?? [0, 0, 0]);
   const col = PALETTE[def.color];
   for (const mx of def.mirror ? [1, -1] : [1]) {
     const centre: V3 = [def.pos[0] * mx, def.pos[1], def.pos[2]];
@@ -433,6 +434,33 @@ const bakePartTris = (def: PartDef): Tri[] => {
     bakePart(plate, buildPrim(plate.prim), tris, []);
   }
   return tris;
+};
+
+export interface PartBounds {
+  min: V3;
+  max: V3;
+}
+
+/**
+ * Ship-local bounds for a designer part, including mirrored copies and plates.
+ * `null` when the part bakes to no geometry (degenerate scale).
+ */
+export const partBounds = (def: PartDef): PartBounds | null => {
+  const tris = bakePartTris(def);
+  if (tris.length === 0) return null;
+  const min: V3 = [Infinity, Infinity, Infinity];
+  const max: V3 = [-Infinity, -Infinity, -Infinity];
+  for (const tri of tris) {
+    for (const p of tri) {
+      min[0] = Math.min(min[0], p[0]);
+      min[1] = Math.min(min[1], p[1]);
+      min[2] = Math.min(min[2], p[2]);
+      max[0] = Math.max(max[0], p[0]);
+      max[1] = Math.max(max[1], p[1]);
+      max[2] = Math.max(max[2], p[2]);
+    }
+  }
+  return { min, max };
 };
 
 /**
