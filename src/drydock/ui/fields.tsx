@@ -6,7 +6,7 @@ import { NumberInput } from "@astryxdesign/core/NumberInput";
 import { Slider } from "@astryxdesign/core/Slider";
 import { HStack, StackItem } from "@astryxdesign/core/Stack";
 import type { CSSProperties, ReactElement } from "react";
-import { touchHull } from "~/drydock/store";
+import { beginEdit, touchHull } from "~/drydock/store";
 
 export interface SliderFieldProps {
   label: string;
@@ -27,6 +27,9 @@ export const SliderField = ({
 }: SliderFieldProps): ReactElement => {
   const set = (v: number): void => {
     if (Number.isNaN(v)) return;
+    // Before the mutation, or the snapshot captures the new value. A whole
+    // drag's worth of ticks coalesces into one undo step.
+    beginEdit(label);
     onChange(Math.min(max, Math.max(min, v)));
     touchHull();
   };
@@ -85,6 +88,7 @@ export const KnobField = ({
 }: KnobFieldProps): ReactElement => {
   const set = (next: number): void => {
     if (Number.isNaN(next)) return;
+    beginEdit(label);
     onChange(Math.min(max, Math.max(min, next)));
     touchHull();
   };

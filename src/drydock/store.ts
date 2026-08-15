@@ -1,66 +1,17 @@
 // Drydock store: framework-agnostic state shared by the WebGPU scene and the
 // React designer panel. The scene reads `view`/`hulls` directly every frame;
 // the UI subscribes and re-renders on `version` bumps. Hull recipes are
-// deep-mutable working copies persisted to localStorage; mesh re-bakes are
-// debounced through hooks the scene registers once the GPU exists.
+// deep-mutable drafts held in memory — nothing reaches localStorage until
+// `saveHulls()`; mesh re-bakes are debounced through hooks the scene registers
+// once the GPU exists. Draft rules (dirty, undo/redo, revert) live in draft.ts.
 
-import {
-  ARTICULATION,
-  type ArticulationDef,
-  ENGINES,
-  type EngineAnchor,
-  type PartDef,
-  type PrimDef,
-  RECIPES,
-  SHIP_CLASSES,
-  type ShipClass,
-} from "~/hull/catalog";
+import { ARTICULATION, type PrimDef, type ShipClass } from "~/hull/catalog";
+import { createDraft, type HullDef, type UndoResult } from "./draft";
+import { kv, prefersReducedMotion } from "./env";
 import { applyOp, type HullOp } from "./ops";
 
-export interface HullDef {
-  parts: PartDef[];
-  engines: EngineAnchor[];
-  articulation: ArticulationDef;
-}
-
-export interface UndoSlot {
-  cls: ShipClass;
-  hull: HullDef;
-  label: string;
-}
-
-const STORE_KEY = "drydock-hulls-v1";
-
-export const stockHull = (cls: ShipClass): HullDef =>
-  structuredClone({
-    parts: RECIPES[cls] as PartDef[],
-    engines: ENGINES[cls] as EngineAnchor[],
-    articulation: ARTICULATION[cls],
-  });
-
-const loadHulls = (): Record<ShipClass, HullDef> => {
-  const out = {} as Record<ShipClass, HullDef>;
-  for (const cls of SHIP_CLASSES) out[cls] = stockHull(cls);
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw) as Partial<Record<ShipClass, HullDef>>;
-      for (const cls of SHIP_CLASSES) {
-        const h = saved[cls];
-        if (h?.parts?.length && h.engines) {
-          // Backfill articulation on pre-articulation saves — same store key.
-          out[cls] = {
-            ...h,
-            articulation: h.articulation ?? structuredClone(ARTICULATION[cls]),
-          };
-        }
-      }
-    }
-  } catch {
-    // corrupt store — fall back to stock
-  }
-  return out;
-};
+export type { HullDef } from "./draft";
+export { stockHull } from "./draft";
 
 export const view = {
   cls: "scout" as ShipClass,
@@ -68,7 +19,7 @@ export const view = {
   tiltDeg: 28,
   bank: false,
   mono: false,
-  paused: matchMedia("(prefers-reduced-motion: reduce)").matches,
+  paused: prefersReducedMotion(),
   t: 0,
   // Inspector orbit: drag adds yaw/pitch on top of the slider tilt; dragging
   // stops the auto-spin (spinPhase freezes), the `spin` button resumes it.
@@ -82,11 +33,11 @@ export const view = {
   gpuError: "",
 };
 
-export const hulls = loadHulls();
+const draft = createDraft({ kv });
+
+export const hulls = draft.hulls;
 
 export const sel = { part: 0 };
-
-export let undoSlot: UndoSlot | null = null;
 
 // --- subscription (React side) ----------------------------------------------
 
@@ -119,9 +70,8 @@ export const registerRebuild = (
   rebuildHighlight = highlight;
 };
 
-/** Persist + debounce a mesh re-bake for the class being edited. */
-const persistAndRebake = (): void => {
-  localStorage.setItem(STORE_KEY, JSON.stringify(hulls));
+/** Debounce a mesh re-bake for the class being edited. */
+const rebake = (): void => {
   clearTimeout(rebuildTimer);
   rebuildTimer = setTimeout(() => {
     rebuildHull(view.cls);
@@ -129,10 +79,91 @@ const persistAndRebake = (): void => {
   }, 80);
 };
 
-/** Field-level hull edit (slider drag etc.): mutate, then call this. */
-export const touchHull = (): void => {
-  persistAndRebake();
+/**
+ * Re-bake and re-render without touching the dirty flag. Used by the actions
+ * that already decided what dirty means (undo/redo/revert/reset) — routing them
+ * through `touchHull` would re-dirty a class that just returned to saved state.
+ */
+const refresh = (): void => {
+  rebake();
   notify();
+};
+
+/**
+ * Field-level hull edit (slider drag etc.): mutate, then call this. Marks the
+ * draft dirty and re-bakes — it does NOT persist. Pair it with `beginEdit` or
+ * `pushUndo` *before* the mutation so the edit is undoable.
+ */
+export const touchHull = (): void => {
+  draft.touch(view.cls);
+  refresh();
+};
+
+// --- draft lifecycle ----------------------------------------------------------
+
+/**
+ * Call BEFORE mutating, for edits that arrive as a stream (slider drags,
+ * held-key nudges): repeats of the same label collapse into one undo step.
+ */
+export const beginEdit = (label: string): void => {
+  draft.beginEdit(view.cls, sel.part, label);
+};
+
+/** Call BEFORE mutating, for discrete edits: one action, one undo step. */
+export const pushUndo = (label: string): void => {
+  draft.pushUndo(view.cls, sel.part, label);
+};
+
+const applyStep = (result: UndoResult | null): void => {
+  if (!result) return;
+  // Follow the edit to its own class — silently editing an off-screen hull is
+  // worse than moving the camera.
+  view.cls = result.cls;
+  const count = hulls[result.cls].parts.length;
+  sel.part = Math.min(Math.max(result.sel, 0), count - 1);
+  rebuildHighlight();
+  refresh();
+};
+
+export const undo = (): void => applyStep(draft.undo());
+export const redo = (): void => applyStep(draft.redo());
+
+/** Label of the next undo/redo step, or null when the stack is empty. */
+export const undoLabel = (): string | null => draft.peekUndo();
+export const redoLabel = (): string | null => draft.peekRedo();
+
+export const isDirty = (cls?: ShipClass): boolean => draft.isDirty(cls);
+export const dirtyClasses = (): ShipClass[] => draft.dirtyClasses();
+
+/** Promote the draft to storage. The only thing that writes. */
+export const saveHulls = (): void => {
+  draft.save();
+  notify();
+};
+
+/** Discard this class's unsaved edits. */
+export const revertClass = (): void => {
+  draft.revert(view.cls);
+  sel.part = 0;
+  rebuildHighlight();
+  refresh();
+};
+
+/** Load the stock recipe into the draft — still needs a save to persist. */
+export const resetClass = (): void => {
+  draft.reset(view.cls);
+  sel.part = 0;
+  rebuildHighlight();
+  refresh();
+};
+
+/** Warn before a reload throws away unsaved hull edits. */
+export const installUnloadGuard = (): void => {
+  addEventListener("beforeunload", (e: BeforeUnloadEvent) => {
+    if (!draft.isDirty()) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
 };
 
 // --- view actions -----------------------------------------------------------
@@ -203,37 +234,12 @@ export const selectPart = (i: number): void => {
   notify();
 };
 
-// --- undo (one-deep, swap semantics: undo twice = redo) -----------------------
-
-export const snapshotUndo = (label: string): void => {
-  undoSlot = {
-    cls: view.cls,
-    hull: structuredClone(hulls[view.cls]),
-    label,
-  };
-  notify();
-};
-
-export const undo = (): void => {
-  if (!undoSlot) return;
-  const redo: UndoSlot = {
-    cls: undoSlot.cls,
-    hull: structuredClone(hulls[undoSlot.cls]),
-    label: "redo",
-  };
-  hulls[undoSlot.cls] = undoSlot.hull;
-  view.cls = undoSlot.cls; // jump back to the class the action touched
-  undoSlot = redo;
-  sel.part = 0;
-  touchHull();
-};
-
 // --- agent ops (natural-language / hull-op DSL) -------------------------------
 // Apply a batch from the design agent as one undoable step. Bad ops are
 // skipped by applyOp; returns the applied-op log lines for the UI.
 
 export const applyOps = (ops: HullOp[], label: string): string[] => {
-  snapshotUndo(label);
+  pushUndo(label);
   const hull = hulls[view.cls];
   const log = ops
     .map((op) => applyOp(hull, op))
@@ -254,6 +260,7 @@ export const defaultPrim = (kind: string): PrimDef =>
 
 export const addPart = (): void => {
   const hull = hulls[view.cls];
+  pushUndo("add part");
   hull.parts.push({
     prim: defaultPrim("slab"),
     scale: [0.3, 0.3, 0.3],
@@ -268,6 +275,7 @@ export const dupPart = (): void => {
   const hull = hulls[view.cls];
   const part = hull.parts[sel.part];
   if (!part) return;
+  pushUndo(`duplicate part ${sel.part}`);
   hull.parts.splice(sel.part + 1, 0, structuredClone(part));
   sel.part++;
   touchHull();
@@ -276,27 +284,21 @@ export const dupPart = (): void => {
 export const delPart = (): void => {
   const hull = hulls[view.cls];
   if (hull.parts.length <= 1) return;
-  snapshotUndo(`delete part ${sel.part}`);
+  pushUndo(`delete part ${sel.part}`);
   hull.parts.splice(sel.part, 1);
   sel.part = Math.min(sel.part, hull.parts.length - 1);
   touchHull();
 };
 
 export const addEngine = (): void => {
+  pushUndo("add engine");
   hulls[view.cls].engines.push({ pos: [0, -1.2, 0], w: 0.12 });
   touchHull();
 };
 
 export const delEngine = (i: number): void => {
-  snapshotUndo(`delete engine ${i}`);
+  pushUndo(`delete engine ${i}`);
   hulls[view.cls].engines.splice(i, 1);
-  touchHull();
-};
-
-export const resetClass = (): void => {
-  snapshotUndo("reset");
-  hulls[view.cls] = stockHull(view.cls);
-  sel.part = 0;
   touchHull();
 };
 
@@ -326,7 +328,7 @@ export const importHull = async (): Promise<string> => {
     if (!parsed.parts?.length || !Array.isArray(parsed.engines)) {
       throw new Error("bad shape");
     }
-    snapshotUndo("import");
+    pushUndo("import");
     hulls[view.cls] = {
       parts: parsed.parts,
       engines: parsed.engines,

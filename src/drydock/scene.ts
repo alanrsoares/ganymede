@@ -13,7 +13,6 @@ import {
   type PartDef,
   SHIP_CLASSES,
   type ShipClass,
-  type V3,
 } from "~/hull/catalog";
 import { acquireGpu } from "~/render/gpu-context";
 import { makeAsteroidMesh } from "~/render/mesh";
@@ -28,6 +27,8 @@ import plumeWGSL from "~/shaders/plume.wgsl" with { type: "text" };
 import rockWGSL from "~/shaders/rock.wgsl" with { type: "text" };
 import shipWGSL from "~/shaders/ship.wgsl" with { type: "text" };
 import { TEAMS } from "~/world/types";
+import { createGizmoOverlay, type GizmoOverlay } from "./gizmo";
+import { inspectorPose, mulV, shipMat, transpose } from "./projection";
 import {
   hulls,
   registerRebuild,
@@ -118,70 +119,6 @@ interface SwarmShip {
 
 const teamTint = (team: number): readonly [number, number, number] =>
   view.mono ? MONO : TEAMS[team].rgb;
-
-// --- ship transform (TS mirror of ship.wgsl's shipMat) --------------------------
-// Row-major mat3; used to invert the inspector pose for click-picking.
-
-type Mat3 = readonly number[];
-const matMul = (a: Mat3, b: Mat3): number[] => {
-  const out: number[] = [];
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 3; c++) {
-      out[r * 3 + c] =
-        a[r * 3] * b[c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c];
-    }
-  }
-  return out;
-};
-const mulV = (m: Mat3, v: V3): V3 => [
-  m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
-  m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
-  m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
-];
-const transpose = (m: Mat3): number[] => [
-  m[0],
-  m[3],
-  m[6],
-  m[1],
-  m[4],
-  m[7],
-  m[2],
-  m[5],
-  m[8],
-];
-
-/** Rz(heading)·Rx(tilt)·Ry(roll) — must match ship.wgsl's shipMat exactly. */
-const shipMat = (heading: number, tilt: number, roll: number): number[] => {
-  const ch = Math.cos(heading);
-  const sh = Math.sin(heading);
-  const ct = Math.cos(tilt);
-  const st = Math.sin(tilt);
-  const cr = Math.cos(roll);
-  const sr = Math.sin(roll);
-  const rz = [ch, -sh, 0, sh, ch, 0, 0, 0, 1];
-  const rx = [1, 0, 0, 0, ct, -st, 0, st, ct];
-  const ry = [cr, 0, sr, 0, 1, 0, -sr, 0, cr];
-  return matMul(rz, matMul(rx, ry));
-};
-
-/** Left control panel's outer edge in CSS px (margin + padding + border + width). */
-const PANEL_CLEAR_PX = 350;
-
-/** The inspector hull's current pose — shared by draw, pick and highlight. */
-const inspectorPose = (w: number, h: number) => {
-  const radius = Math.min(w, h) * 0.19;
-  // On narrow (laptop) screens w*0.24 tucks the hull under the left panel;
-  // push it right until it clears, but never past centre.
-  const clear = PANEL_CLEAR_PX * Math.min(devicePixelRatio || 1, 2);
-  return {
-    cx: Math.max(w * 0.24, Math.min(clear + radius * 1.05, w * 0.5)),
-    cy: h * 0.5,
-    radius,
-    roll: view.bank ? Math.sin(view.t * 1.6) * 0.55 : 0,
-    heading: Math.PI + view.spinPhase + view.orbitYaw,
-    tilt: (view.tiltDeg * Math.PI) / 180 + view.orbitPitch,
-  };
-};
 
 // --- GPU setup ----------------------------------------------------------------
 
@@ -572,6 +509,7 @@ const runLoop = (
   uniformBuffer: GPUBuffer,
   passes: Passes,
   depth: () => GPUTexture,
+  gizmo: GizmoOverlay,
 ): void => {
   const swarm = seedSwarm();
   const buf = {} as Record<ShipClass, Float32Array>;
@@ -608,6 +546,7 @@ const runLoop = (
     const plumeCount = packPlumes(plumeData, ships);
     packRocks(rockData, w, h, cellPx);
     const hlData = packHighlight(highlightData, w, h, passes);
+    gizmo.update(canvas);
     encodeFrame(
       device,
       context,
@@ -736,8 +675,17 @@ export const startScene = async (canvas: HTMLCanvasElement): Promise<void> => {
   resize();
   addEventListener("resize", resize);
   wireOrbitDrag(canvas);
-  runLoop(device, context, canvas, uniformBuffer, passes, () => {
-    if (!depthTexture) throw new Error("depth texture missing");
-    return depthTexture;
-  });
+  const gizmo = createGizmoOverlay();
+  runLoop(
+    device,
+    context,
+    canvas,
+    uniformBuffer,
+    passes,
+    () => {
+      if (!depthTexture) throw new Error("depth texture missing");
+      return depthTexture;
+    },
+    gizmo,
+  );
 };

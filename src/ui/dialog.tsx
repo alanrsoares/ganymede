@@ -125,10 +125,9 @@ export const ChoiceCard = ({
         {title}
       </Text>
       <Text
-        size="3xs"
         color="secondary"
         display="block"
-        className="line-clamp-2 leading-snug text-[9px] sm:text-[10px]"
+        className="line-clamp-2 leading-snug text-[9px]! sm:text-[10px]!"
       >
         {blurb}
       </Text>

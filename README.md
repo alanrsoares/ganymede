@@ -88,7 +88,7 @@ Requires [Bun](https://bun.com) (≥ 1.3).
 
 ```bash
 bun install
-bun run web        # dev server with HMR at http://localhost:3000
+bun run dev        # dev server with HMR at http://localhost:3000
 bun test           # sim characterization tests
 bun run check      # biome lint + tsc typecheck
 bun run hero       # recapture docs/hero.png from a live Autobattle (needs the dev server)

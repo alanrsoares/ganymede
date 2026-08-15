@@ -6,7 +6,7 @@ import index from "./index.html";
 // The live drydock tab connects over WebSocket (agent-bridge.ts); external
 // processes POST {cmd,args} to /api/agent, which relays to the tab and returns
 // its reply. The server is a dumb pipe — command semantics live in the tab.
-// Dev tooling only (bun run web); never part of the game build.
+// Dev tooling only (bun run dev); never part of the game build.
 
 type Pending = {
   resolve: (v: unknown) => void;
