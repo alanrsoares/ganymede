@@ -5,8 +5,8 @@
     "": {
       "name": "gemma4-game-of-life",
       "dependencies": {
-        "@astryxdesign/core": "^0.4.0",
-        "@astryxdesign/theme-gothic": "^0.4.0",
+        "@astryxdesign/core": "^0.4.1",
+        "@astryxdesign/theme-gothic": "^0.4.1",
         "@fontsource/press-start-2p": "^5.3.0",
         "@onrails/pattern": "^0.3.3",
         "@stylexjs/stylex": "^0.19.0",
@@ -27,9 +27,9 @@
     },
   },
   "packages": {
-    "@astryxdesign/core": ["@astryxdesign/core@0.4.0", "", { "dependencies": { "intl-messageformat": "^11.2.9" }, "peerDependencies": { "@stylexjs/stylex": "^0.19.0", "react": ">=19.0.0", "react-dom": ">=19.0.0" } }, "sha512-1sInF5AjnzKlRMaE/Gvcd2a+6AGqKJeU2tg7XmnntjDzAEHwnqECoMcaBWAXkuP73PemwGgD+sKiqodlmreymg=="],
+    "@astryxdesign/core": ["@astryxdesign/core@0.4.1", "", { "dependencies": { "intl-messageformat": "^11.2.9" }, "peerDependencies": { "@stylexjs/stylex": "^0.19.0", "react": ">=19.0.0", "react-dom": ">=19.0.0" } }, "sha512-C+FFfmCVqfvO2orLQqIXIdC4mJncdXl1CtyvLThfo3HUnr2wc3swq6MYtv8qqDEBhz40MythHChpsGv17LROUg=="],
 
-    "@astryxdesign/theme-gothic": ["@astryxdesign/theme-gothic@0.4.0", "", { "dependencies": { "lucide-react": "^1.18.0" }, "peerDependencies": { "@astryxdesign/core": "0.4.0", "react": ">=19" } }, "sha512-lgyS69nohd0pBNEDf1D9ue7EiVwsD6NZoUjDXq8GRfXANcJv0q0ouHAwtLopovirbcwJ7ux+w/4r7y0DUtYavA=="],
+    "@astryxdesign/theme-gothic": ["@astryxdesign/theme-gothic@0.4.1", "", { "dependencies": { "lucide-react": "^1.18.0" }, "peerDependencies": { "@astryxdesign/core": "0.4.1", "react": ">=19" } }, "sha512-888Fh7GdWhoXNb0fF9L2xC7E74CzJEXUmbfmgb2uqyb3IBwZJ6+5q+Rp7KlPGLJAljtP5P/MaGp9ZXFSfhFupg=="],
 
     "@fontsource/press-start-2p": ["@fontsource/press-start-2p@5.3.0", "", {}, "sha512-gxWFxdeDglPhEYSwEeooomcaFK8kSQYLQwVxfnOJeYRj2sPEHXjpVtFgEaYfqzOjuAJGrIcJOipu2KY5YkbyuQ=="],
 
