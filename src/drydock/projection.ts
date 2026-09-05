@@ -60,9 +60,8 @@ export const PANEL_CLEAR_PX = 350;
 /** The inspector hull pose in the canvas' backing-pixel coordinate space. */
 export const inspectorPose = (w: number, h: number) => {
   const radius = Math.min(w, h) * 0.19;
-  const clear = PANEL_CLEAR_PX * Math.min(devicePixelRatio || 1, 2);
   return {
-    cx: Math.max(w * 0.24, Math.min(clear + radius * 1.05, w * 0.5)),
+    cx: w * 0.5,
     cy: h * 0.5,
     radius,
     roll: view.bank ? Math.sin(view.t * 1.6) * 0.55 : 0,

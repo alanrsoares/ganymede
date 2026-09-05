@@ -241,7 +241,7 @@ const seedSwarm = (): SwarmShip[] =>
     cls: SHIP_CLASSES[i % SHIP_CLASSES.length],
     team: (i >> 2) % TEAMS.length,
     level: 1 + ((i * 7) % 5),
-    x: 0.45 + Math.random() * 0.5, // right-hand field, canvas fractions
+    x: Math.random(),
     y: 0.08 + Math.random() * 0.84,
     heading: Math.random() * Math.PI * 2,
     turn: (Math.random() - 0.5) * 0.4,
@@ -328,33 +328,29 @@ const effArt = (
 const wavePhase = (a: ArticulationDef, flickerPhase: number): number =>
   view.t * 4 * a.speed + flickerPhase;
 
-const collectShips = (
+const collectInspectorShip = (w: number, h: number): ShipInstance => {
+  const inspArt = effArt(view.cls, 0.85, view.design);
+  const pose = inspectorPose(w, h);
+  return {
+    cls: view.cls,
+    ...pose,
+    team: teamTint(view.team),
+    throttle: 0.85,
+    phase: 1,
+    wavePhase: wavePhase(inspArt, 1),
+    bendCurve: view.bank && !view.design ? Math.sin(view.t * 1.6) * 0.28 : 0,
+    art: inspArt,
+  };
+};
+
+const collectSwarmShips = (
   swarm: SwarmShip[],
   w: number,
   h: number,
   cellPx: number,
 ): ShipInstance[] => {
-  // Inspector hull: articulate normally, EXCEPT in design mode — click-picking
-  // and the highlight shell invert the rest pose, so the wave freezes there
-  // to keep part clicks and the glow exact.
-  const inspArt = effArt(view.cls, 0.85, view.design);
-  const pose = inspectorPose(w, h);
-  const ships: ShipInstance[] = [
-    {
-      cls: view.cls,
-      ...pose,
-      team: teamTint(view.team),
-      throttle: 0.85,
-      phase: 1,
-      wavePhase: wavePhase(inspArt, 1),
-      // Lean deforms even at amp 0, so design mode zeroes it with the wave —
-      // picking and the highlight shell assume the exact rest pose.
-      bendCurve: view.bank && !view.design ? Math.sin(view.t * 1.6) * 0.28 : 0,
-      art: inspArt,
-    },
-  ];
+  const ships: ShipInstance[] = [];
   for (const s of swarm) {
-    if (s.x < 0.44) continue; // keep the field clear of the inspector
     const throttle =
       0.35 +
       0.5 * ARCH_SPEED[s.cls] * (0.7 + 0.3 * Math.sin(view.t * 0.7 + s.phase));
@@ -462,11 +458,12 @@ const encodeFrame = (
   context: GPUCanvasContext,
   passes: Passes,
   depth: () => GPUTexture,
-  buf: Record<ShipClass, Float32Array>,
-  counts: Record<ShipClass, number>,
-  rockData: Float32Array,
-  plumeData: Float32Array,
-  plumeCount: number,
+  w: number,
+  h: number,
+  bufs: FrameBuffers,
+  swarmCounts: Record<ShipClass, number>,
+  swarmPlumeCount: number,
+  inspPlumeCount: number,
   highlightData: Float32Array | null,
 ): void => {
   const encoder = device.createCommandEncoder();
@@ -486,20 +483,74 @@ const encodeFrame = (
       depthStoreOp: "store",
     },
   });
+
+  // Background starfield
   pass.setPipeline(passes.bgPipeline);
   pass.setBindGroup(0, passes.bgBindGroup);
   pass.draw(3);
-  passes.rockPass.draw(pass, rockData, ROCKS.length);
+
+  // Background scene (rocks, drifting swarm ships, swarm plumes) in depth range [0.55, 1.0]
+  pass.setViewport(0, 0, w, h, 0.55, 1.0);
+  passes.rockPass.draw(pass, bufs.rockData, ROCKS.length);
   for (const cls of SHIP_CLASSES) {
-    if (counts[cls] > 0)
-      passes.shipPasses[cls].draw(pass, buf[cls], counts[cls]);
+    if (swarmCounts[cls] > 0)
+      passes.shipPasses[cls].draw(pass, bufs.swarmBuf[cls], swarmCounts[cls]);
   }
-  if (plumeCount > 0) passes.plumePass.draw(pass, plumeData, plumeCount);
+  if (swarmPlumeCount > 0)
+    passes.plumePass.draw(pass, bufs.swarmPlumeData, swarmPlumeCount);
+
+  // Foreground inspector hull (selected ship, its plumes, highlight shell) in depth range [0.0, 0.45]
+  pass.setViewport(0, 0, w, h, 0.0, 0.45);
+  passes.shipPasses[view.cls].draw(pass, bufs.inspBuf, 1);
+  if (inspPlumeCount > 0)
+    passes.plumePass.draw(pass, bufs.inspPlumeData, inspPlumeCount);
   if (highlightData && passes.highlightPass) {
     passes.highlightPass.draw(pass, highlightData, 1);
   }
+
   pass.end();
   device.queue.submit([encoder.finish()]);
+};
+
+interface FrameBuffers {
+  swarmBuf: Record<ShipClass, Float32Array>;
+  inspBuf: Float32Array;
+  rockData: Float32Array;
+  swarmPlumeData: Float32Array;
+  inspPlumeData: Float32Array;
+  highlightData: Float32Array;
+}
+
+const createFrameBuffers = (): FrameBuffers => {
+  const swarmBuf = {} as Record<ShipClass, Float32Array>;
+  for (const cls of SHIP_CLASSES) {
+    swarmBuf[cls] = new Float32Array(MAX_SHIPS * SHIP_LAYOUT.floats);
+  }
+  return {
+    swarmBuf,
+    inspBuf: new Float32Array(SHIP_LAYOUT.floats),
+    rockData: new Float32Array(8 * ROCK_LAYOUT.floats),
+    swarmPlumeData: new Float32Array(MAX_PLUMES * PLUME_LAYOUT.floats),
+    inspPlumeData: new Float32Array(MAX_PLUMES * PLUME_LAYOUT.floats),
+    highlightData: new Float32Array(SHIP_LAYOUT.floats),
+  };
+};
+
+const packSwarm = (
+  swarm: SwarmShip[],
+  w: number,
+  h: number,
+  cellPx: number,
+  swarmBuf: Record<ShipClass, Float32Array>,
+  swarmPlumeData: Float32Array,
+): { counts: Record<ShipClass, number>; plumeCount: number } => {
+  const counts = {} as Record<ShipClass, number>;
+  for (const cls of SHIP_CLASSES) counts[cls] = 0;
+  const ships = collectSwarmShips(swarm, w, h, cellPx);
+  for (const ship of ships) {
+    packShip(swarmBuf[ship.cls], counts[ship.cls]++, ship);
+  }
+  return { counts, plumeCount: packPlumes(swarmPlumeData, ships) };
 };
 
 const runLoop = (
@@ -512,13 +563,7 @@ const runLoop = (
   gizmo: GizmoOverlay,
 ): void => {
   const swarm = seedSwarm();
-  const buf = {} as Record<ShipClass, Float32Array>;
-  for (const cls of SHIP_CLASSES) {
-    buf[cls] = new Float32Array(MAX_SHIPS * SHIP_LAYOUT.floats);
-  }
-  const rockData = new Float32Array(8 * ROCK_LAYOUT.floats);
-  const plumeData = new Float32Array(MAX_PLUMES * PLUME_LAYOUT.floats);
-  const highlightData = new Float32Array(SHIP_LAYOUT.floats);
+  const bufs = createFrameBuffers();
 
   let last = performance.now();
   const frame = (now: number): void => {
@@ -537,26 +582,34 @@ const runLoop = (
       0,
       new Float32Array([w, h, view.t, DEPTH_SCALE]),
     );
-    const counts = {} as Record<ShipClass, number>;
-    for (const cls of SHIP_CLASSES) counts[cls] = 0;
-    const ships = collectShips(swarm, w, h, cellPx);
-    for (const ship of ships) {
-      packShip(buf[ship.cls], counts[ship.cls]++, ship);
-    }
-    const plumeCount = packPlumes(plumeData, ships);
-    packRocks(rockData, w, h, cellPx);
-    const hlData = packHighlight(highlightData, w, h, passes);
+
+    const { counts: swarmCounts, plumeCount: swarmPlumeCount } = packSwarm(
+      swarm,
+      w,
+      h,
+      cellPx,
+      bufs.swarmBuf,
+      bufs.swarmPlumeData,
+    );
+
+    const inspShip = collectInspectorShip(w, h);
+    packShip(bufs.inspBuf, 0, inspShip);
+    const inspPlumeCount = packPlumes(bufs.inspPlumeData, [inspShip]);
+
+    packRocks(bufs.rockData, w, h, cellPx);
+    const hlData = packHighlight(bufs.highlightData, w, h, passes);
     gizmo.update(canvas);
     encodeFrame(
       device,
       context,
       passes,
       depth,
-      buf,
-      counts,
-      rockData,
-      plumeData,
-      plumeCount,
+      w,
+      h,
+      bufs,
+      swarmCounts,
+      swarmPlumeCount,
+      inspPlumeCount,
       hlData,
     );
     requestAnimationFrame(frame);
