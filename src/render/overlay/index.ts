@@ -3,7 +3,7 @@
 
 import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
 import { CLIP, clipLayer } from "~/render/sprites";
-import type { World } from "~/world";
+import { hasArenaFurniture, type World } from "~/world";
 import {
   drawBases,
   drawCenterPad,
@@ -163,20 +163,27 @@ export const createOverlay = (): Overlay => {
       const cellPx = w / gridW;
       const cellPy = h / gridH;
 
+      // Arena furniture — bases, portals, heal pads, the orbit ring — belongs
+      // to the all-range field. A scroll stage flies past fixed structures that
+      // sit at world zero, so it draws none of them (its own scenery is #30's).
+      const arena = hasArenaFurniture(world);
+
       // Portals go FIRST so they occupy the leading instances: the renderer
       // draws that slice before the 3D passes, letting objects fly over them.
-      drawPortals(push, cellPx, cellPy, now);
+      if (arena) drawPortals(push, cellPx, cellPy, now);
       const portalCount = getCount();
 
-      const { baseCount, centerPadCount } = drawFieldFurniture(
-        push,
-        bufs.baseInstances,
-        bufs.centerPadInstances,
-        cellPx,
-        cellPy,
-        now,
-        world,
-      );
+      const { baseCount, centerPadCount } = arena
+        ? drawFieldFurniture(
+            push,
+            bufs.baseInstances,
+            bufs.centerPadInstances,
+            cellPx,
+            cellPy,
+            now,
+            world,
+          )
+        : { baseCount: 0, centerPadCount: 0 };
       const { rockCount, orbCount, shieldCount } = drawDynamicEntities(
         push,
         bufs.rockInstances,

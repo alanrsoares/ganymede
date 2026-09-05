@@ -1,3 +1,5 @@
+import { syncField } from "~/world/field";
+import { advanceScroll, scrollStep } from "~/world/scroll";
 import type { World } from "~/world/types";
 import { arcadeStep } from "./arcade";
 import { createTickCtx } from "./context";
@@ -21,7 +23,11 @@ import {
 
 /** Advance the entity world by `steps` generations; returns the next world. */
 export const tick = (world: World, steps: number, now: number): World => {
-  const ctx = createTickCtx(world, steps, now);
+  // Stage first, then the field it implies: everything below wraps and culls
+  // against a field that already reflects this tick's scroll position.
+  const scrolled = advanceScroll(world, steps);
+  syncField(scrolled);
+  const ctx = createTickCtx(scrolled, steps, now);
   const motion = advanceMotion(ctx);
   const hazards = createHazardState();
   const interactions = createInteractionState();
@@ -38,6 +44,7 @@ export const tick = (world: World, steps: number, now: number): World => {
   eliminateBaselessTeams(ctx);
 
   const next = finalizeTick(ctx, motion, hazards, interactions, projectiles);
-  // Arcade rules run on the committed world (no-op in autobattle).
-  return arcadeStep(next);
+  // Arcade rules run on the committed world (no-op in autobattle); a scroll
+  // stage feeds itself enemies the same way, having no bases to muster from.
+  return scrollStep(arcadeStep(next), steps);
 };

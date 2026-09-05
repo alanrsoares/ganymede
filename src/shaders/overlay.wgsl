@@ -1,7 +1,10 @@
 struct Uniforms {
     resolution: vec2f,
     time: f32,
-    _pad: f32}
+    _pad: f32,
+    // World pixels -> clip space. Shared by every pass (see render/view.ts).
+    viewProj: mat4x4f,
+}
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var t_array: texture_2d_array<f32>;
 @group(0) @binding(2) var s_sampler: sampler;
@@ -68,10 +71,12 @@ fn vs(in: VSIn) -> VSOut {
     let rotated = rot * (local * scale);
 
     let world = in.posSize.xy + rotated;
-    let clip = (world / u.resolution) * 2.0 - 1.0;
+    // Sprites sit on the z = 0 plane; the pass never tests or writes depth
+    // (2D layering by draw order), so whatever depth the view yields is inert.
+    let clip = u.viewProj * vec4f(world, 0.0, 1.0);
 
     var out: VSOut;
-    out.position = vec4f(clip.x, -clip.y, 0.0, 1.0);
+    out.position = clip;
     out.local = local;
     out.color = in.color;
     out.shape = in.rotShape.y;

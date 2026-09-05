@@ -497,7 +497,7 @@ const arcadeConfig = (archetype: Archetype = "fighter"): MatchConfig => ({
   tempo: 52,
   reinforceGens: 0,
   format: "arcade",
-  arcade: {
+  run: {
     playerRole: "pilot",
     difficulty: "normal",
     playerTeam: "cyan",
@@ -519,10 +519,10 @@ test("initArcadeWorld musters one controlled player at the cyan base", () => {
   expect(player.colorName).toBe("cyan");
   expect(player.archetype).toBe("heavy");
   expect(w.controlledShipId).toBe(player.id);
-  expect(w.arcade).not.toBeNull();
-  expect(w.arcade?.lives).toBe(ARCADE_LIVES);
-  expect(w.arcade?.wave).toBe(1);
-  expect(w.arcade?.over).toBe(false);
+  expect(w.run).not.toBeNull();
+  expect(w.run?.lives).toBe(ARCADE_LIVES);
+  expect(w.run?.waves?.wave).toBe(1);
+  expect(w.run?.over).toBe(false);
   expect(w.winner).toBeNull();
 });
 
@@ -538,7 +538,7 @@ test("arcade musters wave 1 on the first tick and never decides a winner", () =>
     expect(["orange", "emerald"]).toContain(e.colorName);
     expect(e.level).toBeLessThanOrEqual(maxLevel);
   }
-  expect(w.arcade?.waveRemaining).toBe(count);
+  expect(w.run?.waves?.waveRemaining).toBe(count);
   expect(w.winner).toBeNull();
 });
 
@@ -555,8 +555,8 @@ test("losing the pilot burns a life and respawns; zero lives ends the run", () =
   });
 
   w = update({ kind: "tick", steps: 1, now: 0 }, drop(w));
-  expect(w.arcade?.lives).toBe(ARCADE_LIVES - 1);
-  expect(w.arcade?.over).toBe(false);
+  expect(w.run?.lives).toBe(ARCADE_LIVES - 1);
+  expect(w.run?.over).toBe(false);
   // a fresh pilot is back under control
   expect(w.ships.items.some((s) => s.id === w.controlledShipId)).toBe(true);
 
@@ -564,8 +564,8 @@ test("losing the pilot burns a life and respawns; zero lives ends the run", () =
   for (let i = 0; i < ARCADE_LIVES - 1; i++) {
     w = update({ kind: "tick", steps: 1, now: 0 }, drop(w));
   }
-  expect(w.arcade?.lives).toBe(0);
-  expect(w.arcade?.over).toBe(true);
+  expect(w.run?.lives).toBe(0);
+  expect(w.run?.over).toBe(true);
 });
 
 test("arcade muster pickup reinforces the player's team with AI allies", () => {

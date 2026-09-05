@@ -13,7 +13,7 @@ const arcadeConfig = (): MatchConfig => {
     tempo: 52,
     reinforceGens: 0,
     format: "arcade",
-    arcade: {
+    run: {
       playerRole: "pilot",
       difficulty: "normal",
       playerTeam: "cyan",
@@ -54,7 +54,7 @@ test("the Spread augment fans extra barrels into a diverging cone", () => {
   w = {
     ...w,
     // biome-ignore lint/style/noNonNullAssertion: arcade world always has state
-    arcade: { ...w.arcade!, augments: { spread: 2 } },
+    run: { ...w.run!, augments: { spread: 2 } },
   };
   w = armPilot(w);
   const pilot = w.controlledShipId;

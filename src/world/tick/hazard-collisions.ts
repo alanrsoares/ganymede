@@ -1,11 +1,7 @@
-import {
-  elastic,
-  normalize,
-  reflectOffDisc,
-  wrapDelta,
-} from "~/engine/physics";
+import { elastic, normalize, reflectOffDisc } from "~/engine/physics";
 import { spawnShrapnel } from "~/world/factory";
-import { within, wrap } from "~/world/math";
+import { hasArenaFurniture } from "~/world/field";
+import { deltaX, deltaY, within, wrapX, wrapY } from "~/world/math";
 import {
   BASE_RADIUS,
   BASE_RAM_DAMAGE,
@@ -90,8 +86,8 @@ const shipVsRock = (
   r: Rock,
 ): Step => {
   if (hazards.removedRocks.has(r.id)) return "next";
-  const nx = wrapDelta(s.x, r.x, ARENA.w);
-  const ny = wrapDelta(s.y, r.y, ARENA.h);
+  const nx = deltaX(s.x, r.x);
+  const ny = deltaY(s.y, r.y);
   const rad = r.size + shipRadius(s.level);
   const dist = Math.hypot(nx, ny);
   if (dist >= rad || dist < 1e-3) return "next";
@@ -112,8 +108,8 @@ const shipVsRock = (
   s.dy = hy;
   const ux = nx / dist;
   const uy = ny / dist;
-  s.x = wrap(s.x - ux * (rad - dist), ARENA.w);
-  s.y = wrap(s.y - uy * (rad - dist), ARENA.h);
+  s.x = wrapX(s.x - ux * (rad - dist));
+  s.y = wrapY(s.y - uy * (rad - dist));
 
   if (s.hitCooldown > 0) return "next";
   hit(ctx, s, 1, "melee");
@@ -330,8 +326,15 @@ export const resolveHazardCollisions = (
   hazards: HazardState,
 ) => {
   collideShipsRocks(ctx, motion, hazards);
-  collideShipsBases(ctx);
-  collideRocksBases(ctx, motion, hazards);
-  collideBodiesCenterPad(ctx, motion, hazards);
+  // The bases and the centre pad live at fixed all-range coordinates. A scroll
+  // stage flies past where they would be, so colliding with them there would
+  // bounce ships off invisible structures — and `reflectOffDisc` would wrap the
+  // corrected position back to the zero-origin field, teleporting them out of
+  // the window entirely.
+  if (hasArenaFurniture(ctx.world)) {
+    collideShipsBases(ctx);
+    collideRocksBases(ctx, motion, hazards);
+    collideBodiesCenterPad(ctx, motion, hazards);
+  }
   collideShardsShips(ctx, motion, hazards, shardShipPairs(ctx, motion));
 };

@@ -1,6 +1,6 @@
 import { angleTo, normalize, wrapDelta } from "~/engine/physics";
 import { spawnShrapnel } from "~/world/factory";
-import { within, wrap } from "~/world/math";
+import { deltaX, deltaY, within, wrapX, wrapY } from "~/world/math";
 import {
   BASE_RADIUS,
   BULLET_RADIUS,
@@ -111,14 +111,14 @@ const ricochetOffRock = (
   // Outward surface normal (rock centre → bolt) so the bolt is parked back on
   // the side it arrived from; wrapDelta(r, bt) = bt - r.
   const [nx, ny] = normalize(
-    [wrapDelta(r.x, bt.x, ARENA.w), wrapDelta(r.y, bt.y, ARENA.h)],
+    [deltaX(r.x, bt.x), deltaY(r.y, bt.y)],
     [-bt.vx, -bt.vy], // degenerate (dead-centre) hit: bounce straight back
   );
   const vdotn = bt.vx * nx + bt.vy * ny;
   bt.vx -= 2 * vdotn * nx;
   bt.vy -= 2 * vdotn * ny;
-  bt.x = wrap(r.x + nx * (rad + 1), ARENA.w);
-  bt.y = wrap(r.y + ny * (rad + 1), ARENA.h);
+  bt.x = wrapX(r.x + nx * (rad + 1));
+  bt.y = wrapY(r.y + ny * (rad + 1));
   bt.angle = angleTo([bt.vx, bt.vy]);
   bt.bounces -= 1;
 };
@@ -350,8 +350,8 @@ const hopMunitionsThroughPortals = <
       if (!within(it.x, it.y, from.x, from.y, from.r)) continue;
       const to = PORTALS[1 - g];
       const [ux, uy] = normalize([it.vx, it.vy]);
-      it.x = wrap(to.x + ux * (to.r + PORTAL_EXIT_MARGIN), ARENA.w);
-      it.y = wrap(to.y + uy * (to.r + PORTAL_EXIT_MARGIN), ARENA.h);
+      it.x = wrapX(to.x + ux * (to.r + PORTAL_EXIT_MARGIN));
+      it.y = wrapY(to.y + uy * (to.r + PORTAL_EXIT_MARGIN));
       break;
     }
   }

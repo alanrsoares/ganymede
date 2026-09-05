@@ -17,6 +17,36 @@ export interface Pt {
   y: number;
 }
 
+/**
+ * The field these points live on. `ARENA` satisfies it; the extras default to
+ * the 0-origin double torus, so a bare `{ w, h }` still means "all-range".
+ * With an axis open the 3x3 block stops wrapping on it and distances stop
+ * taking the short way round — both required for the grid to stay a
+ * conservative superset of the narrow-phase.
+ */
+export interface Bounds {
+  w: number;
+  h: number;
+  x0?: number;
+  y0?: number;
+  wrapX?: boolean;
+  wrapY?: boolean;
+}
+
+interface Axes {
+  x0: number;
+  y0: number;
+  wrapX: boolean;
+  wrapY: boolean;
+}
+
+const axesOf = (a: Bounds): Axes => ({
+  x0: a.x0 ?? 0,
+  y0: a.y0 ?? 0,
+  wrapX: a.wrapX ?? true,
+  wrapY: a.wrapY ?? true,
+});
+
 // Flat, lexicographically-sorted candidate pairs: [i0, j0, i1, j1, …], j > i.
 export type PairList = Int32Array;
 
@@ -48,19 +78,36 @@ function tryCellDims(w: number, h: number, band: number): Grid | null {
     : { ncx, ncy, cellW: w / ncx, cellH: h / ncy };
 }
 
-const cellXOf = (x: number, g: Grid): number =>
-  Math.min((x / g.cellW) | 0, g.ncx - 1);
-const cellYOf = (y: number, g: Grid): number =>
-  Math.min((y / g.cellH) | 0, g.ncy - 1);
+// Cell index, origin-relative and clamped: on an open axis a point may sit
+// outside the field rect (culling is a separate rule), and it must still land
+// in a real bucket rather than a negative index.
+const cellXOf = (x: number, g: Grid, ax: Axes): number =>
+  Math.max(0, Math.min(((x - ax.x0) / g.cellW) | 0, g.ncx - 1));
+const cellYOf = (y: number, g: Grid, ax: Axes): number =>
+  Math.max(0, Math.min(((y - ax.y0) / g.cellH) | 0, g.ncy - 1));
 
-// The nine flat cell indices of a point's 3×3 toroidal block (its own cell + 8
-// wrapped neighbours). Kept ≤10 cognitive complexity by flattening the 3×3 walk.
-function neighborCells(cx: number, cy: number, g: Grid): number[] {
+// The three cell indices adjacent to `c` on one axis: wrapped when the axis is
+// toroidal, and simply absent past the edge when it is open — an open axis has
+// no neighbour beyond its last cell, and wrapping there would pair the two ends
+// of the field together.
+const axisCells = (c: number, n: number, wrapped: boolean): number[] => {
+  const out: number[] = [];
+  for (let d = -1; d <= 1; d++) {
+    const i = c + d;
+    if (wrapped) out.push(wrapCell(i, n));
+    else if (i >= 0 && i < n) out.push(i);
+  }
+  return out;
+};
+
+// The flat cell indices of a point's 3x3 block (its own cell plus neighbours) —
+// nine of them on a torus, fewer at an open edge.
+function neighborCells(cx: number, cy: number, g: Grid, ax: Axes): number[] {
   const cells: number[] = [];
-  for (let dy = -1; dy <= 1; dy++) {
-    const gy = wrapCell(cy + dy, g.ncy);
-    for (let dx = -1; dx <= 1; dx++)
-      cells.push(gy * g.ncx + wrapCell(cx + dx, g.ncx));
+  for (const gy of axisCells(cy, g.ncy, ax.wrapY)) {
+    for (const gx of axisCells(cx, g.ncx, ax.wrapX)) {
+      cells.push(gy * g.ncx + gx);
+    }
   }
   return cells;
 }
@@ -72,17 +119,18 @@ function emitSelfPairs(
   pts: readonly Pt[],
   buckets: number[][],
   g: Grid,
-  arena: { w: number; h: number },
+  arena: Bounds,
+  ax: Axes,
   band2: number,
   out: number[],
 ): void {
   const p = pts[i];
-  const cells = neighborCells(cellXOf(p.x, g), cellYOf(p.y, g), g);
+  const cells = neighborCells(cellXOf(p.x, g, ax), cellYOf(p.y, g, ax), g, ax);
   for (const c of cells) {
     for (const j of buckets[c]) {
       if (j <= i) continue;
-      const ex = toroidalDist(p.x, pts[j].x, arena.w);
-      const ey = toroidalDist(p.y, pts[j].y, arena.h);
+      const ex = toroidalDist(p.x, pts[j].x, arena.w, ax.wrapX);
+      const ey = toroidalDist(p.y, pts[j].y, arena.h, ax.wrapY);
       if (ex * ex + ey * ey < band2) out.push(i, j);
     }
   }
@@ -113,23 +161,24 @@ function sortPairs(flat: number[], n: number): PairList {
 // then falls back to the brute nested loop. (empty array = gridded, zero pairs.)
 export function gridSelfPairs(
   pts: readonly Pt[],
-  arena: { w: number; h: number },
+  arena: Bounds,
   band: number,
 ): PairList | null {
   const n = pts.length;
   if (n < 2) return new Int32Array(0);
   const g = tryCellDims(arena.w, arena.h, band);
   if (!g) return null;
+  const ax = axesOf(arena);
   const buckets: number[][] = Array.from({ length: g.ncx * g.ncy }, () => []);
   for (let i = 0; i < n; i++) {
     const p = pts[i];
-    buckets[cellYOf(p.y, g) * g.ncx + cellXOf(p.x, g)].push(i);
+    buckets[cellYOf(p.y, g, ax) * g.ncx + cellXOf(p.x, g, ax)].push(i);
   }
 
   const band2 = band * band;
   const out: number[] = [];
   for (let i = 0; i < n; i++)
-    emitSelfPairs(i, pts, buckets, g, arena, band2, out);
+    emitSelfPairs(i, pts, buckets, g, arena, ax, band2, out);
   return sortPairs(out, n);
 }
 
@@ -137,16 +186,17 @@ export function gridSelfPairs(
 // lexicographic order. The reference `gridSelfPairs` is validated against.
 export function bruteSelfPairs(
   pts: readonly Pt[],
-  arena: { w: number; h: number },
+  arena: Bounds,
   band: number,
 ): PairList {
   const n = pts.length;
+  const ax = axesOf(arena);
   const band2 = band * band;
   const out: number[] = [];
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
-      const ex = toroidalDist(pts[i].x, pts[j].x, arena.w);
-      const ey = toroidalDist(pts[i].y, pts[j].y, arena.h);
+      const ex = toroidalDist(pts[i].x, pts[j].x, arena.w, ax.wrapX);
+      const ey = toroidalDist(pts[i].y, pts[j].y, arena.h, ax.wrapY);
       if (ex * ex + ey * ey < band2) out.push(i, j);
     }
   }
@@ -167,16 +217,17 @@ function emitCrossPairs(
   ptsA: readonly Pt[],
   bucketsA: number[][],
   g: Grid,
-  arena: { w: number; h: number },
+  arena: Bounds,
+  ax: Axes,
   band2: number,
   out: number[],
 ): void {
   const p = ptsB[bi];
-  const cells = neighborCells(cellXOf(p.x, g), cellYOf(p.y, g), g);
+  const cells = neighborCells(cellXOf(p.x, g, ax), cellYOf(p.y, g, ax), g, ax);
   for (const c of cells) {
     for (const ai of bucketsA[c]) {
-      const ex = toroidalDist(p.x, ptsA[ai].x, arena.w);
-      const ey = toroidalDist(p.y, ptsA[ai].y, arena.h);
+      const ex = toroidalDist(p.x, ptsA[ai].x, arena.w, ax.wrapX);
+      const ey = toroidalDist(p.y, ptsA[ai].y, arena.h, ax.wrapY);
       if (ex * ex + ey * ey < band2) out.push(bi, ai);
     }
   }
@@ -189,7 +240,7 @@ function emitCrossPairs(
 export function gridCrossPairs(
   ptsB: readonly Pt[],
   ptsA: readonly Pt[],
-  arena: { w: number; h: number },
+  arena: Bounds,
   band: number,
 ): PairList | null {
   const nA = ptsA.length;
@@ -197,16 +248,17 @@ export function gridCrossPairs(
   if (nA === 0 || nB === 0) return new Int32Array(0);
   const g = tryCellDims(arena.w, arena.h, band);
   if (!g) return null;
+  const ax = axesOf(arena);
   const buckets: number[][] = Array.from({ length: g.ncx * g.ncy }, () => []);
   for (let a = 0; a < nA; a++) {
     const p = ptsA[a];
-    buckets[cellYOf(p.y, g) * g.ncx + cellXOf(p.x, g)].push(a);
+    buckets[cellYOf(p.y, g, ax) * g.ncx + cellXOf(p.x, g, ax)].push(a);
   }
 
   const band2 = band * band;
   const out: number[] = [];
   for (let b = 0; b < nB; b++)
-    emitCrossPairs(b, ptsB, ptsA, buckets, g, arena, band2, out);
+    emitCrossPairs(b, ptsB, ptsA, buckets, g, arena, ax, band2, out);
   return sortPairs(out, nA);
 }
 
@@ -215,15 +267,16 @@ export function gridCrossPairs(
 export function bruteCrossPairs(
   ptsB: readonly Pt[],
   ptsA: readonly Pt[],
-  arena: { w: number; h: number },
+  arena: Bounds,
   band: number,
 ): PairList {
+  const ax = axesOf(arena);
   const band2 = band * band;
   const out: number[] = [];
   for (let b = 0; b < ptsB.length; b++) {
     for (let a = 0; a < ptsA.length; a++) {
-      const ex = toroidalDist(ptsB[b].x, ptsA[a].x, arena.w);
-      const ey = toroidalDist(ptsB[b].y, ptsA[a].y, arena.h);
+      const ex = toroidalDist(ptsB[b].x, ptsA[a].x, arena.w, ax.wrapX);
+      const ey = toroidalDist(ptsB[b].y, ptsA[a].y, arena.h, ax.wrapY);
       if (ex * ex + ey * ey < band2) out.push(b, a);
     }
   }
@@ -259,17 +312,18 @@ function collectNeighbors(
   pts: readonly Pt[],
   buckets: number[][],
   g: Grid,
-  arena: { w: number; h: number },
+  arena: Bounds,
+  ax: Axes,
   band2: number,
 ): number[] {
   const p = pts[i];
-  const cells = neighborCells(cellXOf(p.x, g), cellYOf(p.y, g), g);
+  const cells = neighborCells(cellXOf(p.x, g, ax), cellYOf(p.y, g, ax), g, ax);
   const out: number[] = [];
   for (const c of cells) {
     for (const j of buckets[c]) {
       if (j === i) continue;
-      const ex = toroidalDist(p.x, pts[j].x, arena.w);
-      const ey = toroidalDist(p.y, pts[j].y, arena.h);
+      const ex = toroidalDist(p.x, pts[j].x, arena.w, ax.wrapX);
+      const ey = toroidalDist(p.y, pts[j].y, arena.h, ax.wrapY);
       if (ex * ex + ey * ey < band2) out.push(j);
     }
   }
@@ -282,20 +336,21 @@ function collectNeighbors(
 // (= max engage radius); each term re-gates to its own smaller radius.
 export function gridNeighbors(
   pts: readonly Pt[],
-  arena: { w: number; h: number },
+  arena: Bounds,
   band: number,
 ): number[][] | null {
   const g = tryCellDims(arena.w, arena.h, band);
   if (!g) return null;
+  const ax = axesOf(arena);
   const n = pts.length;
   const buckets: number[][] = Array.from({ length: g.ncx * g.ncy }, () => []);
   for (let i = 0; i < n; i++) {
     const p = pts[i];
-    buckets[cellYOf(p.y, g) * g.ncx + cellXOf(p.x, g)].push(i);
+    buckets[cellYOf(p.y, g, ax) * g.ncx + cellXOf(p.x, g, ax)].push(i);
   }
   const band2 = band * band;
   const out: number[][] = new Array(n);
   for (let i = 0; i < n; i++)
-    out[i] = collectNeighbors(i, pts, buckets, g, arena, band2);
+    out[i] = collectNeighbors(i, pts, buckets, g, arena, ax, band2);
   return out;
 }

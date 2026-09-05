@@ -1,5 +1,10 @@
-import { toroidalDist, wrap } from "~/engine/physics";
-import { BASE_MAX_HP, baseHitsRequired, DEFAULT_CONFIG } from "./tuning";
+import { toroidalDist, wrap, wrapDelta } from "~/engine/physics";
+import {
+  BASE_MAX_HP,
+  baseHitsRequired,
+  CULL_MARGIN,
+  DEFAULT_CONFIG,
+} from "./tuning";
 import {
   ARENA,
   type LightCycle,
@@ -8,12 +13,82 @@ import {
   TEAMS,
 } from "./types";
 
-export { toroidalDist, wrap };
+export { toroidalDist, wrap, wrapDelta };
 
-/** Squared toroidal distance between two field points (wrap-aware, no sqrt). */
+// --- Field-bound wrapping ----------------------------------------------------
+// Every position in the sim lives on ARENA, whose origin and per-axis topology
+// `syncField` sets. These bind the raw physics helpers to the live field so no
+// call site has to remember which axis wraps: pass coordinates, get the right
+// answer for the topology in play. All-range mode wraps both axes at origin
+// 0,0, which is what they did before the field grew an origin.
+
+/** Fold an x coordinate into the field (identity while x is open). */
+export const wrapX = (v: number): number =>
+  ARENA.wrapX ? wrap(v, ARENA.w, ARENA.x0) : v;
+
+/** Fold a y coordinate into the field (identity while y is open). */
+export const wrapY = (v: number): number =>
+  ARENA.wrapY ? wrap(v, ARENA.h, ARENA.y0) : v;
+
+/** Signed shortest delta along x, across the seam only if x wraps. */
+export const deltaX = (a: number, b: number): number =>
+  wrapDelta(a, b, ARENA.w, ARENA.wrapX);
+
+/** Signed shortest delta along y, across the seam only if y wraps. */
+export const deltaY = (a: number, b: number): number =>
+  wrapDelta(a, b, ARENA.h, ARENA.wrapY);
+
+/** Unsigned distance along x, across the seam only if x wraps. */
+export const distX = (a: number, b: number): number =>
+  toroidalDist(a, b, ARENA.w, ARENA.wrapX);
+
+/** Unsigned distance along y, across the seam only if y wraps. */
+export const distY = (a: number, b: number): number =>
+  toroidalDist(a, b, ARENA.h, ARENA.wrapY);
+
+/**
+ * Hold `x` inside the field, leaving `margin` of clearance at each edge. A
+ * no-op while x wraps, so this only bites on a scroll stage — and there it is
+ * applied to the player alone: walls the AI can feel would have enemies sliding
+ * along invisible edges instead of strafing in and out of the sides.
+ */
+export const clampFieldX = (x: number, margin = 0): number =>
+  ARENA.wrapX
+    ? x
+    : Math.min(Math.max(x, ARENA.x0 + margin), ARENA.x0 + ARENA.w - margin);
+
+/**
+ * The same wall on y. On a scroll stage this is what carries the pilot along
+ * with the window: stop flying and the advancing field edge pushes you, rather
+ * than the stage leaving without you. The real control model is #29's.
+ */
+export const clampFieldY = (y: number, margin = 0): number =>
+  ARENA.wrapY
+    ? y
+    : Math.min(Math.max(y, ARENA.y0 + margin), ARENA.y0 + ARENA.h - margin);
+
+/**
+ * True while `(x, y)` is inside the field inflated by `margin`. A wrapping axis
+ * has no outside, so this only rejects along an open one — which makes it the
+ * single cull rule for a scroll stage: it kills the wake behind the camera and
+ * anything that exits the sides, and is a no-op for all-range play.
+ */
+export const inField = (
+  x: number,
+  y: number,
+  margin: number = CULL_MARGIN,
+): boolean => {
+  const outX =
+    !ARENA.wrapX && (x < ARENA.x0 - margin || x > ARENA.x0 + ARENA.w + margin);
+  const outY =
+    !ARENA.wrapY && (y < ARENA.y0 - margin || y > ARENA.y0 + ARENA.h + margin);
+  return !outX && !outY;
+};
+
+/** Squared distance between two field points (topology-aware, no sqrt). */
 export function distSq(ax: number, ay: number, bx: number, by: number): number {
-  const dx = toroidalDist(ax, bx, ARENA.w);
-  const dy = toroidalDist(ay, by, ARENA.h);
+  const dx = distX(ax, bx);
+  const dy = distY(ay, by);
   return dx * dx + dy * dy;
 }
 

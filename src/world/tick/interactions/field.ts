@@ -1,7 +1,14 @@
-import { normalize, wrapDelta } from "~/engine/physics";
+import { normalize } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
-import { hasRaidedAllEnemyBases, within, wrap } from "~/world/math";
+import {
+  deltaX,
+  deltaY,
+  hasRaidedAllEnemyBases,
+  within,
+  wrapX,
+  wrapY,
+} from "~/world/math";
 import { hit, killShip, promote, type TickCtx } from "~/world/tick/context";
 import type { HazardState } from "~/world/tick/hazard-collisions";
 import type { MotionState } from "~/world/tick/motion";
@@ -67,8 +74,8 @@ export const pullTowardPortalHorizon = (
   steps: number,
 ): void => {
   for (const g of PORTALS) {
-    const gx = wrapDelta(s.x, g.x, ARENA.w);
-    const gy = wrapDelta(s.y, g.y, ARENA.h);
+    const gx = deltaX(s.x, g.x);
+    const gy = deltaY(s.y, g.y);
     const d2 = gx * gx + gy * gy;
     const horizon = g.r * PORTAL_HORIZON;
     if (d2 >= horizon * horizon || d2 < 1e-3) continue;
@@ -93,8 +100,8 @@ export const applyBaseGravity = (
   for (const b of TEAM_BASES) {
     const frac = ctx.baseHp[b.name] / BASE_MAX_HP;
     if (frac <= 0) continue; // dead base has no field
-    const gx = wrapDelta(s.x, b.x, ARENA.w);
-    const gy = wrapDelta(s.y, b.y, ARENA.h);
+    const gx = deltaX(s.x, b.x);
+    const gy = deltaY(s.y, b.y);
     const d2 = gx * gx + gy * gy;
     const horizon = BASE_RADIUS * BASE_HORIZON;
     if (d2 >= horizon * horizon || d2 < 1e-3) continue;
@@ -118,8 +125,8 @@ export const applyStarGravity = (
   s: Mutable<LightCycle>,
   steps: number,
 ): void => {
-  const gx = wrapDelta(s.x, CENTER_PAD.x, ARENA.w);
-  const gy = wrapDelta(s.y, CENTER_PAD.y, ARENA.h);
+  const gx = deltaX(s.x, CENTER_PAD.x);
+  const gy = deltaY(s.y, CENTER_PAD.y);
   const d2 = gx * gx + gy * gy;
   const horizon = CENTER_PAD.r * CENTER_HORIZON;
   if (d2 >= horizon * horizon || d2 < 1e-3) return;
@@ -136,8 +143,8 @@ export const teleportThroughPortal = (s: Mutable<LightCycle>): void => {
     const from = PORTALS[g];
     if (within(s.x, s.y, from.x, from.y, from.r)) {
       const to = PORTALS[1 - g];
-      s.x = wrap(to.x + s.dx * (to.r + 2), ARENA.w);
-      s.y = wrap(to.y + s.dy * (to.r + 2), ARENA.h);
+      s.x = wrapX(to.x + s.dx * (to.r + 2));
+      s.y = wrapY(to.y + s.dy * (to.r + 2));
       s.portalCooldown = PORTAL_COOLDOWN;
       break;
     }
@@ -162,8 +169,8 @@ export const dropMine = (
   const back = shipRadius(s.level) + 3;
   mines.push({
     id: mineId,
-    x: wrap(s.x - s.dx * back, ARENA.w),
-    y: wrap(s.y - s.dy * back, ARENA.h),
+    x: wrapX(s.x - s.dx * back),
+    y: wrapY(s.y - s.dy * back),
     team: s.colorName,
     rgb: s.color,
     arm: MINE_ARM,
@@ -189,7 +196,7 @@ const repairHomeBase = (
   home: Base,
   steps: number,
 ): void => {
-  const arcade = ctx.world.arcade !== null;
+  const arcade = ctx.world.run !== null;
   if ((!arcade && ctx.suddenDeath) || ctx.baseHp[s.colorName] <= 0) return;
   const before = ctx.baseHp[s.colorName];
   const rate = BASE_HEAL_RATE * (arcade ? ARCADE_DOCK_HEAL_MULT : 1);
@@ -270,8 +277,8 @@ const hopAsteroidsThroughPortals = (
       if (within(r.x, r.y, from.x, from.y, from.r)) {
         const to = PORTALS[1 - g];
         const [ux, uy] = normalize([r.vx, r.vy]);
-        r.x = wrap(to.x + ux * (to.r + r.size + 2), ARENA.w);
-        r.y = wrap(to.y + uy * (to.r + r.size + 2), ARENA.h);
+        r.x = wrapX(to.x + ux * (to.r + r.size + 2));
+        r.y = wrapY(to.y + uy * (to.r + r.size + 2));
         r.portalCooldown = PORTAL_COOLDOWN;
         break;
       }

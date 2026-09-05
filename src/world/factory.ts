@@ -12,7 +12,7 @@ import {
   wrapDelta,
 } from "~/engine/physics";
 import { nextInt, nextRange, pick, rollMany, type Seed } from "~/engine/rng";
-import { applyHit, distSq, wrap } from "./math";
+import { applyHit, deltaX, deltaY, distSq, wrapX, wrapY } from "./math";
 import {
   ASTEROID_VARIANTS,
   asteroidHp,
@@ -215,14 +215,14 @@ export function spawnMissile(
   target: LightCycle,
 ): Missile {
   const [ax, ay] = normalize(
-    [wrapDelta(s.x, target.x, ARENA.w), wrapDelta(s.y, target.y, ARENA.h)],
+    [deltaX(s.x, target.x), deltaY(s.y, target.y)],
     [s.dx, s.dy],
   );
   const nose = shipRadius(s.level) + 1;
   return {
     id,
-    x: wrap(s.x + ax * nose, ARENA.w),
-    y: wrap(s.y + ay * nose, ARENA.h),
+    x: wrapX(s.x + ax * nose),
+    y: wrapY(s.y + ay * nose),
     vx: ax * MISSILE_SPEED,
     vy: ay * MISSILE_SPEED,
     team: s.colorName,
@@ -263,7 +263,7 @@ export const advanceMissile = (
   if (target) {
     const desired = angleTo(
       normalize(
-        [wrapDelta(m.x, target.x, ARENA.w), wrapDelta(m.y, target.y, ARENA.h)],
+        [deltaX(m.x, target.x), deltaY(m.y, target.y)],
         [Math.sin(m.angle), Math.cos(m.angle)],
       ),
     );
@@ -276,8 +276,8 @@ export const advanceMissile = (
     angle,
     vx: ax * MISSILE_SPEED,
     vy: ay * MISSILE_SPEED,
-    x: wrap(m.x + ax * MISSILE_SPEED * steps, ARENA.w),
-    y: wrap(m.y + ay * MISSILE_SPEED * steps, ARENA.h),
+    x: wrapX(m.x + ax * MISSILE_SPEED * steps),
+    y: wrapY(m.y + ay * MISSILE_SPEED * steps),
     life: m.life - steps,
   };
 };
@@ -358,17 +358,14 @@ export function spawnBullet(
   // Aim FROM the ship TO the target: wrapDelta(self, target) = target - self
   // (self first, matching every other "toward target" caller). Swapping these
   // fires the bolt out the ship's tail.
-  const [ax, ay] = normalize(
-    [wrapDelta(s.x, tx, ARENA.w), wrapDelta(s.y, ty, ARENA.h)],
-    [s.dx, s.dy],
-  );
+  const [ax, ay] = normalize([deltaX(s.x, tx), deltaY(s.y, ty)], [s.dx, s.dy]);
   const nose = shipRadius(s.level) + 1;
   const px = -ay; // unit perpendicular to the aim heading
   const py = ax;
   return {
     id,
-    x: wrap(s.x + ax * nose + px * lateral, ARENA.w),
-    y: wrap(s.y + ay * nose + py * lateral, ARENA.h),
+    x: wrapX(s.x + ax * nose + px * lateral),
+    y: wrapY(s.y + ay * nose + py * lateral),
     vx: ax * BULLET_SPEED,
     vy: ay * BULLET_SPEED,
     team: s.colorName,
@@ -393,10 +390,7 @@ export function spawnDroneBolt(
   tx: number,
   ty: number,
 ): Bullet {
-  const [ax, ay] = normalize(
-    [wrapDelta(d.x, tx, ARENA.w), wrapDelta(d.y, ty, ARENA.h)],
-    [1, 0],
-  );
+  const [ax, ay] = normalize([deltaX(d.x, tx), deltaY(d.y, ty)], [1, 0]);
   return {
     id,
     x: d.x,
@@ -420,8 +414,10 @@ export function rollPickup(
   id: number,
   kinds: number = PICKUP_KINDS,
 ): [Pickup, Seed] {
-  const [x, s1] = nextRange(seed, 30, ARENA.w - 30);
-  const [y, s2] = nextRange(s1, 30, ARENA.h - 30);
+  // Field-relative: on a scroll stage the field origin is the live window, so
+  // a refilled pickup rolls into view ahead rather than back at world zero.
+  const [x, s1] = nextRange(seed, ARENA.x0 + 30, ARENA.x0 + ARENA.w - 30);
+  const [y, s2] = nextRange(s1, ARENA.y0 + 30, ARENA.y0 + ARENA.h - 30);
   const [ang, s3] = nextRange(s2, 0, Math.PI * 2);
   const [spd, s4] = nextRange(s3, 0.05, 0.18);
   const [k, s5] = nextInt(s4, kinds);
@@ -454,22 +450,24 @@ export function rollAsteroid(seed: Seed, id: number): [Asteroid, Seed] {
   const [variant, s8] = nextInt(s7, ASTEROID_VARIANTS);
   const hp = asteroidHp(size);
   // Position on the chosen edge + the inward base heading (0 = +y / down).
-  let x = 0;
-  let y = 0;
+  // Edges are field-relative, so a scroll stage seeds its rocks around the
+  // live window instead of around world zero.
+  let x = ARENA.x0;
+  let y = ARENA.y0;
   let baseAng = 0;
   if (edge === 0) {
-    x = along * ARENA.w;
+    x = ARENA.x0 + along * ARENA.w;
     baseAng = 0; // top → down
   } else if (edge === 1) {
-    x = along * ARENA.w;
-    y = ARENA.h;
+    x = ARENA.x0 + along * ARENA.w;
+    y = ARENA.y0 + ARENA.h;
     baseAng = Math.PI; // bottom → up
   } else if (edge === 2) {
-    y = along * ARENA.h;
+    y = ARENA.y0 + along * ARENA.h;
     baseAng = Math.PI / 2; // left → right
   } else {
-    x = ARENA.w;
-    y = along * ARENA.h;
+    x = ARENA.x0 + ARENA.w;
+    y = ARENA.y0 + along * ARENA.h;
     baseAng = -Math.PI / 2; // right → left
   }
   const ang = baseAng + spread;
@@ -532,8 +530,8 @@ export function advanceAsteroid(a: Asteroid, steps: number): Asteroid {
     ...a,
     vx,
     vy,
-    x: wrap(a.x + vx * steps, ARENA.w),
-    y: wrap(a.y + vy * steps, ARENA.h),
+    x: wrapX(a.x + vx * steps),
+    y: wrapY(a.y + vy * steps),
     spin: a.spin + a.spinRate * steps,
     portalCooldown: Math.max(0, a.portalCooldown - steps),
   };

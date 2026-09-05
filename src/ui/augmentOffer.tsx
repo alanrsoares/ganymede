@@ -1,5 +1,5 @@
 // Wave-clear augment offer: a forced-choice Astryx dialog that surfaces the 3
-// augments the sim rolled, raised whenever `world.arcade.offer` is non-null. The
+// augments the sim rolled, raised whenever `world.run.offer` is non-null. The
 // render loop freezes the frozen field behind it (see main.ts: the offer feeds
 // the sim-freeze predicate) and pushes the live offer into this module's store
 // each frame; picking one dispatches `pickAugment`, which clears the offer and

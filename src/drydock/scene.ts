@@ -21,6 +21,7 @@ import {
   instanceLayout,
   type MeshPass,
 } from "~/render/mesh-pass";
+import { orthoPixels } from "~/render/view";
 import backgroundWGSL from "~/shaders/background.wgsl" with { type: "text" };
 import highlightWGSL from "~/shaders/highlight.wgsl" with { type: "text" };
 import plumeWGSL from "~/shaders/plume.wgsl" with { type: "text" };
@@ -580,7 +581,7 @@ const runLoop = (
     device.queue.writeBuffer(
       uniformBuffer,
       0,
-      new Float32Array([w, h, view.t, DEPTH_SCALE]),
+      new Float32Array([w, h, view.t, 0, ...orthoPixels(w, h, DEPTH_SCALE)]),
     );
 
     const { counts: swarmCounts, plumeCount: swarmPlumeCount } = packSwarm(
@@ -688,7 +689,8 @@ const wireOrbitDrag = (canvas: HTMLCanvasElement): void => {
 export const startScene = async (canvas: HTMLCanvasElement): Promise<void> => {
   const { device, context, format } = await acquireGpu(canvas);
   const uniformBuffer = device.createBuffer({
-    size: 16,
+    // resolution + time + pad, then the shared view-projection mat4x4f.
+    size: 80,
     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
   });
   const passes = createPasses(device, format, uniformBuffer);

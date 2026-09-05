@@ -11,19 +11,42 @@ export const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 export const lerp = (a: number, b: number, k: number): number =>
   a + (b - a) * k;
 
-/** Signed shortest delta from `a` to `b` on a wrapped axis, in [-limit/2, limit/2]. */
-export const wrapDelta = (a: number, b: number, limit: number): number => {
-  let dv = b - a;
-  if (dv > limit / 2) dv -= limit;
-  else if (dv < -limit / 2) dv += limit;
+// An axis may be toroidal or open, and a toroidal one need not start at zero —
+// a scrolling field is a window sliding along y, so its origin moves while its
+// extent stays fixed. Both extras default to the plain 0-origin torus, which is
+// what an all-range arena is.
+
+/**
+ * Signed shortest delta from `a` to `b`, in [-limit/2, limit/2] on a wrapped
+ * axis. On an open axis (`wrapped` false) there is no shortcut across the seam,
+ * so this is just `b - a`.
+ */
+export const wrapDelta = (
+  a: number,
+  b: number,
+  limit: number,
+  wrapped = true,
+): number => {
+  const dv = b - a;
+  if (!wrapped) return dv;
+  if (dv > limit / 2) return dv - limit;
+  if (dv < -limit / 2) return dv + limit;
   return dv;
 };
-export const wrap = (v: number, limit: number): number =>
-  ((v % limit) + limit) % limit;
 
-/** Minimum toroidal distance across a wrapped axis. */
-export function toroidalDist(a: number, b: number, limit: number): number {
+/** Fold `v` into `[origin, origin + limit)`. */
+export const wrap = (v: number, limit: number, origin = 0): number =>
+  origin + ((((v - origin) % limit) + limit) % limit);
+
+/** Minimum distance across an axis — toroidal, or plain `|a - b|` when open. */
+export function toroidalDist(
+  a: number,
+  b: number,
+  limit: number,
+  wrapped = true,
+): number {
   const diff = Math.abs(a - b);
+  if (!wrapped) return diff;
   return diff > limit / 2 ? limit - diff : diff;
 }
 

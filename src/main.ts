@@ -62,7 +62,7 @@ const canvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
 // Soundtrack scene from game state: pre-game screens → menu bed, a live match →
 // battle or arcade.
 const sceneFor = (world: World, inMatch: boolean): Scene =>
-  !inMatch ? "menu" : world.config.format === "arcade" ? "arcade" : "battle";
+  !inMatch ? "menu" : world.run ? "arcade" : "battle";
 
 // Acquire the GPU device/context, wire up the "device lost" surface, and build
 // the renderer. Split out of `main` purely to keep that function short.
@@ -147,7 +147,7 @@ const chromeGate =
     setup.isOpen() ||
     lobby.isOpen() ||
     welcomeRef.up ||
-    sim.world.arcade?.offer != null;
+    sim.world.run?.offer != null;
 
 // Pre-game surfaces and their lifecycle: welcome splash → mode dialog →
 // launch. Closing a dialog (✕ / Escape / backdrop) returns to a freshly
@@ -260,7 +260,7 @@ const startRuntime = (
     dispatch({ kind: "pickAugment", id }),
   );
   const pausedBase = wirePause(codex, pause, dispatch, ui);
-  const isPaused = () => pausedBase() || sim.world.arcade?.offer != null;
+  const isPaused = () => pausedBase() || sim.world.run?.offer != null;
 
   const syncCanvasSize = createResizeSync(renderer, canvas);
   const loop = createLoop((dt, now) => {
@@ -274,7 +274,8 @@ const startRuntime = (
       const reinforceRate =
         loopState.deployRemaining > 0 ? 0 : sim.reinforceRate;
       stepSimulation(advanceSim, dispatch, dt, now, reinforceRate, loopState);
-      if (sim.world.config.format === "arcade") {
+      // Any piloted run ends the same way — lives out, back to the lobby.
+      if (sim.world.run) {
         handleArcadeEnd(sim.world, ui, loopState, lobby);
       } else {
         handleMatchEnd(sim.world, ui, loopState, setup);
@@ -292,7 +293,7 @@ const startRuntime = (
     updateScreenShake(canvas, sim.world, now, loopState);
     updateHud(ui, sim.world);
     // Surface (or dismiss) the arcade augment offer from live sim state.
-    augmentOffer.sync(sim.world.arcade?.offer ?? null);
+    augmentOffer.sync(sim.world.run?.offer ?? null);
     // setScene is idempotent, so calling it each frame is fine.
     audio.setScene(sceneFor(sim.world, flow.inMatch()));
     audio.frame(sim.world, now);

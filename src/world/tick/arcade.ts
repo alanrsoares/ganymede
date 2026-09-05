@@ -18,13 +18,30 @@ import {
   WING_RESPAWN_CD,
 } from "~/world/tuning";
 import {
-  type ArcadeConfig,
-  type ArcadeState,
   baseByName,
   type LightCycle,
   MAX_LEVEL,
+  type RunConfig,
+  type RunState,
+  type WaveConfig,
+  type WaveState,
   type World,
 } from "~/world/types";
+
+/** Commit a run-state patch (and optionally a new wave slice) onto the world. */
+const withRun = (
+  world: World,
+  r: RunState,
+  patch: Partial<RunState> = {},
+): World => ({ ...world, run: { ...r, ...patch } });
+
+/** Commit a wave-director patch, leaving the rest of the run untouched. */
+const withWaves = (
+  world: World,
+  r: RunState,
+  w: WaveState,
+  patch: Partial<WaveState>,
+): World => ({ ...world, run: { ...r, waves: { ...w, ...patch } } });
 
 // Half-width of the square a spawned ship scatters in around its base (cells).
 const SPAWN_SPREAD = 7;
@@ -65,8 +82,8 @@ function spawnAt(
   // no-op until a pick lands. Offense augments apply at the pilot's per-shot
   // read sites, not here.
   const mods =
-    world.arcade && color === world.config.arcade?.playerTeam
-      ? pilotMods(world.arcade.augments)
+    world.run && color === world.config.run?.playerTeam
+      ? pilotMods(world.run.augments)
       : null;
   const placed = mods
     ? {
@@ -89,7 +106,7 @@ function spawnAt(
 /** Spawn `count` enemies split round-robin across the enemy teams. */
 function spawnWave(
   world: World,
-  cfg: ArcadeConfig,
+  cfg: RunConfig,
   count: number,
   maxLevel: number,
 ): World {
@@ -104,7 +121,7 @@ function spawnWave(
 }
 
 /** Respawn the player at `lvl` at their base (with i-frames) and hand control. */
-function respawnPlayer(world: World, cfg: ArcadeConfig, lvl: number): World {
+function respawnPlayer(world: World, cfg: RunConfig, lvl: number): World {
   const { world: next, id } = spawnAt(
     world,
     cfg.playerTeam,
@@ -121,16 +138,21 @@ const playerAlive = (world: World): boolean =>
   world.ships.items.some((s) => s.id === world.controlledShipId);
 
 /** Burn a life; respawn the pilot, or latch game-over when lives run out. */
-function loseLife(world: World, a: ArcadeState, cfg: ArcadeConfig): World {
+function loseLife(world: World, a: RunState, cfg: RunConfig): World {
   const lives = a.lives - 1;
-  if (lives <= 0) return { ...world, arcade: { ...a, lives: 0, over: true } };
+  if (lives <= 0) return withRun(world, a, { lives: 0, over: true });
   // Respawn at the rank the pilot had reached — dying costs a life, not progress —
-  // and nudge the adaptive handicap up (and mark the wave wounded).
-  const adapt = Math.min(HANDICAP_ADAPT_MAX, a.adapt + HANDICAP_DEATH_STEP);
-  return {
-    ...respawnPlayer(world, cfg, a.playerLevel),
-    arcade: { ...a, lives, adapt, woundedWave: true },
-  };
+  // and nudge the adaptive handicap up (and mark the wave wounded). No wave
+  // director (a scroll stage) means no adaptive curve to nudge.
+  const w = a.waves;
+  const waves = w
+    ? {
+        ...w,
+        adapt: Math.min(HANDICAP_ADAPT_MAX, w.adapt + HANDICAP_DEATH_STEP),
+        woundedWave: true,
+      }
+    : null;
+  return withRun(respawnPlayer(world, cfg, a.playerLevel), a, { lives, waves });
 }
 
 /**
@@ -139,8 +161,10 @@ function loseLife(world: World, a: ArcadeState, cfg: ArcadeConfig): World {
  */
 function advanceWave(
   world: World,
-  a: ArcadeState,
-  cfg: ArcadeConfig,
+  a: RunState,
+  w: WaveState,
+  waves: WaveConfig,
+  cfg: RunConfig,
   enemyCount: number,
 ): World {
   // Muster a fresh wave: field clear of enemies AND none held in reserve AND no
@@ -148,48 +172,44 @@ function advanceWave(
   // player chooses). Spawn up to the on-field budget; the rest wait in `pending`
   // and trickle in below as enemies die, so late waves stay dense.
   if (
-    a.waveRemaining === 0 &&
-    a.pending === 0 &&
+    w.waveRemaining === 0 &&
+    w.pending === 0 &&
     a.offer === null &&
     enemyCount === 0
   ) {
-    const { count, maxLevel } = cfg.waves.spawn(a.wave);
+    const { count, maxLevel } = waves.spawn(w.wave);
     const now = Math.min(count, MAX_ENEMY_SHIPS);
     const spawned = spawnWave(world, cfg, now, maxLevel);
-    return {
-      ...spawned,
-      arcade: {
-        ...a,
-        waveRemaining: now,
-        pending: count - now,
-        waveMaxLevel: maxLevel,
-      },
-    };
+    return withWaves(spawned, a, w, {
+      waveRemaining: now,
+      pending: count - now,
+      waveMaxLevel: maxLevel,
+    });
   }
   // Enemies only leave the field by dying now (the ship trim guards them from
   // eviction), so a drop in the live count is a real kill — no phantom kills.
-  const kills = a.kills + Math.max(0, a.waveRemaining - enemyCount);
+  const kills = a.kills + Math.max(0, w.waveRemaining - enemyCount);
 
   // Trickle: refill open slots from the reserve as the front thins.
   let next = world;
   let alive = enemyCount;
-  let pending = a.pending;
+  let pending = w.pending;
   if (pending > 0) {
     const room = Math.min(pending, Math.max(0, MAX_ENEMY_SHIPS - enemyCount));
     if (room > 0) {
-      next = spawnWave(world, cfg, room, a.waveMaxLevel);
+      next = spawnWave(world, cfg, room, w.waveMaxLevel);
       alive = enemyCount + room;
       pending = pending - room;
     }
   }
 
-  if (alive === 0 && pending === 0 && a.waveRemaining > 0) {
+  if (alive === 0 && pending === 0 && w.waveRemaining > 0) {
     // Wave cleared → advance and offer an augment. The offer freezes the next
     // muster (see the gate above) until the player picks. A clean clear (no
     // death this wave) eases the adaptive handicap back toward the base.
-    const adapt = a.woundedWave
-      ? a.adapt
-      : Math.max(0, a.adapt - HANDICAP_CLEAN_STEP);
+    const adapt = w.woundedWave
+      ? w.adapt
+      : Math.max(0, w.adapt - HANDICAP_CLEAN_STEP);
     const { offer, seed } = rollOffer(next.seed, a.augments);
     return {
       ...next,
@@ -197,29 +217,31 @@ function advanceWave(
       // The lull between waves is a yard-crew moment: whatever the wave chipped
       // off the home base is patched back to full before the next muster.
       baseHp: { ...next.baseHp, [cfg.playerTeam]: BASE_MAX_HP },
-      arcade: {
+      run: {
         ...a,
-        wave: a.wave + 1,
-        waveRemaining: 0,
-        pending: 0,
         kills,
-        adapt,
-        woundedWave: false,
         offer,
+        waves: {
+          ...w,
+          wave: w.wave + 1,
+          waveRemaining: 0,
+          pending: 0,
+          adapt,
+          woundedWave: false,
+        },
       },
     };
   }
-  return { ...next, arcade: { ...a, waveRemaining: alive, pending, kills } };
+  return {
+    ...next,
+    run: { ...a, kills, waves: { ...w, waveRemaining: alive, pending } },
+  };
 }
 
 // Roll one escort drone at the player base and flag it a droneShip (a small,
 // short-firing AI wingman). Reuses spawnAt so it inherits the fleet's hull/
 // plating augments and the base-spawn spread.
-const spawnWingDrone = (
-  world: World,
-  cfg: ArcadeConfig,
-  level: number,
-): World => {
+const spawnWingDrone = (world: World, cfg: RunConfig, level: number): World => {
   const { world: w2, id } = spawnAt(
     world,
     cfg.playerTeam,
@@ -241,8 +263,8 @@ const spawnWingDrone = (
 // Keep the escort wing (Wing augment) staffed: hold up to WING_MAX drones at the
 // pilot's side, respawning one on a cooldown when the count drops. Stacks past
 // the cap level the drones up instead of adding more. No-op without the augment.
-const maintainWing = (world: World, cfg: ArcadeConfig): World => {
-  const a = world.arcade;
+const maintainWing = (world: World, cfg: RunConfig): World => {
+  const a = world.run;
   if (!a) return world;
   const wing = pilotMods(a.augments).wingSize;
   if (wing <= 0) return world;
@@ -254,18 +276,15 @@ const maintainWing = (world: World, cfg: ArcadeConfig): World => {
       s.id !== world.controlledShipId,
   ).length;
   if (alive >= target) return world;
-  if (a.wingCd > 0) return { ...world, arcade: { ...a, wingCd: a.wingCd - 1 } };
+  if (a.wingCd > 0) return withRun(world, a, { wingCd: a.wingCd - 1 });
   const level = Math.min(MAX_LEVEL, 1 + Math.max(0, wing - WING_MAX));
   const spawned = spawnWingDrone(world, cfg, level);
-  return {
-    ...spawned,
-    arcade: { ...a, wingCd: WING_RESPAWN_CD },
-  };
+  return withRun(spawned, a, { wingCd: WING_RESPAWN_CD });
 };
 
 export function arcadeStep(world: World): World {
-  const a = world.arcade;
-  const cfg = world.config.arcade;
+  const a = world.run;
+  const cfg = world.config.run;
   if (!a || !cfg || a.over) return world;
 
   if (!playerAlive(world)) return maintainWing(loseLife(world, a, cfg), cfg);
@@ -275,11 +294,14 @@ export function arcadeStep(world: World): World {
   const a2 =
     me && me.level !== a.playerLevel ? { ...a, playerLevel: me.level } : a;
 
+  // No wave director (a scroll stage places its own enemies) → the run still
+  // keeps its wing and its lives, there is just no wave to advance.
+  const w = a2.waves;
   const enemyCount = countTeams(world.ships.items, new Set(cfg.enemyTeams));
-  // Intermission (a2.phase === "intermission") arrives in Phase 2.
+  // Intermission (w.phase === "intermission") arrives in Phase 2.
   const stepped =
-    a2.phase === "fight"
-      ? advanceWave(world, a2, cfg, enemyCount)
-      : { ...world, arcade: a2 };
+    w && cfg.waves && w.phase === "fight"
+      ? advanceWave(world, a2, w, cfg.waves, cfg, enemyCount)
+      : { ...world, run: a2 };
   return maintainWing(stepped, cfg);
 }

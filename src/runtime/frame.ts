@@ -122,7 +122,7 @@ export const handleArcadeEnd = (
   state: LoopState,
   lobby: Lobby,
 ) => {
-  const a = world.arcade;
+  const a = world.run;
   if (a?.over && !state.resetScheduled) {
     state.resetScheduled = true;
     // Bank the run before the banner so a new personal best can be called out;
@@ -130,7 +130,7 @@ export const handleArcadeEnd = (
     const result = runScore(world);
     const rank = result ? recordScore(result.difficulty, result.entry) : null;
     ui.banner.val =
-      `GAME OVER · wave ${a.wave} · ${a.kills} kills` +
+      `GAME OVER${a.waves ? ` · wave ${a.waves.wave}` : ""} · ${a.kills} kills` +
       (result ? ` · ${result.entry.score} pts` : "") +
       (rank === 0 ? " · NEW BEST" : "");
     setTimeout(() => {
@@ -154,6 +154,12 @@ export const buildAndRender = (
   // Align the furniture ring to the world being drawn (the sim advances age
   // between renders; this keeps rendered bases/portals/pads on the live orbit).
   setOrbitPhase(world.age);
+  // Follow the stage: the field origin is where the window sits, so the camera
+  // is that origin in pixels. Zero for all-range play, where the origin is 0,0.
+  renderer.setCamera(
+    (ARENA.x0 / ARENA.w) * canvas.width,
+    (ARENA.y0 / ARENA.h) * canvas.height,
+  );
   const frame = overlay.build({
     w: canvas.width,
     h: canvas.height,
@@ -192,13 +198,16 @@ export const updateScreenShake = (
 // The HUD status/phase line for the current world (arcade wave/lives, autobattle
 // reinforce/sudden-death, or endless).
 const getHudPhaseText = (world: World): string => {
-  const a = world.arcade;
+  const a = world.run;
   if (a) {
     const tier = augmentTier(a.augments);
     const mk = tier > 0 ? ` · Mk ${tier}` : ""; // prestige readout past L5
-    return a.over
-      ? "game over"
-      : `wave ${a.wave} · ${a.waveRemaining + a.pending} enemies${mk}`;
+    const w = a.waves;
+    if (a.over) return "game over";
+    // No wave director (a scroll stage) → the wave counter has nothing to say.
+    return w
+      ? `wave ${w.wave} · ${w.waveRemaining + w.pending} enemies${mk}`
+      : `${a.kills} kills${mk}`;
   }
   if (world.winner) return "match over";
   if (world.config.format === "endless") return "endless";
@@ -226,8 +235,7 @@ export const updateHud = (ui: Ui, world: World) => {
     world.controlledShipId !== null
       ? world.ships.items.find((s) => s.id === world.controlledShipId) || null
       : null;
-  ui.arcadeLives.val =
-    world.arcade && !world.arcade.over ? world.arcade.lives : null;
+  ui.arcadeLives.val = world.run && !world.run.over ? world.run.lives : null;
 };
 
 // Track the canvas backing size; when the client box changes, re-derive the grid
@@ -272,7 +280,7 @@ export const createStarters = (sim: Sim, ui: Ui, loopState: LoopState) => {
     sim.reinforceRate = 0;
     reset(cfg);
     // Arcade: the stage/wave sets tempo + spawns, so hide the sim knobs.
-    const diff = cfg.arcade?.difficulty ?? "normal";
+    const diff = cfg.run?.difficulty ?? "normal";
     ui.hudTitle.val = `Arcade · ${diff[0].toUpperCase()}${diff.slice(1)}`;
     ui.setSimKnobsHidden(true);
     loopState.deployRemaining = 0;

@@ -1,5 +1,5 @@
-import { normalize, wrapDelta } from "~/engine/physics";
-import { hasRaidedAllEnemyBases } from "./math";
+import { normalize } from "~/engine/physics";
+import { deltaX, deltaY, hasRaidedAllEnemyBases } from "./math";
 import {
   ALIGN_GAIN,
   ARCHETYPE_MODS,
@@ -80,8 +80,8 @@ const steerSeparation = (
   let sx = 0;
   let sy = 0;
   const react = (ox: number, oy: number, aheadOnly: boolean) => {
-    const ax = wrapDelta(ox, self.x, ARENA.w); // vector obstacle -> self
-    const ay = wrapDelta(oy, self.y, ARENA.h);
+    const ax = deltaX(ox, self.x); // vector obstacle -> self
+    const ay = deltaY(oy, self.y);
     const dist = Math.hypot(ax, ay);
     if (dist < 1e-3 || dist > sepR) return;
     if (aheadOnly && self.dx * -ax + self.dy * -ay < 0) return; // skip behind
@@ -124,8 +124,8 @@ function collectSquadmates(
   const flockR2 = flockR * flockR;
   for (const o of ships) {
     if (o.id === self.id || o.colorName !== self.colorName) continue;
-    const dx = wrapDelta(self.x, o.x, ARENA.w); // self -> neighbor
-    const dy = wrapDelta(self.y, o.y, ARENA.h);
+    const dx = deltaX(self.x, o.x); // self -> neighbor
+    const dy = deltaY(self.y, o.y);
     if (dx * dx + dy * dy > flockR2) continue;
     vx += o.vx;
     vy += o.vy;
@@ -202,8 +202,8 @@ const pickFoe = (
   let ship: LightCycle | null = null;
   for (const o of ships) {
     if (o.id === self.id || o.colorName === self.colorName) continue;
-    const dx = wrapDelta(self.x, o.x, ARENA.w); // self -> enemy
-    const dy = wrapDelta(self.y, o.y, ARENA.h);
+    const dx = deltaX(self.x, o.x); // self -> enemy
+    const dy = deltaY(self.y, o.y);
     const d2 = dx * dx + dy * dy;
     const p = targetPriority(o);
     if (d2 >= rangeSq || !beatsFoe(focus, p, d2, bestP, bestD2)) continue;
@@ -276,8 +276,8 @@ const steerPickupSeek = (
   let found = false;
   const pickR2 = pickR * pickR;
   for (const p of pickups) {
-    const dx = wrapDelta(self.x, p.x, ARENA.w); // self -> bubble
-    const dy = wrapDelta(self.y, p.y, ARENA.h);
+    const dx = deltaX(self.x, p.x); // self -> bubble
+    const dy = deltaY(self.y, p.y);
     const d2 = dx * dx + dy * dy;
     if (d2 > pickR2) continue;
     const want = pickupWant(self, p.kind);
@@ -314,8 +314,8 @@ const steerHealSeek = (self: LightCycle, level: number): [number, number] => {
   let bestD2 = healR * healR;
   let found = false;
   for (const pad of HEAL_PADS) {
-    const dx = wrapDelta(self.x, pad.x, ARENA.w); // self -> pad
-    const dy = wrapDelta(self.y, pad.y, ARENA.h);
+    const dx = deltaX(self.x, pad.x); // self -> pad
+    const dy = deltaY(self.y, pad.y);
     const d2 = dx * dx + dy * dy;
     if (d2 >= bestD2) continue;
     bestD2 = d2;
@@ -353,8 +353,8 @@ const steerCenterPadSeek = (
   if (!(gain > 0 && r > 0)) return [0, 0];
   const need = survivalDeficit(self);
   if (need < CENTERPAD_SEEK_THRESH) return [0, 0];
-  const dx = wrapDelta(self.x, CENTER_PAD.x, ARENA.w);
-  const dy = wrapDelta(self.y, CENTER_PAD.y, ARENA.h);
+  const dx = deltaX(self.x, CENTER_PAD.x);
+  const dy = deltaY(self.y, CENTER_PAD.y);
   if (dx * dx + dy * dy > r * r) return [0, 0];
   const [ux, uy] = normalize(goalDelta(self, CENTER_PAD.x, CENTER_PAD.y), [
     self.dx,
@@ -387,10 +387,7 @@ const nearestFuelSource = (
 ): FuelSource | null => {
   let best: FuelSource | null = null;
   const consider = (x: number, y: number) => {
-    const dist = Math.hypot(
-      wrapDelta(self.x, x, ARENA.w),
-      wrapDelta(self.y, y, ARENA.h),
-    );
+    const dist = Math.hypot(deltaX(self.x, x), deltaY(self.y, y));
     if (!best || dist < best.dist) best = { x, y, dist };
   };
   const homeBase = baseByName.get(self.colorName);
@@ -441,15 +438,12 @@ const portalShortcut = (
     const entry = PORTALS[i];
     const exit = PORTALS[PORTALS.length - 1 - i]; // the linked far gate
     const toEntry: [number, number] = [
-      wrapDelta(self.x, entry.x, ARENA.w),
-      wrapDelta(self.y, entry.y, ARENA.h),
+      deltaX(self.x, entry.x),
+      deltaY(self.y, entry.y),
     ];
     const via =
       Math.hypot(toEntry[0], toEntry[1]) +
-      Math.hypot(
-        wrapDelta(exit.x, tx, ARENA.w),
-        wrapDelta(exit.y, ty, ARENA.h),
-      );
+      Math.hypot(deltaX(exit.x, tx), deltaY(exit.y, ty));
     if (via < best) {
       best = via;
       course = toEntry;
@@ -470,10 +464,7 @@ export const goalDelta = (
   ty: number,
 ): [number, number] => {
   if (self.level < 3) return [tx - self.x, ty - self.y];
-  const wrapped: [number, number] = [
-    wrapDelta(self.x, tx, ARENA.w),
-    wrapDelta(self.y, ty, ARENA.h),
-  ];
+  const wrapped: [number, number] = [deltaX(self.x, tx), deltaY(self.y, ty)];
   return self.level < 4 ? wrapped : portalShortcut(self, tx, ty, wrapped);
 };
 
@@ -520,8 +511,8 @@ const nearestRaidableBase = (
   let found = false;
   for (const base of TEAM_BASES) {
     if (!isRaidableBase(self, base, baseHp, need)) continue;
-    const dx = wrapDelta(self.x, base.x, ARENA.w); // self -> base
-    const dy = wrapDelta(self.y, base.y, ARENA.h);
+    const dx = deltaX(self.x, base.x); // self -> base
+    const dy = deltaY(self.y, base.y);
     const d2 = dx * dx + dy * dy;
     if (d2 >= bestD2) continue;
     bestD2 = d2;
@@ -564,8 +555,8 @@ const steerRally = (
   rally: RallyBeacon | null,
 ): [number, number] => {
   if (!rally || rally.team !== self.colorName) return [0, 0];
-  const rx = wrapDelta(self.x, rally.x, ARENA.w);
-  const ry = wrapDelta(self.y, rally.y, ARENA.h);
+  const rx = deltaX(self.x, rally.x);
+  const ry = deltaY(self.y, rally.y);
   const d2 = rx * rx + ry * ry;
   if (d2 > RALLY_RADIUS * RALLY_RADIUS || d2 < 1e-3) return [0, 0];
   const dist = Math.sqrt(d2);

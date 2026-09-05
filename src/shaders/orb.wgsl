@@ -6,7 +6,10 @@
 struct Uniforms {
     resolution: vec2f,
     time: f32,
-    depthScale: f32,
+    _pad: f32,
+    // World pixels -> clip space. Shared by every pass (see render/view.ts);
+    // identity ortho today, so the depth scale it folds in is the old one.
+    viewProj: mat4x4f,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
 
@@ -29,12 +32,12 @@ fn vs(in: VSIn) -> VSOut {
     let wx = in.inst_loc.x + p.x;
     let wy = in.inst_loc.y + p.y;
     let wz = p.z;
-    let ndcx = wx / u.resolution.x * 2.0 - 1.0;
-    let ndcy = -(wy / u.resolution.y * 2.0 - 1.0);
-    let z = clamp(0.5 - wz * u.depthScale, 0.0, 1.0);
+    var clip = u.viewProj * vec4f(wx, wy, wz, 1.0);
+    // Keep the near/far guard the hardcoded transform had.
+    clip.z = clamp(clip.z, 0.0, clip.w);
 
     var out: VSOut;
-    out.position = vec4f(ndcx, ndcy, z, 1.0);
+    out.position = clip;
     out.normal = in.nrm;
     out.color = vec4f(in.inst_col.rgb, 1.0);
     return out;

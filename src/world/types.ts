@@ -8,16 +8,32 @@ import type { AugmentId, AugmentStacks } from "~/world/augments";
 
 export const DEFAULT_GRID_W = 480;
 export const DEFAULT_GRID_H = 270;
-export const ARENA: { w: number; h: number } = globalThis.ARENA ?? {
+
+/**
+ * The playfield the sim wraps and culls against: origin, extent, and which
+ * axes are toroidal. A derived cache of the World, never edited in place by
+ * anything but `syncField` (see world/field.ts) — read it anywhere, write it
+ * nowhere. All-range mode is the origin at 0,0 with both axes wrapping, which
+ * is every mode today.
+ */
+export interface Field {
+  x0: number;
+  y0: number;
+  w: number;
+  h: number;
+  wrapX: boolean;
+  wrapY: boolean;
+}
+
+export const ARENA: Field = globalThis.ARENA ?? {
+  x0: 0,
+  y0: 0,
   w: DEFAULT_GRID_W,
   h: DEFAULT_GRID_H,
+  wrapX: true,
+  wrapY: true,
 };
 globalThis.ARENA = ARENA;
-
-export function setGridBounds(w: number, h: number) {
-  ARENA.w = w;
-  ARENA.h = h;
-}
 export const MAX_LEVEL = 5;
 
 export type Rgb = readonly [number, number, number];
@@ -44,9 +60,10 @@ export interface MatchConfig {
   readonly tempo: number; // sim generations per second
   readonly reinforceGens: number; // length of the reinforcement window
   // "standard" last-team-wins, "endless" never decides, "arcade" pilot-first
-  // wave survival (see ArcadeConfig / World.arcade). Only "standard" decides a winner.
-  readonly format: "standard" | "endless" | "arcade";
-  readonly arcade?: ArcadeConfig; // present iff format === "arcade"
+  // wave survival, "scroll" the shmup stage (#27). Only "standard" decides a
+  // winner; the last two are piloted runs and carry `run` (see RunConfig).
+  readonly format: "standard" | "endless" | "arcade" | "scroll";
+  readonly run?: RunConfig; // present iff a human flies: arcade | scroll
 }
 
 // --- Arcade mode: fly one ship, survive escalating waves, chase a score. ------
@@ -70,21 +87,25 @@ export interface WaveConfig {
   readonly spawn: (wave: number) => { count: number; maxLevel: number };
 }
 
-export interface ArcadeConfig {
+// Setup for a piloted run — arcade and scroll both take one. `waves` is the
+// arcade wave director; a scroll stage draws its enemies from a formation
+// script instead, so it leaves this unset.
+export interface RunConfig {
   readonly playerRole: PlayerRole;
   readonly difficulty: ArcadeDifficulty; // tier: sets lives + wave curve
   readonly playerTeam: string; // "cyan"
   readonly playerArchetype: Archetype;
   readonly victory: VictoryRule;
   readonly defeat: DefeatRule;
-  readonly waves: WaveConfig;
   readonly enemyTeams: readonly string[]; // ["orange", "emerald"]
+  readonly waves?: WaveConfig; // arcade only
 }
 
-// Live arcade run state on the World (null in autobattle). `winner` stays null
-// in arcade; the run ends when `over` latches (lives exhausted, ship gone).
-export interface ArcadeState {
-  readonly lives: number;
+// The arcade wave director (null outside arcade). Everything here is about
+// escalation — which is why it is separate: a scroll stage places its enemies
+// by hand, and with this null the adaptive handicap goes neutral by default
+// (see withArcadeHandicap in tick/context.ts).
+export interface WaveState {
   readonly wave: number;
   readonly waveRemaining: number; // enemies currently alive on the field
   // Enemies rolled for this wave but not yet spawned — held back when the field
@@ -93,17 +114,25 @@ export interface ArcadeState {
   readonly waveMaxLevel: number; // level cap for this wave's (trickled) spawns
   readonly phase: "fight" | "intermission";
   readonly intermissionGens: number; // gens elapsed in the current intermission
+  // Adaptive half of the moving handicap: nudged up on death, down on a clean
+  // wave clear (see arcadeHandicap). `woundedWave` tracks whether the pilot has
+  // died since the current wave began (so a clean clear can ease difficulty).
+  readonly adapt: number;
+  readonly woundedWave: boolean;
+}
+
+// Live piloted-run state on the World (null in autobattle) — non-null means a
+// human is flying, which is the question the sim actually asks at its branch
+// sites. `winner` stays null in a run; it ends when `over` latches (lives
+// exhausted, ship gone).
+export interface RunState {
+  readonly lives: number;
   readonly kills: number; // enemies destroyed this run (run stat)
   readonly startAge: number; // world.age when the run began (for elapsed time)
   readonly over: boolean; // latched once lives hit 0 → game over
   // Last-known pilot rank, stashed while alive so a respawn keeps it (dying
   // shouldn't wipe progress); the dead ship is gone by the time we respawn.
   readonly playerLevel: number;
-  // Adaptive half of the moving handicap: nudged up on death, down on a clean
-  // wave clear (see arcadeHandicap). `woundedWave` tracks whether the pilot has
-  // died since the current wave began (so a clean clear can ease difficulty).
-  readonly adapt: number;
-  readonly woundedWave: boolean;
   // Per-run augment stack: permanent, compounding pilot upgrades that survive
   // death (see src/world/augments.ts). `offer` holds the 3 ids rolled at a wave
   // clear; while non-null the sim freezes and the pick dialog is up. null =
@@ -112,6 +141,7 @@ export interface ArcadeState {
   readonly offer: readonly AugmentId[] | null;
   // Gens until the escort wing (Wing augment) replaces a fallen drone.
   readonly wingCd: number;
+  readonly waves: WaveState | null; // arcade wave director; null for scroll
 }
 
 // Ship class archetypes. Each is a distinct hull silhouette + stat path + weapon
@@ -470,7 +500,13 @@ export interface World {
   readonly age: number; // generations elapsed; drives deterministic wander
   readonly winner: string | null; // team name once the match is decided (else null)
   readonly config: MatchConfig; // match setup (team count, length, format)
-  readonly arcade: ArcadeState | null; // arcade run state (null in autobattle)
+  readonly run: RunState | null; // piloted-run state (null in autobattle)
+  // Scroll stage position: where the camera window's top edge sits along the
+  // stage, in cells. 0 outside a scroll run. `scrollHalted` is the flip beat
+  // holding it still — #31 owns the easing, and may well replace the boolean
+  // with a phase once it has one; syncField only asks "is the scroll stopped".
+  readonly scrollY: number;
+  readonly scrollHalted: boolean;
   readonly controlledShipId: number | null;
   // Enemy the piloted ship's fire hard-locks onto (arcade/manual). Auto-acquired
   // and auto-advanced by the tick; cycled by the player. null = free aim.

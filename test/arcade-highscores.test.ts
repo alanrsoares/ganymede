@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { buildArcadeConfig } from "~/ui/arcade-lobby";
+import { buildRunConfig } from "~/ui/arcade-lobby";
 import {
   type HighScore,
   type Kv,
@@ -10,6 +10,7 @@ import {
   topScores,
 } from "~/ui/highscores";
 import { initArcadeWorld, type World } from "~/world";
+import { patchRun, patchWaves } from "./arcade-helpers";
 
 const fakeKv = (seed?: string): Kv => {
   const map = new Map<string, string>();
@@ -95,7 +96,7 @@ test("corrupt or foreign stored values degrade to an empty table", () => {
 });
 
 const arcadeWorld = (): World =>
-  initArcadeWorld(1, buildArcadeConfig("heavy", "hard"));
+  initArcadeWorld(1, buildRunConfig("heavy", "hard"));
 
 test("runScore is null while the run is still live", () => {
   expect(runScore(arcadeWorld())).toBeNull();
@@ -103,12 +104,10 @@ test("runScore is null while the run is still live", () => {
 
 test("runScore reads the finished run off the world", () => {
   const w = arcadeWorld();
-  const over: World = {
-    ...w,
-    score: { ...w.score, cyan: 700 },
-    // biome-ignore lint/style/noNonNullAssertion: arcade world always has state
-    arcade: { ...w.arcade!, over: true, wave: 9, kills: 21 },
-  };
+  const scored: World = { ...w, score: { ...w.score, cyan: 700 } };
+  const over = patchWaves(patchRun(scored, { over: true, kills: 21 }), {
+    wave: 9,
+  });
   expect(runScore(over, 42)).toEqual({
     difficulty: "hard",
     entry: { score: 700, wave: 9, kills: 21, archetype: "heavy", at: 42 },

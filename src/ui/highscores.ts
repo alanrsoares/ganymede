@@ -135,14 +135,17 @@ export const runScore = (
   world: World,
   now: number = Date.now(),
 ): { difficulty: ArcadeDifficulty; entry: HighScore } | null => {
-  const arcade = world.arcade;
-  const config = world.config.arcade;
-  if (!arcade?.over || !config) return null;
+  const arcade = world.run;
+  const config = world.config.run;
+  // The table is keyed by difficulty and ranked by wave reached, so only a run
+  // with a wave director belongs in it. Scoring for scroll stages is unspecified
+  // (see the medals/rank item on #21) — until it exists, they bank nothing.
+  if (!arcade?.over || !config || !arcade.waves) return null;
   return {
     difficulty: config.difficulty,
     entry: {
       score: world.score[config.playerTeam] ?? 0,
-      wave: arcade.wave,
+      wave: arcade.waves.wave,
       kills: arcade.kills,
       archetype: config.playerArchetype,
       at: now,
