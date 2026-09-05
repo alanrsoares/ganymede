@@ -8,6 +8,7 @@ import {
   MAX_ARCADE_SHIPS,
   MAX_ENEMY_SHIPS,
 } from "~/world/tuning";
+import { patchWaves } from "./arcade-helpers";
 
 const arcadeConfig = (): MatchConfig => {
   const tier = ARCADE_TIERS.normal;
@@ -18,7 +19,7 @@ const arcadeConfig = (): MatchConfig => {
     tempo: 52,
     reinforceGens: 0,
     format: "arcade",
-    arcade: {
+    run: {
       playerRole: "pilot",
       difficulty: "normal",
       playerTeam: "cyan",
@@ -69,20 +70,16 @@ test("oversized waves clamp to the enemy budget and reserve the remainder", () =
 
   let w = initArcadeWorld(42, arcadeConfig());
   const pilot = w.controlledShipId;
-  w = {
-    ...w,
-    // biome-ignore lint/style/noNonNullAssertion: arcade world always has state
-    arcade: { ...w.arcade!, wave: 20, waveRemaining: 0, pending: 0 },
-  };
+  w = patchWaves(w, { wave: 20, waveRemaining: 0, pending: 0 });
 
   w = tick(w, 1, 16);
 
   const enemies = w.ships.items.filter((s) => s.colorName !== "cyan");
-  const a = w.arcade;
+  const a = w.run;
   expect(a).not.toBeNull();
   // On-field enemies clamped to the budget; the rest wait in reserve.
   expect(enemies.length).toBe(MAX_ENEMY_SHIPS);
-  expect(a?.pending).toBe(count - MAX_ENEMY_SHIPS);
+  expect(a?.waves?.pending).toBe(count - MAX_ENEMY_SHIPS);
   // Array cap respected; the pilot is still on the field.
   expect(w.ships.items.length).toBeLessThanOrEqual(MAX_ARCADE_SHIPS);
   expect(w.ships.items.some((s) => s.id === pilot)).toBe(true);

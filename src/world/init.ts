@@ -12,11 +12,11 @@ import {
 } from "./tuning";
 import {
   ARCADE_PICKUP_KINDS,
-  type ArcadeConfig,
-  type ArcadeState,
   baseByName,
   type LightCycle,
   type MatchConfig,
+  type RunConfig,
+  type RunState,
   setOrbitPhase,
   type World,
 } from "./types";
@@ -25,24 +25,30 @@ import {
 // opening wave isn't a two-hit death; respawns keep whatever rank they reached.
 const PILOT_START_LEVEL = 2;
 
-// Fresh arcade run bookkeeping (lives/wave/phase) for a new pilot run.
-const initArcadeRun = (cfg: ArcadeConfig): ArcadeState => ({
+// Fresh run bookkeeping (lives/kills/augments) for a new pilot run. The wave
+// director rides along only when the config brought a wave curve — a scroll
+// stage supplies its enemies itself and leaves `waves` null.
+const initArcadeRun = (cfg: RunConfig): RunState => ({
   lives: cfg.defeat.kind === "lives" ? cfg.defeat.count : ARCADE_LIVES,
-  wave: 1,
-  waveRemaining: 0,
-  pending: 0,
-  waveMaxLevel: 0,
-  phase: "fight",
-  intermissionGens: 0,
   kills: 0,
   startAge: 0,
   over: false,
   playerLevel: PILOT_START_LEVEL,
-  adapt: 0,
-  woundedWave: false,
   augments: {},
   offer: null,
   wingCd: 0,
+  waves: cfg.waves
+    ? {
+        wave: 1,
+        waveRemaining: 0,
+        pending: 0,
+        waveMaxLevel: 0,
+        phase: "fight",
+        intermissionGens: 0,
+        adapt: 0,
+        woundedWave: false,
+      }
+    : null,
 });
 
 // Half-width of the square each fresh ship spawns in, centred on its team base
@@ -93,7 +99,7 @@ export function initWorld(
     age: 0,
     winner: null,
     config,
-    arcade: null,
+    run: null,
     controlledShipId: null,
     lockedTargetId: null,
     controlKeys: {
@@ -117,12 +123,12 @@ const NO_KEYS = {
 /**
  * Arcade world: one player ship docked at its base with control handed over, a
  * fresh run state (lives/wave), and the standard rock/pickup field. Enemy waves
- * are mustered lazily by `arcadeStep` on the first tick. `config.arcade` required.
+ * are mustered lazily by `arcadeStep` on the first tick. `config.run` required.
  */
 export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
   setOrbitPhase(0);
-  const cfg = config.arcade;
-  if (!cfg) throw new Error("initArcadeWorld: config.arcade is required");
+  const cfg = config.run;
+  if (!cfg) throw new Error("initArcadeWorld: config.run is required");
   const teams = activeTeams(config);
   const playerId = 1;
   const [player, s1] = rollShip(
@@ -164,7 +170,7 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
     age: 0,
     winner: null,
     config,
-    arcade: initArcadeRun(cfg),
+    run: initArcadeRun(cfg),
     controlledShipId: playerId,
     lockedTargetId: null,
     controlKeys: { ...NO_KEYS },

@@ -55,7 +55,7 @@ const harvestFuelCell = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
 // like any spawn). Seeded off ctx.seed → deterministic.
 const MUSTER_SPREAD = 10;
 const musterAllies = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
-  if (!ctx.world.arcade) return;
+  if (!ctx.world.run) return;
   for (let k = 0; k < MUSTER_DRONE_COUNT; k++) {
     const [jx, s1] = nextRange(ctx.seed, -MUSTER_SPREAD, MUSTER_SPREAD);
     const [jy, s2] = nextRange(s1, -MUSTER_SPREAD, MUSTER_SPREAD);

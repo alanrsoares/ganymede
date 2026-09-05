@@ -394,7 +394,7 @@ const applyNova = (
 // damage, so fuel is the only rate limit. Kills are removed here and counted by
 // the arcade wave machine's death-diff next tick (see advanceWave).
 function handleNova(world: World, s: LightCycle, p: ActionPools): void {
-  const rank = world.arcade ? pilotMods(world.arcade.augments).novaRank : 0;
+  const rank = world.run ? pilotMods(world.run.augments).novaRank : 0;
   if (rank <= 0 || s.fuel < NOVA_FUEL_COST) return;
   const cone: NovaCone = {
     cosArc: Math.cos(Math.min(Math.PI, NOVA_ARC + (rank - 1) * NOVA_ARC_STEP)),
@@ -492,7 +492,16 @@ function handleUserAction(world: World, actionId: number): World {
 // can keep the fight running under the offer dialog. World-replacing msgs
 // (pickAugment, reset, …) still pass.
 const frozenByOffer = (msg: Msg, world: World): boolean =>
-  world.arcade?.offer != null && (msg.kind === "tick" || msg.kind === "action");
+  world.run?.offer != null && (msg.kind === "tick" || msg.kind === "action");
+
+// Cut the between-waves breather short. Only the wave director has a phase, so
+// this is a no-op on a run without one.
+const skipIntermission = (world: World): World => {
+  const run = world.run;
+  const waves = run?.waves;
+  if (!run || waves?.phase !== "intermission") return world;
+  return { ...world, run: { ...run, waves: { ...waves, phase: "fight" } } };
+};
 
 export function update(msg: Msg, world: World): World {
   if (frozenByOffer(msg, world)) return world;
@@ -545,9 +554,7 @@ export function update(msg: Msg, world: World): World {
     case "action":
       return handleUserAction(world, msg.actionId);
     case "arcadeSkipIntermission":
-      return world.arcade && world.arcade.phase === "intermission"
-        ? { ...world, arcade: { ...world.arcade, phase: "fight" } }
-        : world;
+      return skipIntermission(world);
     case "pickAugment":
       return pickAugment(world, msg.id);
     default:
@@ -562,7 +569,7 @@ export function update(msg: Msg, world: World): World {
 // reward. Offense augments (damage/cooldown/speed/regen) apply at their per-use
 // read sites, so only hp/shield need baking here.
 function pickAugment(world: World, id: AugmentId): World {
-  const a = world.arcade;
+  const a = world.run;
   if (!a?.offer?.includes(id)) return world;
   const augments = { ...a.augments, [id]: (a.augments[id] ?? 0) + 1 };
   const mods = pilotMods(augments);
@@ -577,6 +584,6 @@ function pickAugment(world: World, id: AugmentId): World {
   return {
     ...world,
     ships: { ...world.ships, items },
-    arcade: { ...a, augments, offer: null },
+    run: { ...a, augments, offer: null },
   };
 }

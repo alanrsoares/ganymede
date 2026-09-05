@@ -49,7 +49,7 @@ const HullGlyph = ({ a }: { a: Archetype }) => (
 const ARCADE_TEMPO = 52;
 
 /** The MatchConfig for a pilot run with the chosen hull + difficulty tier. */
-export const buildArcadeConfig = (
+export const buildRunConfig = (
   archetype: Archetype,
   difficulty: ArcadeDifficulty,
 ): MatchConfig => {
@@ -61,7 +61,7 @@ export const buildArcadeConfig = (
     tempo: ARCADE_TEMPO,
     reinforceGens: 0,
     format: "arcade",
-    arcade: {
+    run: {
       playerRole: "pilot",
       difficulty,
       playerTeam: "cyan",
@@ -168,7 +168,7 @@ const LobbyView = ({
   }, [open, difficulty]);
   const start = () => {
     store.close();
-    onStart(buildArcadeConfig(selected, difficulty));
+    onStart(buildRunConfig(selected, difficulty));
   };
   const close = () => {
     store.close();

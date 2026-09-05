@@ -192,7 +192,7 @@ export function eliminateBaselessTeams(ctx: TickCtx) {
   // the next tick → wave clears → spawns → wiped → a runaway that blasts through
   // hundreds of waves in a flash. (It would also insta-game-over on a razed cyan
   // base.) Base elimination is an autobattle-only rule.
-  if (ctx.world.arcade) return;
+  if (ctx.world.run) return;
   for (const s of ctx.moved) {
     if (!ctx.removed.has(s.id) && ctx.baseHp[s.colorName] <= 0) {
       killShip(ctx, s);

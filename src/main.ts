@@ -147,7 +147,7 @@ const chromeGate =
     setup.isOpen() ||
     lobby.isOpen() ||
     welcomeRef.up ||
-    sim.world.arcade?.offer != null;
+    sim.world.run?.offer != null;
 
 // Pre-game surfaces and their lifecycle: welcome splash → mode dialog →
 // launch. Closing a dialog (✕ / Escape / backdrop) returns to a freshly
@@ -260,7 +260,7 @@ const startRuntime = (
     dispatch({ kind: "pickAugment", id }),
   );
   const pausedBase = wirePause(codex, pause, dispatch, ui);
-  const isPaused = () => pausedBase() || sim.world.arcade?.offer != null;
+  const isPaused = () => pausedBase() || sim.world.run?.offer != null;
 
   const syncCanvasSize = createResizeSync(renderer, canvas);
   const loop = createLoop((dt, now) => {
@@ -292,7 +292,7 @@ const startRuntime = (
     updateScreenShake(canvas, sim.world, now, loopState);
     updateHud(ui, sim.world);
     // Surface (or dismiss) the arcade augment offer from live sim state.
-    augmentOffer.sync(sim.world.arcade?.offer ?? null);
+    augmentOffer.sync(sim.world.run?.offer ?? null);
     // setScene is idempotent, so calling it each frame is fine.
     audio.setScene(sceneFor(sim.world, flow.inMatch()));
     audio.frame(sim.world, now);

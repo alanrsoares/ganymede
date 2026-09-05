@@ -13,7 +13,7 @@ const arcadeConfig = (): MatchConfig => {
     tempo: 52,
     reinforceGens: 0,
     format: "arcade",
-    arcade: {
+    run: {
       playerRole: "pilot",
       difficulty: "normal",
       playerTeam: "cyan",
@@ -37,7 +37,7 @@ const drones = (w: World) =>
 const withWing = (stacks: number): World => {
   const w = initArcadeWorld(42, arcadeConfig());
   // biome-ignore lint/style/noNonNullAssertion: arcade world always has state
-  return { ...w, arcade: { ...w.arcade!, augments: { wing: stacks } } };
+  return { ...w, run: { ...w.run!, augments: { wing: stacks } } };
 };
 
 test("the Wing augment musters an escort drone", () => {
@@ -54,7 +54,7 @@ test("the wing replaces a fallen drone once its cooldown elapses", () => {
   w = {
     ...w,
     // biome-ignore lint/style/noNonNullAssertion: arcade world always has state
-    arcade: { ...w.arcade!, wingCd: 0 },
+    run: { ...w.run!, wingCd: 0 },
     ships: {
       ...w.ships,
       items: w.ships.items.filter(

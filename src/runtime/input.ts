@@ -187,7 +187,7 @@ const handleKeyDown = (
   // Freeze all game input while the pause menu is up (ESC is owned by the
   // capture-phase handleEscape listener, which runs before this) or while the
   // arcade wave-clear augment offer is pending its pick.
-  if (pause.isOpen() || getWorld().arcade?.offer != null) return;
+  if (pause.isOpen() || getWorld().run?.offer != null) return;
   const key = e.key.toLowerCase();
   if (key === "c") return toggleCodex(codex, isSetupOpen);
   if (codex.isOpen() || isSetupOpen()) return;
@@ -333,7 +333,7 @@ export const wireInput = (
   canvas.addEventListener("pointerdown", (e) => {
     // Arcade: the pilot is auto-controlled — ignore clicks so a stray tap can't
     // deselect them (the sim reads that as a lost ship) or drop stray hulls.
-    if (getWorld().arcade) return;
+    if (getWorld().run) return;
     handlePointerDown(e, canvas, dispatch, getWorld, renderer.view());
   });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());

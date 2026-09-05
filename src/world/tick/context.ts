@@ -80,7 +80,7 @@ export const createTickCtx = (
   world,
   suddenDeath: world.age >= world.config.reinforceGens,
   levelScale: levelUpScale(world.age, world.config.format),
-  mods: pilotMods(world.arcade?.augments ?? {}),
+  mods: pilotMods(world.run?.augments ?? {}),
   moved: [],
   seed: world.seed,
   nextId: world.ships.nextId,
@@ -156,7 +156,9 @@ const withArcadeHandicap = (
   attackerId: number | undefined,
   dealt: number,
 ): number => {
-  const arc = ctx.world.arcade;
+  // The handicap is the wave director's curve, so a run without one (a scroll
+  // stage) fights at flat rates — authored difficulty, not adaptive.
+  const arc = ctx.world.run?.waves;
   if (!arc) return dealt;
   const h = arcadeHandicap(arc.wave, arc.adapt);
   if (victim.id === ctx.world.controlledShipId) return dealt / h;
@@ -260,7 +262,7 @@ export function maybeRamShock(ctx: TickCtx, s: Mutable<LightCycle>): void {
  */
 export function damageBase(ctx: TickCtx, baseName: string, amount: number) {
   const floor =
-    baseName === ctx.world.config.arcade?.playerTeam ? ARCADE_BASE_HP_FLOOR : 0;
+    baseName === ctx.world.config.run?.playerTeam ? ARCADE_BASE_HP_FLOOR : 0;
   ctx.baseHp[baseName] = Math.max(floor, ctx.baseHp[baseName] - amount);
 }
 
@@ -300,7 +302,7 @@ export function promote(
   s.maxMines = minesFor(s.archetype, s.level);
   // Fold the pilot's run augments into the fresh caps (from the tables, so no
   // compounding on the stored value). Empty stack = identity — no-op otherwise.
-  if (ctx.world.arcade && s.id === ctx.world.controlledShipId) {
+  if (ctx.world.run && s.id === ctx.world.controlledShipId) {
     const baked = bakeCaps(ctx.mods, s);
     s.maxHp = baked.maxHp;
     s.maxShield = baked.maxShield;

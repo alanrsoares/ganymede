@@ -12,7 +12,7 @@ const arcadeConfig = (): MatchConfig => {
     tempo: 52,
     reinforceGens: 0,
     format: "arcade",
-    arcade: {
+    run: {
       playerRole: "pilot",
       difficulty: "normal",
       playerTeam: "cyan",
@@ -57,7 +57,7 @@ const scene = (novaStacks: number, fuel: number): [World, number, number[]] => {
   w = {
     ...w,
     // biome-ignore lint/style/noNonNullAssertion: arcade world always has state
-    arcade: { ...w.arcade!, augments: { nova: novaStacks } },
+    run: { ...w.run!, augments: { nova: novaStacks } },
     ships: { items: [...oriented, front, behind, far], nextId: n + 3 },
   };
   return [w, pilotId, [n, n + 1, n + 2]];

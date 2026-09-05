@@ -137,8 +137,8 @@ const trimProtected =
   (world: World) =>
   (s: LightCycle): boolean =>
     s.id === world.controlledShipId ||
-    (world.config.arcade?.playerTeam !== undefined &&
-      s.colorName === world.config.arcade.playerTeam);
+    (world.config.run?.playerTeam !== undefined &&
+      s.colorName === world.config.run.playerTeam);
 
 /** Commit entity pools, bursts, respawns, and match outcome after all phases. */
 export const finalizeTick = (
@@ -197,7 +197,7 @@ export const finalizeTick = (
     age: nextAge,
     winner: decideWinner(world.winner, nextAge, ships.items, world.config),
     config: world.config,
-    arcade: world.arcade,
+    run: world.run,
     controlledShipId: world.controlledShipId,
     lockedTargetId: resolveLock(world, ships),
     controlKeys: world.controlKeys,

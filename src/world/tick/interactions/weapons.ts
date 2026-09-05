@@ -262,7 +262,7 @@ const pilotAim = (ctx: TickCtx, s: Mutable<LightCycle>): Aim => {
   // No lock (no enemy in range): free directional aim, with the cone nudge on
   // easy/normal.
   const aim = manualAim(s, ctx.world.controlKeys);
-  const diff = ctx.world.config.arcade?.difficulty;
+  const diff = ctx.world.config.run?.difficulty;
   return diff === "easy" || diff === "normal" ? assistAim(ctx, s, aim) : aim;
 };
 

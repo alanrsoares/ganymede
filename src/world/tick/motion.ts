@@ -116,7 +116,7 @@ const advanceShip = (
   const empty = s.fuel <= 0;
   // Only the piloted arcade ship carries the run's speed/regen mods; everyone
   // else (and all of autobattle) advances at 1×.
-  const piloted = world.arcade != null && world.controlledShipId === s.id;
+  const piloted = world.run != null && world.controlledShipId === s.id;
   const cruise = shipCruise(s, empty) * (piloted ? mods.speedMul : 1);
   const [ax, ay] = shipAccel(s, empty, world, baseHp, neighbors, carriers);
   const bvx = s.vx + ax * steps;

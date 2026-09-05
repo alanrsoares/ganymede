@@ -7,6 +7,7 @@ import { expect, test } from "bun:test";
 import type { MatchConfig } from "~/world";
 import { initArcadeWorld, update } from "~/world";
 import { ARCADE_TIERS } from "~/world/tuning";
+import { patchWaves } from "./arcade-helpers";
 
 const arcadeConfig = (): MatchConfig => {
   const tier = ARCADE_TIERS.normal;
@@ -17,7 +18,7 @@ const arcadeConfig = (): MatchConfig => {
     tempo: 52,
     reinforceGens: 0,
     format: "arcade",
-    arcade: {
+    run: {
       playerRole: "pilot",
       difficulty: "normal",
       playerTeam: "cyan",
@@ -36,10 +37,9 @@ const arcadeConfig = (): MatchConfig => {
 /** Arcade world ticked once past a wave clear, so an offer is pending. */
 const worldWithOffer = () => {
   let w = initArcadeWorld(42, arcadeConfig());
-  // biome-ignore lint/style/noNonNullAssertion: arcade world always has state
-  w = { ...w, arcade: { ...w.arcade!, waveRemaining: 3 } };
+  w = patchWaves(w, { waveRemaining: 3 });
   w = update({ kind: "tick", steps: 1, now: 16 }, w); // field empty → clear
-  expect(w.arcade?.offer?.length).toBe(3);
+  expect(w.run?.offer?.length).toBe(3);
   return w;
 };
 
@@ -59,9 +59,9 @@ test("a pending offer makes action msgs identity", () => {
 test("pickAugment clears the offer and the next tick advances again", () => {
   let w = worldWithOffer();
   // biome-ignore lint/style/noNonNullAssertion: offer was just rolled
-  const id = w.arcade!.offer![0];
+  const id = w.run!.offer![0];
   w = update({ kind: "pickAugment", id }, w);
-  expect(w.arcade?.offer).toBeNull();
+  expect(w.run?.offer).toBeNull();
 
   const age = w.age;
   w = update({ kind: "tick", steps: 1, now: 32 }, w);

@@ -189,7 +189,7 @@ const repairHomeBase = (
   home: Base,
   steps: number,
 ): void => {
-  const arcade = ctx.world.arcade !== null;
+  const arcade = ctx.world.run !== null;
   if ((!arcade && ctx.suddenDeath) || ctx.baseHp[s.colorName] <= 0) return;
   const before = ctx.baseHp[s.colorName];
   const rate = BASE_HEAL_RATE * (arcade ? ARCADE_DOCK_HEAL_MULT : 1);

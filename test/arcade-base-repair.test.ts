@@ -5,6 +5,7 @@ import { tick } from "~/world/tick";
 import { createTickCtx, damageBase } from "~/world/tick/context";
 import { ARCADE_TIERS, BASE_MAX_HP } from "~/world/tuning";
 import { MUSTER_KIND } from "~/world/types";
+import { patchWaves } from "./arcade-helpers";
 
 const arcadeConfig = (): MatchConfig => {
   const tier = ARCADE_TIERS.normal;
@@ -15,7 +16,7 @@ const arcadeConfig = (): MatchConfig => {
     tempo: 52,
     reinforceGens: 0,
     format: "arcade",
-    arcade: {
+    run: {
       playerRole: "pilot",
       difficulty: "normal",
       playerTeam: "cyan",
@@ -58,19 +59,20 @@ test("docked pilot repairs the home base in arcade", () => {
 
 test("wave clear restores the player base to full", () => {
   let w = initArcadeWorld(42, arcadeConfig());
-  if (!w.arcade) throw new Error("arcade state missing");
+  if (!w.run) throw new Error("arcade state missing");
   // Pretend a wave was mustered and the last enemy just fell: no enemy ships
   // on the field, waveRemaining still > 0 → the next tick clears the wave.
-  w = {
-    ...w,
-    baseHp: { ...w.baseHp, cyan: 5 },
-    arcade: { ...w.arcade, waveRemaining: 3 },
-  };
-  const wave = w.arcade?.wave ?? 0;
+  w = patchWaves(
+    { ...w, baseHp: { ...w.baseHp, cyan: 5 } },
+    {
+      waveRemaining: 3,
+    },
+  );
+  const wave = w.run?.waves?.wave ?? 0;
 
   w = tick(w, 1, 16);
 
-  expect(w.arcade?.wave).toBe(wave + 1);
+  expect(w.run?.waves?.wave).toBe(wave + 1);
   expect(w.baseHp.cyan).toBe(BASE_MAX_HP);
 });
 
