@@ -24,7 +24,8 @@ Or pilot one ship through escalating enemy waves.
   reinforcements, take control of a ship, or set a rally point.
 - **Arcade**: pilot one ship through escalating enemy waves and set a high score.
   Pick a hull and difficulty (Easy / Normal / Hard / Endless); each tier sets
-  enemy pressure and lives.
+  enemy pressure and lives. Your five best runs per difficulty persist in the
+  browser and show in the arcade lobby.
 
 ## Controls
 

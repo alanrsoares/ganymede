@@ -59,7 +59,8 @@ export const createDialogStore = (initial: boolean): DialogStore => {
   };
 };
 
-const useDialogOpen = (store: DialogStore): boolean =>
+/** Subscribe a React tree to a dialog's open state. */
+export const useDialogOpen = (store: DialogStore): boolean =>
   useSyncExternalStore(store.subscribe, store.isOpen);
 
 /**

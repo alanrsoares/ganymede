@@ -5,6 +5,7 @@
 import type { CameraView, Renderer } from "~/render/gpu";
 import type { Overlay } from "~/render/overlay";
 import type { Lobby } from "~/ui/arcade-lobby";
+import { recordScore, runScore } from "~/ui/highscores";
 import type { Setup } from "~/ui/setup";
 import type { Ui } from "~/ui/ui";
 import {
@@ -124,7 +125,14 @@ export const handleArcadeEnd = (
   const a = world.arcade;
   if (a?.over && !state.resetScheduled) {
     state.resetScheduled = true;
-    ui.banner.val = `GAME OVER · wave ${a.wave} · ${a.kills} kills`;
+    // Bank the run before the banner so a new personal best can be called out;
+    // the lobby that reopens below reads the same table.
+    const result = runScore(world);
+    const rank = result ? recordScore(result.difficulty, result.entry) : null;
+    ui.banner.val =
+      `GAME OVER · wave ${a.wave} · ${a.kills} kills` +
+      (result ? ` · ${result.entry.score} pts` : "") +
+      (rank === 0 ? " · NEW BEST" : "");
     setTimeout(() => {
       ui.banner.val = "";
       lobby.show();

@@ -1,9 +1,12 @@
 // Arcade lobby: a streamlined pre-run screen that picks a ship archetype and
 // launches a pilot-first wave-survival run. Sibling to setup.tsx (autobattle);
-// shares the same Astryx dialog chrome. The high-score table lands in Phase 3.
+// shares the same Astryx dialog chrome. Also shows the persisted best runs for
+// the selected difficulty (see ui/highscores.ts).
 
 import { Grid } from "@astryxdesign/core/Grid";
-import { useState } from "react";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
+import { useEffect, useState } from "react";
 import { hullSilhouettePath } from "~/hull/silhouette";
 import {
   ARCHETYPES,
@@ -20,7 +23,9 @@ import {
   type DialogStore,
   mountReactDialog,
   SectionHeading,
+  useDialogOpen,
 } from "./dialog";
+import { type HighScore, topScores } from "./highscores";
 import { CLASS_TINT } from "./shipStats";
 
 // The hull's top-down silhouette in its class tint — the arcade picker's glyph.
@@ -112,6 +117,37 @@ const DIFFICULTIES: readonly ArcadeDifficulty[] = [
   "endless",
 ];
 
+// One banked run: rank, points, and the wave/kills it got there on, glyphed
+// with the hull that flew it.
+const ScoreRow = ({ rank, run }: { rank: number; run: HighScore }) => (
+  <HStack gap={2} vAlign="center" className="min-w-0">
+    <Text color="secondary" className="w-4 shrink-0 text-[10px]! tabular-nums">
+      {rank + 1}
+    </Text>
+    <HullGlyph a={run.archetype} />
+    <Text weight="bold" className="text-[11px]! tabular-nums">
+      {run.score.toLocaleString()}
+    </Text>
+    <Text color="secondary" className="ml-auto text-[10px]! tabular-nums">
+      wave {run.wave} · {run.kills} kills
+    </Text>
+  </HStack>
+);
+
+// Best runs for the selected tier. Absent until there is something to show —
+// an empty board is just noise above the launch button.
+const ScoreBoard = ({ runs }: { runs: readonly HighScore[] }) =>
+  runs.length === 0 ? null : (
+    <>
+      <SectionHeading>best runs</SectionHeading>
+      <VStack gap={1.5}>
+        {runs.map((run, i) => (
+          <ScoreRow key={`${run.at}-${run.score}`} rank={i} run={run} />
+        ))}
+      </VStack>
+    </>
+  );
+
 const LobbyView = ({
   store,
   onStart,
@@ -123,6 +159,13 @@ const LobbyView = ({
 }) => {
   const [selected, setSelected] = useState<Archetype>(ARCHETYPES[1]); // fighter
   const [difficulty, setDifficulty] = useState<ArcadeDifficulty>("normal");
+  const [runs, setRuns] = useState<readonly HighScore[]>([]);
+  // The board is re-read every time the lobby opens: the run that just ended
+  // was banked by the loop between the two openings.
+  const open = useDialogOpen(store);
+  useEffect(() => {
+    setRuns(open ? topScores(difficulty) : []);
+  }, [open, difficulty]);
   const start = () => {
     store.close();
     onStart(buildArcadeConfig(selected, difficulty));
@@ -165,6 +208,7 @@ const LobbyView = ({
           />
         ))}
       </Grid>
+      <ScoreBoard runs={runs} />
       <Cta label="Start run" onClick={start} />
     </DialogShell>
   );
