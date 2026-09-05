@@ -159,7 +159,9 @@ describe("undo and redo", () => {
       sel: 2,
       label: "move part 2",
     });
-    expect(draft.hulls.scout.parts[0].pos[0]).toBe(0);
+    expect(draft.hulls.scout.parts[0].pos[0]).toBe(
+      stockHull("scout").parts[0].pos[0],
+    );
   });
 
   test("redo re-applies what undo took away", () => {
@@ -193,7 +195,9 @@ describe("undo and redo", () => {
     draft.redo();
     expect(draft.isDirty("scout")).toBe(true);
   });
+});
 
+describe("undo history limits and reporting", () => {
   test("the stack is bounded and drops the oldest entries", () => {
     for (let i = 1; i <= 60; i++) {
       draft.pushUndo("scout", 0, `edit ${i}`);
@@ -231,7 +235,9 @@ describe("coalescing", () => {
     }
     expect(draft.undo()).not.toBeNull();
     expect(draft.undo()).toBeNull();
-    expect(draft.hulls.scout.parts[0].pos[0]).toBe(0);
+    expect(draft.hulls.scout.parts[0].pos[0]).toBe(
+      stockHull("scout").parts[0].pos[0],
+    );
   });
 
   test("a pause past the window starts a new step", () => {
@@ -244,7 +250,9 @@ describe("coalescing", () => {
     draft.undo();
     expect(draft.hulls.scout.parts[0].pos[0]).toBe(0.3);
     draft.undo();
-    expect(draft.hulls.scout.parts[0].pos[0]).toBe(0);
+    expect(draft.hulls.scout.parts[0].pos[0]).toBe(
+      stockHull("scout").parts[0].pos[0],
+    );
   });
 
   test("different labels inside the window stay separate steps", () => {

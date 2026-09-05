@@ -1,4 +1,5 @@
 import tgpu, { type TgpuRoot } from "typegpu";
+import { type Gpu, initFromDevice } from "vgpu";
 
 export interface GpuContext {
   readonly device: GPUDevice;
@@ -8,6 +9,7 @@ export interface GpuContext {
   // buffer/bind group in the app. Reused (initFromDevice) rather than letting
   // TypeGPU request its own device, so raw and typed resources share one device.
   readonly root: TgpuRoot;
+  readonly vgpu: Gpu;
 }
 
 export const acquireGpu = async (
@@ -24,6 +26,7 @@ export const acquireGpu = async (
   context.configure({ device, format, alphaMode: "opaque" });
 
   const root = tgpu.initFromDevice({ device });
+  const vgpu = await initFromDevice(device);
 
-  return { device, context, format, root };
+  return { device, context, format, root, vgpu };
 };
