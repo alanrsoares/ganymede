@@ -3,7 +3,7 @@
 
 import { SHIP_CLASSES, type ShipClass } from "~/hull/catalog";
 import { CLIP, clipLayer } from "~/render/sprites";
-import type { World } from "~/world";
+import { hasArenaFurniture, type World } from "~/world";
 import {
   drawBases,
   drawCenterPad,
@@ -166,7 +166,7 @@ export const createOverlay = (): Overlay => {
       // Arena furniture — bases, portals, heal pads, the orbit ring — belongs
       // to the all-range field. A scroll stage flies past fixed structures that
       // sit at world zero, so it draws none of them (its own scenery is #30's).
-      const arena = world.config.format !== "scroll";
+      const arena = hasArenaFurniture(world);
 
       // Portals go FIRST so they occupy the leading instances: the renderer
       // draws that slice before the 3D passes, letting objects fly over them.

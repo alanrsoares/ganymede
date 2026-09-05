@@ -15,6 +15,8 @@ import {
   SCROLL_RATE,
   setGridBounds,
   syncField,
+  TEAM_BASES,
+  update,
   type World,
 } from "~/world";
 import { inField, wrapX, wrapY } from "~/world/math";
@@ -235,4 +237,78 @@ test("scenery refills onto the live window, not back at world zero", () => {
     expect(inField(r.x, r.y)).toBe(true);
   }
   expect(w.asteroids.items.length).toBeGreaterThan(0);
+});
+
+// --- regressions caught in review ------------------------------------------
+
+test("resetting a stage gives back a stage, not an autobattle world", () => {
+  const w = update({ kind: "reset" }, scrollWorld());
+  expect(w.run).not.toBeNull();
+  expect(w.controlledShipId).not.toBeNull();
+  expect(w.config.format).toBe("scroll");
+});
+
+test("a fresh world derives its own field before rolling scenery", () => {
+  // Leave the field parked far up a stage, as a finished run would.
+  syncField({
+    config: scrollConfig(),
+    scrollY: -9000,
+    scrollHalted: false,
+  });
+
+  // Same seed, same config: the opening must not depend on what ran before.
+  const a = initWorld(99 as Seed);
+  syncField({ config: scrollConfig(), scrollY: -9000, scrollHalted: false });
+  const b = initWorld(99 as Seed);
+  expect(a.asteroids.items.map((r) => [r.x, r.y])).toEqual(
+    b.asteroids.items.map((r) => [r.x, r.y]),
+  );
+  // ...and it is the all-range field, not the stale stage position.
+  for (const r of a.asteroids.items) expect(r.y).toBeGreaterThan(-1000);
+});
+
+// A lone ship flying into an enemy base, with the scenery pools emptied so
+// nothing else can touch it. Returns its heading after a few ticks: bouncing
+// off the base reverses it, flying through where the base would be does not.
+const headingIntoABase = (world: World): number => {
+  const pilot = world.ships.items[0];
+  const base = TEAM_BASES[1]; // orange: an enemy of the cyan pilot
+  let w: World = {
+    ...world,
+    asteroids: { items: [], nextId: 1 },
+    pickups: { items: [], nextId: 1 },
+    ships: {
+      ...world.ships,
+      items: [
+        // Just inside the base's collision radius and closing on it — dead
+        // centre reads as degenerate and is skipped by the narrow phase.
+        {
+          ...pilot,
+          x: base.x - 6,
+          y: base.y - 6,
+          dx: 0.7071,
+          dy: 0.7071,
+          vx: 2,
+          vy: 2,
+          invulnTime: 0,
+          hitCooldown: 0,
+        },
+      ],
+    },
+    controlledShipId: null, // no pilot input or field clamp in the way
+  };
+  for (let i = 0; i < 2; i++) w = tick(w, 1, 16 * i);
+  const me = w.ships.items.find((s) => s.id === pilot.id);
+  return me ? Math.sign(me.vx) : 0;
+};
+
+test("a stage does not collide with arena furniture", () => {
+  const arena = initArcadeWorld(7 as Seed, {
+    ...scrollConfig(),
+    format: "arcade",
+  });
+  // The all-range arena has a base there, and flying into it bounces you back.
+  expect(headingIntoABase(arena)).toBe(-1);
+  // The stage flies past where it would be, so there is nothing to hit.
+  expect(headingIntoABase(scrollWorld())).toBe(1);
 });

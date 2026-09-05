@@ -1,4 +1,4 @@
-export { setGridBounds, syncField } from "./field";
+export { hasArenaFurniture, setGridBounds, syncField } from "./field";
 export { initArcadeWorld, initWorld } from "./init";
 export {
   advanceScroll,

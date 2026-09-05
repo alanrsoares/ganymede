@@ -38,7 +38,7 @@ export const defaultKv: Kv =
 
 // Versioned: a future entry shape ships under `.v2` and simply starts empty
 // rather than having to migrate anyone's board.
-const KEY = "ganymede.run.scores.v1";
+const KEY = "ganymede.arcade.scores.v1";
 
 /** Runs kept per difficulty. */
 export const TABLE_SIZE = 5;

@@ -1,6 +1,7 @@
 import { empty } from "~/engine/entities";
 import { nextRange, type Seed } from "~/engine/rng";
 import { rollAsteroid, rollMany, rollPickup, rollShip } from "./factory";
+import { syncField } from "./field";
 import { fullBaseHp, zeroScores } from "./math";
 import { SCROLL_FIELD_W } from "./scroll";
 import {
@@ -67,6 +68,11 @@ export function initWorld(
   // muster ships onto their bases (a "reset" mid-match would otherwise carry the
   // old world's rotation into these base reads).
   setOrbitPhase(0);
+  // Scenery is rolled onto the field (rollAsteroid places on its edges), so the
+  // field has to describe this world before any of it is rolled — otherwise a
+  // fresh match inherits wherever the last run's stage had scrolled to, and the
+  // same seed stops meaning the same opening.
+  syncField({ config, scrollY: 0, scrollHalted: false });
   const teams = activeTeams(config);
   const initialShips = config.initialShips;
   // Roll each ship (its team is drawn from the seed), then plant it at that
@@ -154,6 +160,7 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
   setOrbitPhase(0);
   const cfg = config.run;
   if (!cfg) throw new Error("initArcadeWorld: config.run is required");
+  syncField({ config, scrollY: 0, scrollHalted: false });
   const teams = activeTeams(config);
   const playerId = 1;
   const [player, s1] = rollShip(

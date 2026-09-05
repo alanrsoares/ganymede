@@ -14,7 +14,7 @@ import { patchRun, patchWaves } from "./arcade-helpers";
 
 const fakeKv = (seed?: string): Kv => {
   const map = new Map<string, string>();
-  if (seed !== undefined) map.set("ganymede.run.scores.v1", seed);
+  if (seed !== undefined) map.set("ganymede.arcade.scores.v1", seed);
   return {
     getItem: (k) => map.get(k) ?? null,
     setItem: (k, v) => {

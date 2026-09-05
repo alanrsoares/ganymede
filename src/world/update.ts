@@ -518,7 +518,10 @@ export function update(msg: Msg, world: World): World {
       return rallyTeam(world, msg.x, msg.y);
     case "reset": {
       const [seed] = nextInt(world.seed, 2 ** 31);
-      return world.config.format === "arcade"
+      // Any piloted run (arcade or a scroll stage) restarts as a piloted run;
+      // resetting one through initWorld would hand back an autobattle world
+      // with no pilot to fly.
+      return world.config.run
         ? initArcadeWorld(seed, world.config)
         : initWorld(seed, world.config);
     }

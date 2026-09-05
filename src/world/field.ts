@@ -16,7 +16,18 @@
 // coordinate moves across the flip; only these six numbers change.
 
 import { SCROLL_FIELD_W } from "./scroll";
-import { ARENA, DEFAULT_GRID_H, DEFAULT_GRID_W, type World } from "./types";
+import {
+  ARENA,
+  DEFAULT_GRID_H,
+  DEFAULT_GRID_W,
+  type MatchConfig,
+  type World,
+} from "./types";
+
+/** Everything `syncField` reads. Narrow so a world under construction — one
+ * that has a config but no entities yet — can derive the field it rolls its
+ * scenery onto (see init.ts). */
+export type FieldInputs = Pick<World, "config" | "scrollY" | "scrollHalted">;
 
 // Requested extent, set by the resize edge. Kept apart from ARENA itself so a
 // resize can never leave the field half-written mid-tick, and so a scroll stage
@@ -38,7 +49,7 @@ const allRange = () => {
  * play and the live scroll position for where the window sits — nothing else,
  * so the field is a pure function of the World and a replay reproduces it.
  */
-export const syncField = (world: World): void => {
+export const syncField = (world: FieldInputs): void => {
   if (world.config.format !== "scroll") {
     allRange();
     return;
@@ -53,6 +64,17 @@ export const syncField = (world: World): void => {
   ARENA.wrapX = world.scrollHalted;
   ARENA.wrapY = world.scrollHalted;
 };
+
+/**
+ * True while the arena's fixed furniture — team bases, the centre pad, portals,
+ * heal pads — is part of the world. It sits at absolute coordinates in the
+ * all-range field, so a scroll stage flies past where it would be: it is
+ * neither drawn nor collided with there. (What the flip's arena contains is
+ * #31's question.)
+ */
+export const hasArenaFurniture = (world: {
+  config: { format: MatchConfig["format"] };
+}): boolean => world.config.format !== "scroll";
 
 /** Re-derive the field extent from the canvas aspect (the resize edge). */
 export const setGridBounds = (w: number, h: number): void => {

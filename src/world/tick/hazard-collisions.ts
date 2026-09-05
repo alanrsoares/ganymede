@@ -1,5 +1,6 @@
 import { elastic, normalize, reflectOffDisc } from "~/engine/physics";
 import { spawnShrapnel } from "~/world/factory";
+import { hasArenaFurniture } from "~/world/field";
 import { deltaX, deltaY, within, wrapX, wrapY } from "~/world/math";
 import {
   BASE_RADIUS,
@@ -325,8 +326,15 @@ export const resolveHazardCollisions = (
   hazards: HazardState,
 ) => {
   collideShipsRocks(ctx, motion, hazards);
-  collideShipsBases(ctx);
-  collideRocksBases(ctx, motion, hazards);
-  collideBodiesCenterPad(ctx, motion, hazards);
+  // The bases and the centre pad live at fixed all-range coordinates. A scroll
+  // stage flies past where they would be, so colliding with them there would
+  // bounce ships off invisible structures — and `reflectOffDisc` would wrap the
+  // corrected position back to the zero-origin field, teleporting them out of
+  // the window entirely.
+  if (hasArenaFurniture(ctx.world)) {
+    collideShipsBases(ctx);
+    collideRocksBases(ctx, motion, hazards);
+    collideBodiesCenterPad(ctx, motion, hazards);
+  }
   collideShardsShips(ctx, motion, hazards, shardShipPairs(ctx, motion));
 };
