@@ -3,6 +3,7 @@
 // grid-dimension sync. No sim logic lives here — every handler just emits a Msg.
 
 import type { Renderer } from "~/render/gpu";
+import { screenToWorld, type ViewProj } from "~/render/view";
 import { type Codex, mountCodex } from "~/ui/codex";
 import type { PauseMenu } from "~/ui/pauseMenu";
 import { mountShipCard } from "~/ui/shipCard";
@@ -43,6 +44,27 @@ const pickShip = (world: World, gx: number, gy: number): LightCycle | null => {
   return best;
 };
 
+// Pointer CSS pixels -> grid cells, un-projected through the view the last
+// frame drew with: whatever the camera does (scroll, pitch), the cursor lands
+// on the cell the player sees under it. Identity view = the old direct ratio.
+const pointerCell = (
+  e: PointerEvent,
+  canvas: HTMLCanvasElement,
+  view: ViewProj,
+) => {
+  const p = screenToWorld(
+    view,
+    e.offsetX,
+    e.offsetY,
+    canvas.clientWidth,
+    canvas.clientHeight,
+  );
+  return {
+    x: (p.x / canvas.width) * ARENA.w,
+    y: (p.y / canvas.height) * ARENA.h,
+  };
+};
+
 // Re-derive the sim grid from the canvas aspect ratio (height locked).
 export const updateGridDimensions = (canvas: HTMLCanvasElement) => {
   const w = canvas.clientWidth || window.innerWidth;
@@ -69,9 +91,9 @@ const handlePointerDown = (
   canvas: HTMLCanvasElement,
   dispatch: (msg: Msg) => void,
   getWorld: () => World,
+  view: ViewProj,
 ) => {
-  const cx = (e.offsetX / canvas.clientWidth) * ARENA.w;
-  const cy = (e.offsetY / canvas.clientHeight) * ARENA.h;
+  const { x: cx, y: cy } = pointerCell(e, canvas, view);
   if (e.button === 2 || e.shiftKey) {
     dispatch({ kind: "rally", x: Math.floor(cx), y: Math.floor(cy) });
   } else {
@@ -275,12 +297,12 @@ const wireTouchInspect = (
   canvas: HTMLCanvasElement,
   card: ReturnType<typeof mountShipCard>,
   getWorld: () => World,
+  getView: () => ViewProj,
 ) => {
   let cardTimer = 0;
   canvas.addEventListener("pointerdown", (e) => {
     if (e.pointerType !== "touch") return;
-    const gx = (e.offsetX / canvas.clientWidth) * ARENA.w;
-    const gy = (e.offsetY / canvas.clientHeight) * ARENA.h;
+    const { x: gx, y: gy } = pointerCell(e, canvas, getView());
     const ship = pickShip(getWorld(), gx, gy);
     card.render(ship, e.clientX, e.clientY);
     clearTimeout(cardTimer);
@@ -312,17 +334,16 @@ export const wireInput = (
     // Arcade: the pilot is auto-controlled — ignore clicks so a stray tap can't
     // deselect them (the sim reads that as a lost ship) or drop stray hulls.
     if (getWorld().arcade) return;
-    handlePointerDown(e, canvas, dispatch, getWorld);
+    handlePointerDown(e, canvas, dispatch, getWorld, renderer.view());
   });
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
   canvas.addEventListener("pointermove", (e) => {
-    const gx = (e.offsetX / canvas.clientWidth) * ARENA.w;
-    const gy = (e.offsetY / canvas.clientHeight) * ARENA.h;
+    const { x: gx, y: gy } = pointerCell(e, canvas, renderer.view());
     card.render(pickShip(getWorld(), gx, gy), e.clientX, e.clientY);
   });
   canvas.addEventListener("pointerleave", () => card.render(null, 0, 0));
-  wireTouchInspect(canvas, card, getWorld);
+  wireTouchInspect(canvas, card, getWorld, () => renderer.view());
 
   const { pressedKeys, updateControls, clearControls } = createControlState(
     dispatch,

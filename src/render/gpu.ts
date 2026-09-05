@@ -44,6 +44,7 @@ import {
   SHIP_LAYOUT,
 } from "./overlay/frame";
 import { SPRITE_URLS, TEXTURE_LAYER_COUNT } from "./sprites";
+import { orthoPixels, type ViewProj } from "./view";
 
 // Instance caps and layouts live in ./overlay/frame — they describe the
 // overlay's projection of the World; this module only consumes them.
@@ -59,6 +60,9 @@ const FrameUniforms = d.struct({
   resolution: d.vec2f,
   time: d.f32,
   _pad: d.f32,
+  // Shared view-projection (world pixels → clip). Identity ortho today; a
+  // camera writes a different matrix here and every pass follows.
+  viewProj: d.mat4x4f,
 });
 const Instance = d.struct({
   posSize: d.vec4f, // [cx, cy, hx, hy]
@@ -88,6 +92,9 @@ export const CAMERA_IDENTITY: CameraView = {
 export interface Renderer {
   render(frame: FrameInstances, time: number, camera: CameraView): void;
   resize(): void;
+  /** The view-projection the last frame drew with — input un-projects through
+   * it, so a moving camera and the pointer can never disagree. */
+  view(): ViewProj;
 }
 
 interface BackgroundPipeline {
@@ -381,12 +388,13 @@ const writeFrameUniforms = (
   time: number,
   instances: Float32Array<ArrayBuffer>,
   instanceCount: number,
+  viewProj: ViewProj,
 ) => {
   const { device, canvas } = deps;
   device.queue.writeBuffer(
     deps.uniformBuffer,
     0,
-    new Float32Array([canvas.width, canvas.height, time, DEPTH_SCALE]),
+    new Float32Array([canvas.width, canvas.height, time, 0, ...viewProj]),
   );
   device.queue.writeBuffer(
     deps.instanceBuffer,
@@ -498,6 +506,7 @@ interface RenderFnDeps {
   shipPasses: Record<ShipClass, MeshPass>;
   plumePass: MeshPass;
   bloomPass: BloomPassManager;
+  getView: () => ViewProj;
 }
 
 // Builds the per-frame render() closure: write uniforms, encode the scene
@@ -507,7 +516,13 @@ const createRenderFn =
   (deps: RenderFnDeps): Renderer["render"] =>
   (frame, time, camera) => {
     const { device } = deps;
-    writeFrameUniforms(deps, time, frame.instances, frame.count);
+    writeFrameUniforms(
+      deps,
+      time,
+      frame.instances,
+      frame.count,
+      deps.getView(),
+    );
     const encoder = device.createCommandEncoder();
     encodeScenePass(encoder, deps.bloomPass, { ...deps, frame });
     device.queue.submit([encoder.finish()]);
@@ -543,19 +558,30 @@ export const createRenderer = (
   const meshPasses = createMeshPasses(device, format, uniformBuffer);
   const bloomPass = createBloomPassManager(vgpu, canvas, format, DEPTH_FORMAT);
 
+  // The only view in play today: pixel-space ortho, rebuilt when the drawing
+  // buffer changes size. Everything downstream reads it through getView.
+  let viewProj = orthoPixels(
+    canvas.width || 1,
+    canvas.height || 1,
+    DEPTH_SCALE,
+  );
+
   const resize = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
     const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
     canvas.width = w;
     canvas.height = h;
+    viewProj = orthoPixels(w, h, DEPTH_SCALE);
     bloomPass.resize(w, h);
   };
   resize();
 
   return {
     resize,
+    view: () => viewProj,
     render: createRenderFn({
+      getView: () => viewProj,
       device,
       canvas,
       uniformBuffer,

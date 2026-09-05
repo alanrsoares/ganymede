@@ -5,7 +5,10 @@
 struct Uniforms {
     resolution: vec2f,
     time: f32,
-    _pad: f32}
+    _pad: f32,
+    // World pixels -> clip space. Shared by every pass (see render/view.ts).
+    viewProj: mat4x4f,
+}
 @group(0) @binding(0) var<uniform> u: Uniforms;
 
 @vertex
