@@ -62,7 +62,7 @@ const canvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
 // Soundtrack scene from game state: pre-game screens → menu bed, a live match →
 // battle or arcade.
 const sceneFor = (world: World, inMatch: boolean): Scene =>
-  !inMatch ? "menu" : world.config.format === "arcade" ? "arcade" : "battle";
+  !inMatch ? "menu" : world.run ? "arcade" : "battle";
 
 // Acquire the GPU device/context, wire up the "device lost" surface, and build
 // the renderer. Split out of `main` purely to keep that function short.
@@ -274,7 +274,8 @@ const startRuntime = (
       const reinforceRate =
         loopState.deployRemaining > 0 ? 0 : sim.reinforceRate;
       stepSimulation(advanceSim, dispatch, dt, now, reinforceRate, loopState);
-      if (sim.world.config.format === "arcade") {
+      // Any piloted run ends the same way — lives out, back to the lobby.
+      if (sim.world.run) {
         handleArcadeEnd(sim.world, ui, loopState, lobby);
       } else {
         handleMatchEnd(sim.world, ui, loopState, setup);

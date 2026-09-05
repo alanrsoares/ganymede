@@ -58,6 +58,16 @@ export const clampFieldX = (x: number, margin = 0): number =>
     : Math.min(Math.max(x, ARENA.x0 + margin), ARENA.x0 + ARENA.w - margin);
 
 /**
+ * The same wall on y. On a scroll stage this is what carries the pilot along
+ * with the window: stop flying and the advancing field edge pushes you, rather
+ * than the stage leaving without you. The real control model is #29's.
+ */
+export const clampFieldY = (y: number, margin = 0): number =>
+  ARENA.wrapY
+    ? y
+    : Math.min(Math.max(y, ARENA.y0 + margin), ARENA.y0 + ARENA.h - margin);
+
+/**
  * True while `(x, y)` is inside the field inflated by `margin`. A wrapping axis
  * has no outside, so this only rejects along an open one — which makes it the
  * single cull rule for a scroll stage: it kills the wake behind the camera and

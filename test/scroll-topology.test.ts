@@ -75,7 +75,8 @@ test("autobattle and arcade still get the all-range torus", () => {
 test("the tick advances the stage, and the field origin follows it", () => {
   let w = scrollWorld();
   w = tick(w, 10, 16);
-  expect(w.scrollY).toBeCloseTo(SCROLL_RATE * 10, 6);
+  // Forward is -y, so the window climbs toward smaller y (see SCROLL_RATE).
+  expect(w.scrollY).toBeCloseTo(-SCROLL_RATE * 10, 6);
   expect(ARENA.y0).toBeCloseTo(w.scrollY, 6);
 });
 

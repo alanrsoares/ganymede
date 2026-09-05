@@ -154,6 +154,12 @@ export const buildAndRender = (
   // Align the furniture ring to the world being drawn (the sim advances age
   // between renders; this keeps rendered bases/portals/pads on the live orbit).
   setOrbitPhase(world.age);
+  // Follow the stage: the field origin is where the window sits, so the camera
+  // is that origin in pixels. Zero for all-range play, where the origin is 0,0.
+  renderer.setCamera(
+    (ARENA.x0 / ARENA.w) * canvas.width,
+    (ARENA.y0 / ARENA.h) * canvas.height,
+  );
   const frame = overlay.build({
     w: canvas.width,
     h: canvas.height,

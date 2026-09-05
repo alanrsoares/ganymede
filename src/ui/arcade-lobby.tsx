@@ -48,10 +48,19 @@ const HullGlyph = ({ a }: { a: Archetype }) => (
 // the field can move quicker without becoming unreadable.
 const ARCADE_TEMPO = 52;
 
-/** The MatchConfig for a pilot run with the chosen hull + difficulty tier. */
+/** Which shape of run the lobby launches. */
+export type RunFormat = "arena" | "stage";
+
+/**
+ * The MatchConfig for a pilot run with the chosen hull + difficulty tier.
+ * The arena run is the wave survival mode; the stage run is the scroller, which
+ * has no wave director — its enemies come from the stage, so its difficulty is
+ * authored rather than adaptive.
+ */
 export const buildRunConfig = (
   archetype: Archetype,
   difficulty: ArcadeDifficulty,
+  shape: RunFormat = "arena",
 ): MatchConfig => {
   const tier = ARCADE_TIERS[difficulty];
   return {
@@ -60,7 +69,7 @@ export const buildRunConfig = (
     reinforceRate: 0,
     tempo: ARCADE_TEMPO,
     reinforceGens: 0,
-    format: "arcade",
+    format: shape === "stage" ? "scroll" : "arcade",
     run: {
       playerRole: "pilot",
       difficulty,
@@ -68,10 +77,14 @@ export const buildRunConfig = (
       playerArchetype: archetype,
       victory: { kind: "none" },
       defeat: { kind: "lives", count: tier.lives },
-      waves: {
-        intermissionMinGens: tier.intermissionGens,
-        spawn: tier.spawn,
-      },
+      ...(shape === "arena"
+        ? {
+            waves: {
+              intermissionMinGens: tier.intermissionGens,
+              spawn: tier.spawn,
+            },
+          }
+        : {}),
       enemyTeams: ["orange", "emerald"],
     },
   };
@@ -94,6 +107,15 @@ interface HullBlurb {
   readonly title: string;
   readonly blurb: string;
 }
+
+const SHAPES: readonly {
+  key: RunFormat;
+  title: string;
+  blurb: string;
+}[] = [
+  { key: "arena", title: "Arena", blurb: "All-range · rising waves" },
+  { key: "stage", title: "Stage", blurb: "Scrolling run · fly forward" },
+];
 
 const HULLS: readonly HullBlurb[] = [
   { key: "scout", title: "Recon Dart", blurb: "Fastest · light armor" },
@@ -159,6 +181,7 @@ const LobbyView = ({
 }) => {
   const [selected, setSelected] = useState<Archetype>(ARCHETYPES[1]); // fighter
   const [difficulty, setDifficulty] = useState<ArcadeDifficulty>("normal");
+  const [shape, setShape] = useState<RunFormat>("arena");
   const [runs, setRuns] = useState<readonly HighScore[]>([]);
   // The board is re-read every time the lobby opens: the run that just ended
   // was banked by the loop between the two openings.
@@ -168,7 +191,7 @@ const LobbyView = ({
   }, [open, difficulty]);
   const start = () => {
     store.close();
-    onStart(buildRunConfig(selected, difficulty));
+    onStart(buildRunConfig(selected, difficulty, shape));
   };
   const close = () => {
     store.close();
@@ -179,9 +202,21 @@ const LobbyView = ({
       store={store}
       label="Arcade setup"
       title="Arcade"
-      subtitle="Pilot one ship through rising enemy waves. Set a high score."
+      subtitle="Pilot one ship. Hold the arena against rising waves, or fly a stage."
       onClose={close}
     >
+      <SectionHeading>flight plan</SectionHeading>
+      <Grid columns={2} gap={2}>
+        {SHAPES.map((s) => (
+          <ChoiceCard
+            key={s.key}
+            title={s.title}
+            blurb={s.blurb}
+            pressed={shape === s.key}
+            onClick={() => setShape(s.key)}
+          />
+        ))}
+      </Grid>
       <SectionHeading>choose your hull</SectionHeading>
       <Grid columns={2} gap={2}>
         {HULLS.map((hull) => (
@@ -208,7 +243,7 @@ const LobbyView = ({
           />
         ))}
       </Grid>
-      <ScoreBoard runs={runs} />
+      {shape === "arena" ? <ScoreBoard runs={runs} /> : null}
       <Cta label="Start run" onClick={start} />
     </DialogShell>
   );

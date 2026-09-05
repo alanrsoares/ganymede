@@ -92,6 +92,9 @@ export const CAMERA_IDENTITY: CameraView = {
 export interface Renderer {
   render(frame: FrameInstances, time: number, camera: CameraView): void;
   resize(): void;
+  /** Move the world-space camera, in drawing-buffer pixels. This is the whole
+   * of "the camera follows the scroll": one translation in the shared view. */
+  setCamera(x: number, y: number): void;
   /** The view-projection the last frame drew with — input un-projects through
    * it, so a moving camera and the pointer can never disagree. */
   view(): ViewProj;
@@ -529,6 +532,40 @@ const createRenderFn =
     deps.bloomPass.render(camera);
   };
 
+// The live view-projection: pixel-space ortho, translated by the camera, and
+// rebuilt whenever either input changes. Everything downstream — every pass and
+// the pointer un-projection — reads the result through `get`.
+const createView = (canvas: HTMLCanvasElement) => {
+  let camX = 0;
+  let camY = 0;
+  let viewProj = orthoPixels(
+    canvas.width || 1,
+    canvas.height || 1,
+    DEPTH_SCALE,
+  );
+
+  const rebuild = () => {
+    const w = canvas.width || 1;
+    const h = canvas.height || 1;
+    viewProj = orthoPixels(w, h, DEPTH_SCALE);
+    // Column 3 is the translation; shifting it by the camera in NDC moves the
+    // whole scene coherently, which is what the identity-matrix seam bought.
+    viewProj[12] -= (2 / w) * camX;
+    viewProj[13] += (2 / h) * camY;
+  };
+
+  return {
+    rebuild,
+    get: (): ViewProj => viewProj,
+    setCamera: (x: number, y: number) => {
+      if (x === camX && y === camY) return;
+      camX = x;
+      camY = y;
+      rebuild();
+    },
+  };
+};
+
 export const createRenderer = (
   { device, format, root, vgpu }: GpuContext,
   canvas: HTMLCanvasElement,
@@ -558,13 +595,8 @@ export const createRenderer = (
   const meshPasses = createMeshPasses(device, format, uniformBuffer);
   const bloomPass = createBloomPassManager(vgpu, canvas, format, DEPTH_FORMAT);
 
-  // The only view in play today: pixel-space ortho, rebuilt when the drawing
-  // buffer changes size. Everything downstream reads it through getView.
-  let viewProj = orthoPixels(
-    canvas.width || 1,
-    canvas.height || 1,
-    DEPTH_SCALE,
-  );
+  const view = createView(canvas);
+  const { setCamera } = view;
 
   const resize = () => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -572,16 +604,17 @@ export const createRenderer = (
     const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
     canvas.width = w;
     canvas.height = h;
-    viewProj = orthoPixels(w, h, DEPTH_SCALE);
+    view.rebuild();
     bloomPass.resize(w, h);
   };
   resize();
 
   return {
     resize,
-    view: () => viewProj,
+    setCamera,
+    view: view.get,
     render: createRenderFn({
-      getView: () => viewProj,
+      getView: view.get,
       device,
       canvas,
       uniformBuffer,

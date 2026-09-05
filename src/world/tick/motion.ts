@@ -1,7 +1,14 @@
 import { angleTo, easeAngle, elastic, lerp, normalize } from "~/engine/physics";
 import type { PilotMods } from "~/world/augments";
 import { advanceAsteroid, advanceMissile } from "~/world/factory";
-import { clampFieldX, deltaX, deltaY, wrapX, wrapY } from "~/world/math";
+import {
+  clampFieldX,
+  clampFieldY,
+  deltaX,
+  deltaY,
+  wrapX,
+  wrapY,
+} from "~/world/math";
 import { flockSteer, fuelCarriers } from "~/world/steering";
 import {
   BOOST_MULT,
@@ -95,6 +102,22 @@ const shipAccel = (
 };
 
 /** Advance one ship `steps` gens: steer, cruise-regulate, move, decay timers. */
+// Where a ship lands this step. The pilot alone is walled into the field — a
+// no-op on a wrapping one, so it only bites on a scroll stage, where it keeps
+// them on screen (and carried along by the window) without caging the enemies.
+const nextPosition = (
+  s: Mutable<LightCycle>,
+  world: World,
+  dx: number,
+  dy: number,
+): { x: number; y: number } => {
+  const x = wrapX(s.x + dx);
+  const y = wrapY(s.y + dy);
+  if (world.controlledShipId !== s.id) return { x, y };
+  const r = shipRadius(s.level);
+  return { x: clampFieldX(x, r), y: clampFieldY(y, r) };
+};
+
 const advanceShip = (
   s: LightCycle,
   world: World,
@@ -127,13 +150,7 @@ const advanceShip = (
   const beamTime = s.beamActive ? s.beamTime - steps : s.beamTime;
   return {
     ...s,
-    // The pilot alone is walled in on x (a no-op on a wrapping field), so a
-    // scroll stage keeps them on screen without caging the enemies too.
-    x:
-      world.controlledShipId === s.id
-        ? clampFieldX(wrapX(s.x + vx * steps), shipRadius(s.level))
-        : wrapX(s.x + vx * steps),
-    y: wrapY(s.y + vy * steps),
+    ...nextPosition(s, world, vx * steps, vy * steps),
     vx,
     vy,
     dx: hx,

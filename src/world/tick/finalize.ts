@@ -175,10 +175,9 @@ const commitScenery = (
     seed0,
     rollAsteroid,
   );
-  // Arcade adds the muster kind (9) to the pool; autobattle keeps kinds 0..8, so
-  // its pickup rolls — and the golden characterization — are unchanged.
-  const pickupKinds =
-    world.config.format === "arcade" ? ARCADE_PICKUP_KINDS : PICKUP_KINDS;
+  // A piloted run adds the muster kind (9) to the pool; autobattle keeps kinds
+  // 0..8, so its pickup rolls — and the golden characterization — are unchanged.
+  const pickupKinds = world.run ? ARCADE_PICKUP_KINDS : PICKUP_KINDS;
   const [pickups, seed] = refillPool(
     motion.bubbles.filter(
       (p) => !interactions.takenPickups.has(p.id) && onField(p),
@@ -206,11 +205,12 @@ export const finalizeTick = (
   const survivors = ctx.moved.filter(
     (s) => !ctx.removed.has(s.id) && (onField(s) || keep(s)),
   );
-  // Arcade gets a bigger array cap and never evicts the pilot or its player-team
-  // summons; autobattle keeps MAX_SHIPS (matches `cap` with no controlled ship).
+  // A piloted run gets a bigger array cap and never evicts the pilot or its
+  // player-team summons; autobattle keeps MAX_SHIPS (matches `cap` with no
+  // controlled ship).
   const ships = capExcept(
     { items: [...survivors, ...spawned], nextId: ctx.nextId },
-    world.config.format === "arcade" ? MAX_ARCADE_SHIPS : MAX_SHIPS,
+    world.run ? MAX_ARCADE_SHIPS : MAX_SHIPS,
     trimProtected(world),
   );
   const [bursts, sBursts] = commitBursts(

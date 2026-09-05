@@ -2,6 +2,7 @@ import { empty } from "~/engine/entities";
 import { nextRange, type Seed } from "~/engine/rng";
 import { rollAsteroid, rollMany, rollPickup, rollShip } from "./factory";
 import { fullBaseHp, zeroScores } from "./math";
+import { SCROLL_FIELD_W } from "./scroll";
 import {
   ARCADE_LIVES,
   activeTeams,
@@ -9,10 +10,12 @@ import {
   NUM_ASTEROIDS,
   NUM_PICKUPS,
   SPAWN_INVULN_GENS,
+  speedForLevel,
 } from "./tuning";
 import {
   ARCADE_PICKUP_KINDS,
   baseByName,
+  DEFAULT_GRID_H,
   type LightCycle,
   type MatchConfig,
   type RunConfig,
@@ -122,6 +125,26 @@ const NO_KEYS = {
   space: false,
 } as const;
 
+// Where the pilot starts. An arena run launches from its team base; a scroll
+// stage has no bases, so it opens low and centred in the first window with the
+// nose up-stage, the way a scroller opens. Forward is -y (see world/scroll.ts),
+// so "low" is the larger y.
+const pilotStart = (config: MatchConfig, team: string): Partial<LightCycle> => {
+  if (config.format !== "scroll") {
+    const base = baseByName.get(team);
+    return base ? { x: base.x, y: base.y } : {};
+  }
+  return {
+    x: SCROLL_FIELD_W / 2,
+    y: DEFAULT_GRID_H * 0.72,
+    dx: 0,
+    dy: -1,
+    vx: 0,
+    vy: -speedForLevel(PILOT_START_LEVEL),
+    angle: Math.atan2(0, -1),
+  };
+};
+
 /**
  * Arcade world: one player ship docked at its base with control handed over, a
  * fresh run state (lives/wave), and the standard rock/pickup field. Enemy waves
@@ -143,11 +166,10 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
     cfg.playerArchetype,
     teams,
   );
-  const base = baseByName.get(cfg.playerTeam);
   const placed = {
     ...player,
     invulnTime: SPAWN_INVULN_GENS, // spawn-in mercy window
-    ...(base ? { x: base.x, y: base.y } : {}),
+    ...pilotStart(config, cfg.playerTeam),
   };
   const [rocks, s2] = rollMany(NUM_ASTEROIDS, s1, (s, i) =>
     rollAsteroid(s, i + 1),
