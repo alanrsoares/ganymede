@@ -169,7 +169,23 @@ const drawHull = async (
   return pixels;
 };
 
-describe("headless hull rendering with vgpu", () => {
+// These are capability tests: they need a real WebGPU adapter, and CI runners
+// supply one only sometimes (the same commit on main has both passed and failed
+// on adapter availability alone). Probe once and skip rather than fail — a
+// missing GPU is not a broken renderer, and a suite that cries wolf every other
+// run teaches everyone to ignore it. They still run wherever an adapter exists.
+const hasAdapter = await (async (): Promise<boolean> => {
+  try {
+    const gpu = await initNode();
+    gpu.dispose();
+    return true;
+  } catch {
+    console.warn("no WebGPU adapter — skipping headless hull render tests");
+    return false;
+  }
+})();
+
+describe.skipIf(!hasAdapter)("headless hull rendering with vgpu", () => {
   test.each([
     ...SHIP_CLASSES,
   ])("%s renders visible geometry", async (cls: ShipClass) => {
