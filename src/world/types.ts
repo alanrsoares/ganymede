@@ -501,6 +501,12 @@ export interface World {
   readonly winner: string | null; // team name once the match is decided (else null)
   readonly config: MatchConfig; // match setup (team count, length, format)
   readonly run: RunState | null; // piloted-run state (null in autobattle)
+  // Scroll stage position: where the camera window's top edge sits along the
+  // stage, in cells. 0 outside a scroll run. `scrollHalted` is the flip beat
+  // holding it still — #31 owns the easing, and may well replace the boolean
+  // with a phase once it has one; syncField only asks "is the scroll stopped".
+  readonly scrollY: number;
+  readonly scrollHalted: boolean;
   readonly controlledShipId: number | null;
   // Enemy the piloted ship's fire hard-locks onto (arcade/manual). Auto-acquired
   // and auto-advanced by the tick; cycled by the player. null = free aim.

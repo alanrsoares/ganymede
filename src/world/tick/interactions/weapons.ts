@@ -1,4 +1,3 @@
-import { wrapDelta } from "~/engine/physics";
 import type { Seed } from "~/engine/rng";
 import { nextFloat } from "~/engine/rng";
 import {
@@ -7,7 +6,7 @@ import {
   spawnEmpMissile,
   spawnMissile,
 } from "~/world/factory";
-import { distSq, wrap } from "~/world/math";
+import { deltaX, deltaY, distSq, wrapX, wrapY } from "~/world/math";
 import { hit, killShip, type TickCtx } from "~/world/tick/context";
 import {
   AIM_ASSIST_BIAS,
@@ -85,8 +84,8 @@ const muzzleFlash = (
 ): void => {
   const muzzle = shipRadius(s.level) + 1;
   ctx.burstAt.push({
-    x: Math.floor(wrap(s.x + Math.sin(angle) * muzzle, ARENA.w)),
-    y: Math.floor(wrap(s.y + Math.cos(angle) * muzzle, ARENA.h)),
+    x: Math.floor(wrapX(s.x + Math.sin(angle) * muzzle)),
+    y: Math.floor(wrapY(s.y + Math.cos(angle) * muzzle)),
     kind: BURST_MUZZLE,
     rgb: s.color,
     rot: angle,
@@ -115,8 +114,8 @@ const spawnSalvo = (
   const dmgMul = s.id === ctx.world.controlledShipId ? ctx.mods.damageMul : 1;
   // For a cone (coneStep > 0) we rotate each barrel's aim apart into a shotgun
   // spread; otherwise barrels offset perpendicular (a parallel wall).
-  const ax = wrapDelta(s.x, aim.x, ARENA.w);
-  const ay = wrapDelta(s.y, aim.y, ARENA.h);
+  const ax = deltaX(s.x, aim.x);
+  const ay = deltaY(s.y, aim.y);
   let id = bulletId;
   for (let i = 0; i < shots; i++) {
     const off = i - mid;
@@ -200,8 +199,8 @@ const coneDist = (
   dx: number,
   dy: number,
 ): number | null => {
-  const ex = wrapDelta(s.x, e.x, ARENA.w);
-  const ey = wrapDelta(s.y, e.y, ARENA.h);
+  const ex = deltaX(s.x, e.x);
+  const ey = deltaY(s.y, e.y);
   const dist = Math.hypot(ex, ey);
   if (dist < 1 || dist > AIM_ASSIST_RANGE) return null;
   return (ex * dx + ey * dy) / dist >= AIM_ASSIST_CONE_COS ? dist : null;
@@ -230,15 +229,15 @@ const assistCandidate = (
 // Subtle arcade aim assist: if an enemy sits within a narrow cone of the shot,
 // bias the aim toward it (partial, not a lock). Toroidal-aware.
 const assistAim = (ctx: TickCtx, s: Mutable<LightCycle>, aim: Aim): Aim => {
-  const ax = wrapDelta(s.x, aim.x, ARENA.w);
-  const ay = wrapDelta(s.y, aim.y, ARENA.h);
+  const ax = deltaX(s.x, aim.x);
+  const ay = deltaY(s.y, aim.y);
   const ad = Math.hypot(ax, ay) || 1;
   const dx = ax / ad;
   const dy = ay / ad;
   const best = assistCandidate(ctx, s, dx, dy);
   if (!best) return aim;
-  const tx = wrapDelta(s.x, best.x, ARENA.w);
-  const ty = wrapDelta(s.y, best.y, ARENA.h);
+  const tx = deltaX(s.x, best.x);
+  const ty = deltaY(s.y, best.y);
   const td = Math.hypot(tx, ty) || 1;
   const nx = dx + (tx / td - dx) * AIM_ASSIST_BIAS;
   const ny = dy + (ty / td - dy) * AIM_ASSIST_BIAS;
@@ -255,8 +254,8 @@ const pilotAim = (ctx: TickCtx, s: Mutable<LightCycle>): Aim => {
     const t = ctx.moved.find((m) => m.id === lockId && !ctx.removed.has(m.id));
     if (t && t.colorName !== s.colorName)
       return {
-        x: s.x + wrapDelta(s.x, t.x, ARENA.w),
-        y: s.y + wrapDelta(s.y, t.y, ARENA.h),
+        x: s.x + deltaX(s.x, t.x),
+        y: s.y + deltaY(s.y, t.y),
       };
   }
   // No lock (no enemy in range): free directional aim, with the cone nudge on

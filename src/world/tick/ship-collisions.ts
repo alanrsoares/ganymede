@@ -1,5 +1,5 @@
-import { elastic, normalize, wrapDelta } from "~/engine/physics";
-import { toroidalDist, wrap } from "~/world/math";
+import { elastic, normalize } from "~/engine/physics";
+import { deltaX, deltaY, distX, distY, wrapX, wrapY } from "~/world/math";
 import { HIT_COOLDOWN, meleeDamage, SCORE_KILL } from "~/world/tuning";
 import {
   ARENA,
@@ -18,8 +18,8 @@ const CONTACT_DIST = 13;
 
 /** Elastic bounce + heading update + positional separation for a ship pair. */
 function bounceShips(a: Ship, b: Ship): void {
-  const nx = wrapDelta(a.x, b.x, ARENA.w);
-  const ny = wrapDelta(a.y, b.y, ARENA.h);
+  const nx = deltaX(a.x, b.x);
+  const ny = deltaY(a.y, b.y);
   const [va, vb] = elastic(
     [a.vx, a.vy],
     [b.vx, b.vy],
@@ -42,10 +42,10 @@ function bounceShips(a: Ship, b: Ship): void {
   if (push <= 0) return;
   const ux = nx / dist;
   const uy = ny / dist;
-  a.x = wrap(a.x - ux * push, ARENA.w);
-  a.y = wrap(a.y - uy * push, ARENA.h);
-  b.x = wrap(b.x + ux * push, ARENA.w);
-  b.y = wrap(b.y + uy * push, ARENA.h);
+  a.x = wrapX(a.x - ux * push);
+  a.y = wrapY(a.y - uy * push);
+  b.x = wrapX(b.x + ux * push);
+  b.y = wrapY(b.y + uy * push);
 }
 
 // Move one resource toward an equal fill fraction between two ships, conserving
@@ -151,8 +151,8 @@ function collidePair(ctx: TickCtx, i: number, j: number): void {
   const a = moved[i];
   const b = moved[j];
   if (removed.has(a.id) || removed.has(b.id)) return;
-  const dx = toroidalDist(a.x, b.x, ARENA.w);
-  const dy = toroidalDist(a.y, b.y, ARENA.h);
+  const dx = distX(a.x, b.x);
+  const dy = distY(a.y, b.y);
   const d2 = dx * dx + dy * dy;
   if (d2 < SEMITOUCH_D2) resolvePair(ctx, a, b, d2);
 }

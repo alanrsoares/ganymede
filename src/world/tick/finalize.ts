@@ -198,6 +198,10 @@ export const finalizeTick = (
     winner: decideWinner(world.winner, nextAge, ships.items, world.config),
     config: world.config,
     run: world.run,
+    // The stage was advanced before the tick ran (see world/scroll.ts), so this
+    // carries that position forward rather than deriving a new one.
+    scrollY: world.scrollY,
+    scrollHalted: world.scrollHalted,
     controlledShipId: world.controlledShipId,
     lockedTargetId: resolveLock(world, ships),
     controlKeys: world.controlKeys,

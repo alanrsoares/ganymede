@@ -1,4 +1,5 @@
 import { syncField } from "~/world/field";
+import { advanceScroll } from "~/world/scroll";
 import type { World } from "~/world/types";
 import { arcadeStep } from "./arcade";
 import { createTickCtx } from "./context";
@@ -22,9 +23,11 @@ import {
 
 /** Advance the entity world by `steps` generations; returns the next world. */
 export const tick = (world: World, steps: number, now: number): World => {
-  // Field first: everything below wraps and culls against it.
-  syncField(world);
-  const ctx = createTickCtx(world, steps, now);
+  // Stage first, then the field it implies: everything below wraps and culls
+  // against a field that already reflects this tick's scroll position.
+  const scrolled = advanceScroll(world, steps);
+  syncField(scrolled);
+  const ctx = createTickCtx(scrolled, steps, now);
   const motion = advanceMotion(ctx);
   const hazards = createHazardState();
   const interactions = createInteractionState();

@@ -1,5 +1,4 @@
-import { wrapDelta } from "~/engine/physics";
-import { within } from "~/world/math";
+import { deltaX, deltaY, within } from "~/world/math";
 import { hit, killShip, type TickCtx } from "~/world/tick/context";
 import {
   baseHitsRequired,
@@ -59,8 +58,8 @@ const forceFieldStrike = (
   if (e.id === s.id || ctx.removed.has(e.id) || e.colorName === s.colorName) {
     return;
   }
-  const dx = wrapDelta(s.x, e.x, ARENA.w);
-  const dy = wrapDelta(s.y, e.y, ARENA.h);
+  const dx = deltaX(s.x, e.x);
+  const dy = deltaY(s.y, e.y);
   const d2 = dx * dx + dy * dy;
   if (d2 >= FORCEFIELD_RADIUS * FORCEFIELD_RADIUS || d2 < 1e-3) return;
   const d = Math.sqrt(d2);

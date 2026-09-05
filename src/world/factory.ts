@@ -12,7 +12,7 @@ import {
   wrapDelta,
 } from "~/engine/physics";
 import { nextInt, nextRange, pick, rollMany, type Seed } from "~/engine/rng";
-import { applyHit, distSq, wrap } from "./math";
+import { applyHit, deltaX, deltaY, distSq, wrapX, wrapY } from "./math";
 import {
   ASTEROID_VARIANTS,
   asteroidHp,
@@ -215,14 +215,14 @@ export function spawnMissile(
   target: LightCycle,
 ): Missile {
   const [ax, ay] = normalize(
-    [wrapDelta(s.x, target.x, ARENA.w), wrapDelta(s.y, target.y, ARENA.h)],
+    [deltaX(s.x, target.x), deltaY(s.y, target.y)],
     [s.dx, s.dy],
   );
   const nose = shipRadius(s.level) + 1;
   return {
     id,
-    x: wrap(s.x + ax * nose, ARENA.w),
-    y: wrap(s.y + ay * nose, ARENA.h),
+    x: wrapX(s.x + ax * nose),
+    y: wrapY(s.y + ay * nose),
     vx: ax * MISSILE_SPEED,
     vy: ay * MISSILE_SPEED,
     team: s.colorName,
@@ -263,7 +263,7 @@ export const advanceMissile = (
   if (target) {
     const desired = angleTo(
       normalize(
-        [wrapDelta(m.x, target.x, ARENA.w), wrapDelta(m.y, target.y, ARENA.h)],
+        [deltaX(m.x, target.x), deltaY(m.y, target.y)],
         [Math.sin(m.angle), Math.cos(m.angle)],
       ),
     );
@@ -276,8 +276,8 @@ export const advanceMissile = (
     angle,
     vx: ax * MISSILE_SPEED,
     vy: ay * MISSILE_SPEED,
-    x: wrap(m.x + ax * MISSILE_SPEED * steps, ARENA.w),
-    y: wrap(m.y + ay * MISSILE_SPEED * steps, ARENA.h),
+    x: wrapX(m.x + ax * MISSILE_SPEED * steps),
+    y: wrapY(m.y + ay * MISSILE_SPEED * steps),
     life: m.life - steps,
   };
 };
@@ -358,17 +358,14 @@ export function spawnBullet(
   // Aim FROM the ship TO the target: wrapDelta(self, target) = target - self
   // (self first, matching every other "toward target" caller). Swapping these
   // fires the bolt out the ship's tail.
-  const [ax, ay] = normalize(
-    [wrapDelta(s.x, tx, ARENA.w), wrapDelta(s.y, ty, ARENA.h)],
-    [s.dx, s.dy],
-  );
+  const [ax, ay] = normalize([deltaX(s.x, tx), deltaY(s.y, ty)], [s.dx, s.dy]);
   const nose = shipRadius(s.level) + 1;
   const px = -ay; // unit perpendicular to the aim heading
   const py = ax;
   return {
     id,
-    x: wrap(s.x + ax * nose + px * lateral, ARENA.w),
-    y: wrap(s.y + ay * nose + py * lateral, ARENA.h),
+    x: wrapX(s.x + ax * nose + px * lateral),
+    y: wrapY(s.y + ay * nose + py * lateral),
     vx: ax * BULLET_SPEED,
     vy: ay * BULLET_SPEED,
     team: s.colorName,
@@ -393,10 +390,7 @@ export function spawnDroneBolt(
   tx: number,
   ty: number,
 ): Bullet {
-  const [ax, ay] = normalize(
-    [wrapDelta(d.x, tx, ARENA.w), wrapDelta(d.y, ty, ARENA.h)],
-    [1, 0],
-  );
+  const [ax, ay] = normalize([deltaX(d.x, tx), deltaY(d.y, ty)], [1, 0]);
   return {
     id,
     x: d.x,
@@ -532,8 +526,8 @@ export function advanceAsteroid(a: Asteroid, steps: number): Asteroid {
     ...a,
     vx,
     vy,
-    x: wrap(a.x + vx * steps, ARENA.w),
-    y: wrap(a.y + vy * steps, ARENA.h),
+    x: wrapX(a.x + vx * steps),
+    y: wrapY(a.y + vy * steps),
     spin: a.spin + a.spinRate * steps,
     portalCooldown: Math.max(0, a.portalCooldown - steps),
   };

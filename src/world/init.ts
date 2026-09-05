@@ -100,6 +100,8 @@ export function initWorld(
     winner: null,
     config,
     run: null,
+    scrollY: 0,
+    scrollHalted: false,
     controlledShipId: null,
     lockedTargetId: null,
     controlKeys: {
@@ -171,6 +173,8 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
     winner: null,
     config,
     run: initArcadeRun(cfg),
+    scrollY: 0,
+    scrollHalted: false,
     controlledShipId: playerId,
     lockedTargetId: null,
     controlKeys: { ...NO_KEYS },

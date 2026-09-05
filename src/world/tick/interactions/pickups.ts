@@ -1,6 +1,6 @@
 import { nextRange } from "~/engine/rng";
 import { rollShip } from "~/world/factory";
-import { distSq, within, wrap } from "~/world/math";
+import { distSq, within, wrapX, wrapY } from "~/world/math";
 import { promote, type TickCtx } from "~/world/tick/context";
 import {
   BOOST_DURATION,
@@ -62,8 +62,8 @@ const musterAllies = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
     const [ally, s3] = rollShip(
       s2,
       ctx.nextId,
-      wrap(s.x + jx, ARENA.w),
-      wrap(s.y + jy, ARENA.h),
+      wrapX(s.x + jx),
+      wrapY(s.y + jy),
       s.level,
       s.colorName,
       "scout",
@@ -82,8 +82,8 @@ const musterDrones = (ctx: TickCtx, s: Mutable<LightCycle>): void => {
   for (let k = 0; k < DRONE_COUNT; k++) {
     const phase = (k / DRONE_COUNT) * Math.PI * 2;
     ctx.spawnedDrones.push({
-      x: wrap(s.x + Math.cos(phase) * r, ARENA.w),
-      y: wrap(s.y + Math.sin(phase) * r, ARENA.h),
+      x: wrapX(s.x + Math.cos(phase) * r),
+      y: wrapY(s.y + Math.sin(phase) * r),
       ownerId: s.id,
       team: s.colorName,
       rgb: s.color,

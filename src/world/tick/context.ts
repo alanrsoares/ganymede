@@ -2,7 +2,7 @@ import type { Seed } from "~/engine/rng";
 import { nextInt } from "~/engine/rng";
 import { bakeCaps, type PilotMods, pilotMods } from "~/world/augments";
 import { hurtShip, rollShip } from "~/world/factory";
-import { toroidalDist } from "~/world/math";
+import { distX, distY } from "~/world/math";
 import {
   ARCADE_BASE_HP_FLOOR,
   ARCHETYPE_MODS,
@@ -225,8 +225,8 @@ export function detonateBlast(
   ctx.burstAt.push({ x: Math.floor(bx), y: Math.floor(by), kind: BURST_EMP });
   for (const e of ctx.moved) {
     if (ctx.removed.has(e.id) || e.colorName === team) continue;
-    const ex = toroidalDist(e.x, bx, ARENA.w);
-    const ey = toroidalDist(e.y, by, ARENA.h);
+    const ex = distX(e.x, bx);
+    const ey = distY(e.y, by);
     if (ex * ex + ey * ey >= radius * radius) continue;
     hit(ctx, e, damage, "pierce", ownerId);
     if (e.hp <= 0) {

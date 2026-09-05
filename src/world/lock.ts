@@ -4,13 +4,13 @@
 // onto the result. All deterministic — pure functions of world + positions.
 
 import type { EntityList } from "~/engine/entities";
-import { wrapDelta } from "~/engine/physics";
+import { deltaX, deltaY } from "~/world/math";
 import { ARENA, type LightCycle, type World } from "./types";
 
 export const LOCK_RANGE = 260; // px; only enemies this close can be locked
 
 const dist = (a: LightCycle, b: LightCycle): number =>
-  Math.hypot(wrapDelta(a.x, b.x, ARENA.w), wrapDelta(a.y, b.y, ARENA.h));
+  Math.hypot(deltaX(a.x, b.x), deltaY(a.y, b.y));
 
 // Live enemies of `me` within lock range, nearest first (id breaks ties so the
 // order is stable across ticks and cycling is predictable).

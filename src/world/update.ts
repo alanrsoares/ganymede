@@ -1,7 +1,7 @@
 import { assertNever } from "@onrails/pattern";
-import { wrapDelta } from "~/engine/physics";
 import { nextInt } from "~/engine/rng";
 import { type AugmentId, bakeCaps, pilotMods } from "~/world/augments";
+import { deltaX, deltaY, wrapX, wrapY } from "~/world/math";
 import {
   hurtShip,
   rollShip,
@@ -11,7 +11,6 @@ import {
 } from "./factory";
 import { initArcadeWorld, initWorld, spawnShip } from "./init";
 import { cycleLock } from "./lock";
-import { wrap } from "./math";
 import { tick } from "./tick";
 import {
   carriesMissiles,
@@ -187,8 +186,8 @@ function handleFire(
     const burstAngle = bolt.angle;
     nextBursts.push({
       id: nextIdBursts++,
-      x: Math.floor(wrap(s.x + Math.sin(burstAngle) * muzzle, ARENA.w)),
-      y: Math.floor(wrap(s.y + Math.cos(burstAngle) * muzzle, ARENA.h)),
+      x: Math.floor(wrapX(s.x + Math.sin(burstAngle) * muzzle)),
+      y: Math.floor(wrapY(s.y + Math.cos(burstAngle) * muzzle)),
       kind: BURST_MUZZLE,
       rgb: s.color,
       rot: burstAngle,
@@ -231,8 +230,8 @@ function handleMine(
   const back = shipRadius(s.level) + 3;
   nextMines.push({
     id: mineId,
-    x: wrap(s.x - s.dx * back, ARENA.w),
-    y: wrap(s.y - s.dy * back, ARENA.h),
+    x: wrapX(s.x - s.dx * back),
+    y: wrapY(s.y - s.dy * back),
     team: s.colorName,
     rgb: s.color,
     arm: MINE_ARM,
@@ -347,8 +346,8 @@ const novaStrike = (
   cone: NovaCone,
 ): LightCycle | null => {
   if (e.colorName === s.colorName) return null;
-  const ex = wrapDelta(s.x, e.x, ARENA.w);
-  const ey = wrapDelta(s.y, e.y, ARENA.h);
+  const ex = deltaX(s.x, e.x);
+  const ey = deltaY(s.y, e.y);
   const dist = Math.hypot(ex, ey);
   if (dist < 1 || dist > cone.radius) return null;
   if ((ex * s.dx + ey * s.dy) / dist < cone.cosArc) return null;
