@@ -17,9 +17,9 @@ import {
   syncField,
   type World,
 } from "~/world";
-import { wrapX, wrapY } from "~/world/math";
+import { inField, wrapX, wrapY } from "~/world/math";
 import { tick } from "~/world/tick";
-import { DEFAULT_CONFIG } from "~/world/tuning";
+import { CULL_MARGIN, DEFAULT_CONFIG } from "~/world/tuning";
 
 afterEach(() => setGridBounds(DEFAULT_GRID_W, DEFAULT_GRID_H));
 
@@ -156,4 +156,82 @@ test("the pilot is walled in on x; the enemies are not", () => {
   expect(me?.x).toBeLessThanOrEqual(SCROLL_FIELD_W);
   expect(me?.x).toBeGreaterThan(SCROLL_FIELD_W - 40); // held at the wall
   expect(them?.x).toBeGreaterThan(SCROLL_FIELD_W); // sailed off the side
+});
+
+// --- culling: the field rect, inflated, is the whole rule ---------------------
+
+test("the cull rule is inert on a torus and live on an open field", () => {
+  syncField(initWorld(1 as Seed));
+  expect(inField(-9999, -9999)).toBe(true); // a torus has no outside
+
+  syncField(scrollWorld());
+  expect(inField(240, 135)).toBe(true);
+  expect(inField(240, -CULL_MARGIN - 1)).toBe(false); // behind the camera
+  expect(inField(SCROLL_FIELD_W + CULL_MARGIN + 1, 135)).toBe(false); // off the side
+  // Inside the margin is still alive, so a formation can fly in from off-screen.
+  expect(inField(240, -CULL_MARGIN + 1)).toBe(true);
+});
+
+test("the wake is culled, the pilot never is", () => {
+  let w = scrollWorld();
+  const pilot = w.ships.items[0];
+  const trailing = {
+    ...pilot,
+    id: 42,
+    colorName: "orange",
+    x: 240,
+    y: -CULL_MARGIN - 60,
+    vx: 0,
+    vy: 0,
+  };
+  // Park the pilot equally far behind: protection, not position, keeps it.
+  w = {
+    ...w,
+    ships: {
+      ...w.ships,
+      items: [{ ...pilot, x: 240, y: -CULL_MARGIN - 60 }, trailing],
+    },
+  };
+  w = tick(w, 1, 16);
+
+  expect(w.ships.items.some((s) => s.id === 42)).toBe(false);
+  expect(w.ships.items.some((s) => s.id === pilot.id)).toBe(true);
+});
+
+test("bullets left behind the window are dropped", () => {
+  let w = scrollWorld();
+  w = {
+    ...w,
+    bullets: {
+      items: [
+        { ...(w.bullets.items[0] ?? {}) },
+        {
+          id: 1,
+          x: 240,
+          y: -CULL_MARGIN - 40,
+          vx: 0,
+          vy: 0,
+          team: "orange",
+          rgb: [1, 1, 1],
+          angle: 0,
+          life: 999,
+          damage: 1,
+          ownerId: 99,
+        },
+      ].slice(1) as typeof w.bullets.items,
+      nextId: 2,
+    },
+  };
+  w = tick(w, 1, 16);
+  expect(w.bullets.items.length).toBe(0);
+});
+
+test("scenery refills onto the live window, not back at world zero", () => {
+  let w = { ...scrollWorld(), scrollY: 5000 };
+  w = tick(w, 1, 16);
+  // Every rock the refill rolled sits on the field that scrolled to y=5000.
+  for (const r of w.asteroids.items) {
+    expect(inField(r.x, r.y)).toBe(true);
+  }
+  expect(w.asteroids.items.length).toBeGreaterThan(0);
 });

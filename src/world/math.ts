@@ -1,5 +1,10 @@
 import { toroidalDist, wrap, wrapDelta } from "~/engine/physics";
-import { BASE_MAX_HP, baseHitsRequired, DEFAULT_CONFIG } from "./tuning";
+import {
+  BASE_MAX_HP,
+  baseHitsRequired,
+  CULL_MARGIN,
+  DEFAULT_CONFIG,
+} from "./tuning";
 import {
   ARENA,
   type LightCycle,
@@ -51,6 +56,24 @@ export const clampFieldX = (x: number, margin = 0): number =>
   ARENA.wrapX
     ? x
     : Math.min(Math.max(x, ARENA.x0 + margin), ARENA.x0 + ARENA.w - margin);
+
+/**
+ * True while `(x, y)` is inside the field inflated by `margin`. A wrapping axis
+ * has no outside, so this only rejects along an open one — which makes it the
+ * single cull rule for a scroll stage: it kills the wake behind the camera and
+ * anything that exits the sides, and is a no-op for all-range play.
+ */
+export const inField = (
+  x: number,
+  y: number,
+  margin: number = CULL_MARGIN,
+): boolean => {
+  const outX =
+    !ARENA.wrapX && (x < ARENA.x0 - margin || x > ARENA.x0 + ARENA.w + margin);
+  const outY =
+    !ARENA.wrapY && (y < ARENA.y0 - margin || y > ARENA.y0 + ARENA.h + margin);
+  return !outX && !outY;
+};
 
 /** Squared distance between two field points (topology-aware, no sqrt). */
 export function distSq(ax: number, ay: number, bx: number, by: number): number {

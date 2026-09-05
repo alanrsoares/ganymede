@@ -13,6 +13,15 @@ import {
 
 // --- Field + gameplay tuning ------------------------------------------------
 export const MAX_SHIPS = 12;
+
+/**
+ * How far past the field edge anything may drift before it is culled, in cells.
+ * Only bites on an open axis (a scroll stage) — on a torus nothing is ever
+ * outside. It has to be generous enough that a formation authored to fly in
+ * from off-screen isn't deleted on its way in: that number belongs to the
+ * formation script (#30), and this is a placeholder until it lands.
+ */
+export const CULL_MARGIN = 120;
 // Arcade runs a bigger array cap than autobattle so the enemy field (below),
 // the pilot, and player-side summons/escorts all fit without the ship trim
 // evicting anyone. Autobattle is unaffected — it keeps MAX_SHIPS.

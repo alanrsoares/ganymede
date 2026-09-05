@@ -414,8 +414,10 @@ export function rollPickup(
   id: number,
   kinds: number = PICKUP_KINDS,
 ): [Pickup, Seed] {
-  const [x, s1] = nextRange(seed, 30, ARENA.w - 30);
-  const [y, s2] = nextRange(s1, 30, ARENA.h - 30);
+  // Field-relative: on a scroll stage the field origin is the live window, so
+  // a refilled pickup rolls into view ahead rather than back at world zero.
+  const [x, s1] = nextRange(seed, ARENA.x0 + 30, ARENA.x0 + ARENA.w - 30);
+  const [y, s2] = nextRange(s1, ARENA.y0 + 30, ARENA.y0 + ARENA.h - 30);
   const [ang, s3] = nextRange(s2, 0, Math.PI * 2);
   const [spd, s4] = nextRange(s3, 0.05, 0.18);
   const [k, s5] = nextInt(s4, kinds);
@@ -448,22 +450,24 @@ export function rollAsteroid(seed: Seed, id: number): [Asteroid, Seed] {
   const [variant, s8] = nextInt(s7, ASTEROID_VARIANTS);
   const hp = asteroidHp(size);
   // Position on the chosen edge + the inward base heading (0 = +y / down).
-  let x = 0;
-  let y = 0;
+  // Edges are field-relative, so a scroll stage seeds its rocks around the
+  // live window instead of around world zero.
+  let x = ARENA.x0;
+  let y = ARENA.y0;
   let baseAng = 0;
   if (edge === 0) {
-    x = along * ARENA.w;
+    x = ARENA.x0 + along * ARENA.w;
     baseAng = 0; // top → down
   } else if (edge === 1) {
-    x = along * ARENA.w;
-    y = ARENA.h;
+    x = ARENA.x0 + along * ARENA.w;
+    y = ARENA.y0 + ARENA.h;
     baseAng = Math.PI; // bottom → up
   } else if (edge === 2) {
-    y = along * ARENA.h;
+    y = ARENA.y0 + along * ARENA.h;
     baseAng = Math.PI / 2; // left → right
   } else {
-    x = ARENA.w;
-    y = along * ARENA.h;
+    x = ARENA.x0 + ARENA.w;
+    y = ARENA.y0 + along * ARENA.h;
     baseAng = -Math.PI / 2; // right → left
   }
   const ang = baseAng + spread;
