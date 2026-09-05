@@ -13,6 +13,7 @@
     "typegpu": "^0.12.4"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@webgpu/types": "^0.1.72",
