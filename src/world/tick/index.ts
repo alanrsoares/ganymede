@@ -1,3 +1,4 @@
+import { syncField } from "~/world/field";
 import type { World } from "~/world/types";
 import { arcadeStep } from "./arcade";
 import { createTickCtx } from "./context";
@@ -21,6 +22,8 @@ import {
 
 /** Advance the entity world by `steps` generations; returns the next world. */
 export const tick = (world: World, steps: number, now: number): World => {
+  // Field first: everything below wraps and culls against it.
+  syncField(world);
   const ctx = createTickCtx(world, steps, now);
   const motion = advanceMotion(ctx);
   const hazards = createHazardState();

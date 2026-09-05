@@ -8,16 +8,32 @@ import type { AugmentId, AugmentStacks } from "~/world/augments";
 
 export const DEFAULT_GRID_W = 480;
 export const DEFAULT_GRID_H = 270;
-export const ARENA: { w: number; h: number } = globalThis.ARENA ?? {
+
+/**
+ * The playfield the sim wraps and culls against: origin, extent, and which
+ * axes are toroidal. A derived cache of the World, never edited in place by
+ * anything but `syncField` (see world/field.ts) — read it anywhere, write it
+ * nowhere. All-range mode is the origin at 0,0 with both axes wrapping, which
+ * is every mode today.
+ */
+export interface Field {
+  x0: number;
+  y0: number;
+  w: number;
+  h: number;
+  wrapX: boolean;
+  wrapY: boolean;
+}
+
+export const ARENA: Field = globalThis.ARENA ?? {
+  x0: 0,
+  y0: 0,
   w: DEFAULT_GRID_W,
   h: DEFAULT_GRID_H,
+  wrapX: true,
+  wrapY: true,
 };
 globalThis.ARENA = ARENA;
-
-export function setGridBounds(w: number, h: number) {
-  ARENA.w = w;
-  ARENA.h = h;
-}
 export const MAX_LEVEL = 5;
 
 export type Rgb = readonly [number, number, number];

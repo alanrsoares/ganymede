@@ -10,7 +10,16 @@ declare module "*.css";
 declare global {
   // `var` (not const/let) is required for a global augmentation to attach to
   // `globalThis`.
-  var ARENA: { w: number; h: number } | undefined;
+  var ARENA:
+    | {
+        x0: number;
+        y0: number;
+        w: number;
+        h: number;
+        wrapX: boolean;
+        wrapY: boolean;
+      }
+    | undefined;
   // Build label inlined by the production bundler (`scripts/build.ts`) via
   // `define`; undefined under the dev server, where we fall back to "dev".
   var __BUILD__: string | undefined;
