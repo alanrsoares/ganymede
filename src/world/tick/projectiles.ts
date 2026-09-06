@@ -1,4 +1,4 @@
-import { angleTo, normalize, wrapDelta } from "~/engine/physics";
+import { angleTo, normalize } from "~/engine/physics";
 import { spawnShrapnel } from "~/world/factory";
 import { deltaX, deltaY, within, wrapX, wrapY } from "~/world/math";
 import {

@@ -4,13 +4,7 @@
 // nothing reads a clock or mutates shared state. Tuning constants live in
 // tuning.ts, geometry helpers in math.ts — import those directly.
 
-import {
-  angleTo,
-  easeAngle,
-  normalize,
-  rotate,
-  wrapDelta,
-} from "~/engine/physics";
+import { angleTo, easeAngle, normalize, rotate } from "~/engine/physics";
 import { nextInt, nextRange, pick, rollMany, type Seed } from "~/engine/rng";
 import { applyHit, deltaX, deltaY, distSq, wrapX, wrapY } from "./math";
 import {

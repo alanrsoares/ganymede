@@ -201,14 +201,9 @@ body {
     bottom: max(1rem, env(safe-area-inset-bottom));
     left: max(1rem, env(safe-area-inset-left));
   }
-  .hud-mixer {
+  .hud-settings {
     bottom: max(0.75rem, env(safe-area-inset-bottom));
     right: max(0.75rem, env(safe-area-inset-right));
-  }
-  /* The mixer button owns the bottom-right corner on a phone; the splash's
-     tech credit would sit under it, so drop the credit there. */
-  .splash-tech-tag {
-    display: none;
   }
 }
 
@@ -221,11 +216,11 @@ body {
     display: none;
   }
   /* Cockpit mode: while piloting, the sticks own the bottom corners. Clear the
-     tempo/hp panel and park the mixer between them at bottom-center. */
+     tempo/hp panel and park the settings button between them at bottom-center. */
   body[data-piloting="1"] .hud-controls {
     display: none;
   }
-  body[data-piloting="1"] .hud-mixer {
+  body[data-piloting="1"] .hud-settings {
     left: 50%;
     right: auto;
     transform: translateX(-50%);

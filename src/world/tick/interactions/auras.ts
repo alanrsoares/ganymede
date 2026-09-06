@@ -18,7 +18,6 @@ import {
   SCORE_KILL,
 } from "~/world/tuning";
 import {
-  ARENA,
   type LightCycle,
   MAX_LEVEL,
   type Mutable,

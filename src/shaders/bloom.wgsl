@@ -25,10 +25,14 @@ fn vs(@builtin(vertex_index) i: u32) -> VSOut {
 // Cinematic camera for the composite only: push-in / drift / rotate the whole
 // frame in image space. Identity is {focus:(0.5,0.5), zoom:1, rot:0} — the game
 // passes that and the frame is untouched; the welcome scene animates it.
+// `strength` also carries the graphics-quality knob: the bloom tier sets it to
+// 0 to switch the glow off, and the composite then ignores tex1 entirely (the
+// chain that fills it is skipped on the CPU side, so tex1 holds stale pixels).
 struct Camera {
     focus: vec2f, // point held fixed, in [0,1] uv
     zoom: f32,    // >1 magnifies (push in)
     rot: f32,     // radians
+    strength: f32, // bloom add weight; 0 = no glow
 }
 @group(0) @binding(3) var<uniform> cam: Camera;
 
@@ -94,5 +98,5 @@ fn fs_composite(in: VSOut) -> @location(0) vec4f {
     let uv = cameraUv(in.uv);
     let scene = textureSample(tex0, samp, uv).rgb;
     let bloom = textureSample(tex1, samp, uv).rgb;
-    return vec4f(scene + bloom * 1.15, 1.0);
+    return vec4f(scene + bloom * cam.strength, 1.0);
 }

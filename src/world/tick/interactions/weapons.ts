@@ -37,7 +37,6 @@ import {
   weaponFor,
 } from "~/world/tuning";
 import {
-  ARENA,
   BURST_ARC,
   BURST_MUZZLE,
   type Bullet,

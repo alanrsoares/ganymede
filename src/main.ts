@@ -6,6 +6,14 @@ import { createAccumulator, createLoop } from "~/engine/loop";
 import { createRenderer, loadCycleTextures, type Renderer } from "~/render/gpu";
 import { acquireGpu } from "~/render/gpu-context";
 import { createOverlay, type Overlay } from "~/render/overlay";
+import {
+  createQualityStore,
+  detectCaps,
+  guessTier,
+  type QualityStore,
+  stepTier,
+} from "~/render/quality";
+import { createGovernor, type Governor } from "~/render/quality-governor";
 import { type Audio, createAudio, type Scene } from "~/runtime/audio";
 import {
   buildAndRender,
@@ -23,9 +31,9 @@ import {
 import { updateGridDimensions, wireInput } from "~/runtime/input";
 import { type Lobby, mountArcadeLobby } from "~/ui/arcade-lobby";
 import { mountAugmentOffer } from "~/ui/augmentOffer";
-import { mountMixer } from "~/ui/mixer";
 import { mountMobileControls } from "~/ui/mobileControls";
 import { mountPauseMenu, type PauseMenu } from "~/ui/pauseMenu";
+import { mountSettings } from "~/ui/settings";
 import { mountSetup, type Setup } from "~/ui/setup";
 import { rgbCss } from "~/ui/shipStats";
 import { mountUi, type Ui } from "~/ui/ui";
@@ -69,6 +77,7 @@ const sceneFor = (world: World, inMatch: boolean): Scene =>
 const initGpu = async (
   canvas: HTMLCanvasElement,
   ui: Ui,
+  quality: QualityStore,
 ): Promise<Renderer> => {
   const gpu = await acquireGpu(canvas);
   // Surface a GPU reset (driver crash, tab backgrounded too long) instead of
@@ -79,7 +88,7 @@ const initGpu = async (
     }
   });
   const { textureView, sampler } = await loadCycleTextures(gpu.device);
-  return createRenderer(gpu, canvas, textureView, sampler);
+  return createRenderer(gpu, canvas, textureView, sampler, quality);
 };
 
 // Reveal the pre-game screen for the chosen mode + all persistent chrome.
@@ -162,6 +171,8 @@ const wirePreGame = (
   welcome: Welcome,
   startMatch: (config: MatchConfig) => void,
   startArcadeMatch: (config: MatchConfig) => void,
+  quality: QualityStore,
+  governor: Governor,
 ): PreGameFlow => {
   const welcomeRef = { current: welcome, up: true };
   let begun = false;
@@ -194,6 +205,8 @@ const wirePreGame = (
   const pause = mountPauseMenu({
     onRestart: () => replayLast?.(),
     onQuit: onDialogClose,
+    quality,
+    frameMs: () => governor.frameMs(),
   });
   const codex = wireInput(
     canvas,
@@ -227,6 +240,39 @@ const wirePreGame = (
   };
 };
 
+// Feed the last frame's time to the governor and let it walk the auto tier one
+// step. `setAutoTier` is a no-op unless the player left the mode on "auto", so
+// a manual pick simply stops this having any effect.
+const adaptQuality = (
+  quality: QualityStore,
+  governor: Governor,
+  dt: number,
+) => {
+  const verdict = governor.sample(dt * 1000);
+  if (verdict === "hold") return;
+  quality.setAutoTier(stepTier(quality.tier(), verdict === "up" ? 1 : -1));
+};
+
+// The two surfaces that freeze a live match: the pause menu (together with the
+// codex and the mobile pause button, via `wirePause`) and a pending arcade
+// augment offer. Returns the offer's dialog handle plus the single predicate
+// the loop asks before advancing anything.
+const wireFreeze = (
+  flow: PreGameFlow,
+  dispatch: (msg: Msg) => void,
+  ui: Ui,
+  sim: Sim,
+) => {
+  const augmentOffer = mountAugmentOffer((id) =>
+    dispatch({ kind: "pickAugment", id }),
+  );
+  const pausedBase = wirePause(flow.codex, flow.pause, dispatch, ui);
+  return {
+    augmentOffer,
+    isPaused: () => pausedBase() || sim.world.run?.offer != null,
+  };
+};
+
 const startRuntime = (
   renderer: Renderer,
   overlay: Overlay,
@@ -234,6 +280,8 @@ const startRuntime = (
   welcome: Welcome,
   sim: Sim,
   audio: Audio,
+  quality: QualityStore,
+  governor: Governor,
 ) => {
   // The single port from the pure world into the runtime: swap in the next world.
   const dispatch = (msg: Msg) => {
@@ -252,15 +300,13 @@ const startRuntime = (
     welcome,
     startMatch,
     startArcadeMatch,
+    quality,
+    governor,
   );
-  const { setup, lobby, codex, pause, welcomeRef } = flow;
+  const { setup, lobby, welcomeRef } = flow;
   // The wave-clear augment offer (arcade): its dialog is fed the live offer each
   // frame, and while an offer is pending the sim freezes so the choice is calm.
-  const augmentOffer = mountAugmentOffer((id) =>
-    dispatch({ kind: "pickAugment", id }),
-  );
-  const pausedBase = wirePause(codex, pause, dispatch, ui);
-  const isPaused = () => pausedBase() || sim.world.run?.offer != null;
+  const { augmentOffer, isPaused } = wireFreeze(flow, dispatch, ui, sim);
 
   const syncCanvasSize = createResizeSync(renderer, canvas);
   const loop = createLoop((dt, now) => {
@@ -269,6 +315,9 @@ const startRuntime = (
     // while paused we still render the frozen world (and skip accumulating dt,
     // so resume doesn't fast-forward).
     if (!isPaused()) {
+      // Adapt only while a live scene is actually being drawn: a dialog over a
+      // frozen world has frame times that say nothing about the tier.
+      adaptQuality(quality, governor, dt);
       stepDeploy(dispatch, dt, loopState);
       // Suppress trickle reinforcement until the launch fleet finishes mustering.
       const reinforceRate =
@@ -281,6 +330,7 @@ const startRuntime = (
         handleMatchEnd(sim.world, ui, loopState, setup);
       }
     }
+    const gfx = quality.settings();
     buildAndRender(
       overlay,
       renderer,
@@ -289,8 +339,9 @@ const startRuntime = (
       now,
       ui.hpOn.val,
       welcomeRef.current.camera,
+      gfx.detail,
     );
-    updateScreenShake(canvas, sim.world, now, loopState);
+    updateScreenShake(canvas, sim.world, now, loopState, gfx.shake);
     updateHud(ui, sim.world);
     // Surface (or dismiss) the arcade augment offer from live sim state.
     augmentOffer.sync(sim.world.run?.offer ?? null);
@@ -307,7 +358,12 @@ const main = async () => {
   const welcome = mountWelcome();
   const overlay = createOverlay();
   const audio = createAudio();
-  mountMixer(audio);
+  // Open on a tier guessed from cheap device signals; in "auto" the governor
+  // corrects that within a few seconds of real frames.
+  const quality = createQualityStore(guessTier(detectCaps()));
+  const governor = createGovernor();
+  quality.subscribe(() => governor.settle());
+  mountSettings({ audio, quality, frameMs: () => governor.frameMs() });
   // Placeholder attract world on the default grid; rebuilt on the real grid
   // once GPU init settles the client layout (below).
   const sim: Sim = {
@@ -327,11 +383,11 @@ const main = async () => {
   ui.setChromeHidden(true); // keep the welcome splash clean; revealed on launch
 
   try {
-    const renderer = await initGpu(canvas, ui);
+    const renderer = await initGpu(canvas, ui, quality);
     // GPU init done → the browser has settled the client layout sizing.
     updateGridDimensions(canvas);
     sim.world = initWorld(Date.now(), ATTRACT_CONFIG);
-    startRuntime(renderer, overlay, ui, welcome, sim, audio);
+    startRuntime(renderer, overlay, ui, welcome, sim, audio, quality, governor);
   } catch (e: unknown) {
     ui.showError(
       e instanceof Error

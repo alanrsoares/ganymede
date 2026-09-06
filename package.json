@@ -13,12 +13,12 @@
     "typegpu": "^0.12.4"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.2",
+    "@biomejs/biome": "2.5.12",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@webgpu/types": "^0.1.72",
     "bun-plugin-tailwind": "^0.1.2",
-    "bun-types": "^1.4.1",
+    "bun-types": "^1.4.2",
     "playwright": "^1.63.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",

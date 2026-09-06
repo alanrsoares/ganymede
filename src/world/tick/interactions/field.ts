@@ -40,7 +40,6 @@ import {
   shipRadius,
 } from "~/world/tuning";
 import {
-  ARENA,
   type Asteroid,
   type Base,
   BURST_DETONATION,

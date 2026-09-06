@@ -498,8 +498,9 @@ const frozenByOffer = (msg: Msg, world: World): boolean =>
 const skipIntermission = (world: World): World => {
   const run = world.run;
   const waves = run?.waves;
-  if (!run || waves?.phase !== "intermission") return world;
-  return { ...world, run: { ...run, waves: { ...waves, phase: "fight" } } };
+  return !run || waves?.phase !== "intermission"
+    ? world
+    : { ...world, run: { ...run, waves: { ...waves, phase: "fight" } } };
 };
 
 export function update(msg: Msg, world: World): World {

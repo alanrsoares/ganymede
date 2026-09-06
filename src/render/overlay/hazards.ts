@@ -79,6 +79,11 @@ export function drawMines(
 }
 
 // Shrapnel fragments — now drawn in 3D rock pass as tiny spinning, cooling rock chips.
+/**
+ * Shrapnel fills whatever rock budget the asteroids left. `detail` (0..1, the
+ * graphics tier's particle knob) trims that leftover — asteroids are gameplay
+ * and always draw in full, debris is garnish.
+ */
 export function drawShrapnel(
   rockInstances: Float32Array<ArrayBuffer>,
   rockCount: number,
@@ -86,9 +91,11 @@ export function drawShrapnel(
   cellPy: number,
   now: number,
   world: World,
+  detail = 1,
 ): number {
+  const cap = rockCount + Math.round((MAX_ROCKS - rockCount) * detail);
   for (const f of world.projectiles.items) {
-    if (rockCount >= MAX_ROCKS) break;
+    if (rockCount >= cap) break;
     const o = rockCount * ROCK_LAYOUT.floats;
     const R = ROCK_LAYOUT.idx;
     rockInstances[o + R.cx] = (f.x + 0.5) * cellPx;

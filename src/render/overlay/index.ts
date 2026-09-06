@@ -42,6 +42,8 @@ export interface OverlayFrame {
   now: number;
   world: World;
   showHp: boolean;
+  /** Graphics-tier particle budget, 0..1. Defaults to the full frame. */
+  detail?: number;
 }
 
 export interface Overlay {
@@ -86,6 +88,7 @@ const drawDynamicEntities = (
   now: number,
   world: World,
   showHp: boolean,
+  detail: number,
 ) => {
   let rockCount = drawRocks(rockInstances, cellPx, cellPy, now, world);
   drawMines(push, cellPx, cellPy, now, world);
@@ -96,6 +99,7 @@ const drawDynamicEntities = (
     cellPy,
     now,
     world,
+    detail,
   );
   const orbCount = drawPickupOrbs(
     push,
@@ -158,7 +162,7 @@ export const createOverlay = (): Overlay => {
   const { push, reset, getCount } = createPusher(bufs.instances);
 
   return {
-    build: ({ w, h, gridW, gridH, now, world, showHp }) => {
+    build: ({ w, h, gridW, gridH, now, world, showHp, detail = 1 }) => {
       reset();
       const cellPx = w / gridW;
       const cellPy = h / gridH;
@@ -195,6 +199,7 @@ export const createOverlay = (): Overlay => {
         now,
         world,
         showHp,
+        detail,
       );
 
       return {

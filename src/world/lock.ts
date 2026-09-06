@@ -5,7 +5,7 @@
 
 import type { EntityList } from "~/engine/entities";
 import { deltaX, deltaY } from "~/world/math";
-import { ARENA, type LightCycle, type World } from "./types";
+import type { LightCycle, World } from "./types";
 
 export const LOCK_RANGE = 260; // px; only enemies this close can be locked
 

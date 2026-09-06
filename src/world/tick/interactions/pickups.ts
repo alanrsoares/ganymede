@@ -22,7 +22,6 @@ import {
   shipRadius,
 } from "~/world/tuning";
 import {
-  ARENA,
   DRONE_KIND,
   type Drone,
   type LightCycle,

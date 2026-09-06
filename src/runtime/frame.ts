@@ -150,6 +150,7 @@ export const buildAndRender = (
   now: number,
   showHp: boolean,
   camera: CameraView,
+  detail: number,
 ) => {
   // Align the furniture ring to the world being drawn (the sim advances age
   // between renders; this keeps rendered bases/portals/pads on the live orbit).
@@ -168,6 +169,7 @@ export const buildAndRender = (
     now,
     world,
     showHp,
+    detail,
   });
   renderer.render(frame, now / 1000, camera);
 };
@@ -179,6 +181,8 @@ export const updateScreenShake = (
   world: World,
   now: number,
   state: LoopState,
+  /** Graphics-tier shake multiplier; 0 under prefers-reduced-motion. */
+  scale = 1,
 ) => {
   if (world.age < state.prevAge) state.lastBoomId = 0;
   state.prevAge = world.age;
@@ -189,9 +193,12 @@ export const updateScreenShake = (
     }
   }
   state.shake *= 0.86;
+  // The decay still runs at full strength so the scale is a pure presentation
+  // knob — turning it back up mid-explosion doesn't resurrect an old punch.
+  const amp = state.shake * scale;
   canvas.style.transform =
-    state.shake > 0.15
-      ? `translate(${Math.sin(now * 0.11) * state.shake}px, ${Math.cos(now * 0.17) * state.shake}px)`
+    amp > 0.15
+      ? `translate(${Math.sin(now * 0.11) * amp}px, ${Math.cos(now * 0.17) * amp}px)`
       : "";
 };
 

@@ -108,17 +108,8 @@ const Hairline = () => (
 );
 
 // One absolutely-positioned label pinned to a screen corner.
-const CornerTag = ({
-  pos,
-  text,
-  className,
-}: {
-  pos: CSSProperties;
-  text: string;
-  className?: string;
-}) => (
+const CornerTag = ({ pos, text }: { pos: CSSProperties; text: string }) => (
   <div
-    className={className}
     style={{
       position: "absolute",
       ...pos,
@@ -473,11 +464,6 @@ const Splash = forwardRef<HTMLDivElement, SplashProps>(({ onBegin }, ref) => {
       <Scrim />
       <LiveBadge />
       <CornerTag pos={{ bottom: "22px", left: "24px" }} text={BUILD_LABEL} />
-      <CornerTag
-        className="splash-tech-tag"
-        pos={{ bottom: "22px", right: "24px" }}
-        text="webgpu · typegpu"
-      />
       <TopGroup lettersRef={lettersRef} />
       <BottomGroup
         onBegin={onBegin}

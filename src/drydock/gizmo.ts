@@ -318,11 +318,12 @@ const solveScreenDelta = (
 ): { dx: number; dy: number } | null => {
   const { x: ax, y: ay } = basis;
   const determinant = ax.x * ay.y - ax.y * ay.x;
-  if (Math.abs(determinant) < 1e-4) return null;
-  return {
-    dx: (delta.x * ay.y - delta.y * ay.x) / determinant,
-    dy: (ax.x * delta.y - ax.y * delta.x) / determinant,
-  };
+  return Math.abs(determinant) < 1e-4
+    ? null
+    : {
+        dx: (delta.x * ay.y - delta.y * ay.x) / determinant,
+        dy: (ax.x * delta.y - ax.y * delta.x) / determinant,
+      };
 };
 
 const updateFromDrag = (drag: DragState, current: Vec2): void => {

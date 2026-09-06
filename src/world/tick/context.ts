@@ -23,7 +23,6 @@ import {
   xpForLevel,
 } from "~/world/tuning";
 import {
-  ARENA,
   BURST_COUNTER,
   BURST_EMP,
   BURST_EXPLOSION,

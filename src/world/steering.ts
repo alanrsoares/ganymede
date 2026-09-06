@@ -41,7 +41,6 @@ import {
   WANDER_GAIN,
 } from "./tuning";
 import {
-  ARENA,
   type Asteroid,
   baseByName,
   CENTER_PAD,

@@ -5,7 +5,9 @@
 // touch pause button (`makePauseButton`, src/ui/mobileControls.ts).
 
 import { Button } from "@astryxdesign/core/Button";
+import { Divider } from "@astryxdesign/core/Divider";
 import { VStack } from "@astryxdesign/core/Stack";
+import type { QualityStore } from "~/render/quality";
 import {
   Cta,
   createDialogStore,
@@ -13,6 +15,7 @@ import {
   type DialogStore,
   mountReactDialog,
 } from "./dialog";
+import { GraphicsSettings } from "./graphics";
 
 export interface PauseMenu {
   open: () => void;
@@ -26,17 +29,21 @@ export interface PauseMenuOpts {
   onRestart: () => void;
   /** Abandon the match and return to the title splash. */
   onQuit: () => void;
+  /** Graphics tier control, so a stuttering run can be fixed without quitting. */
+  quality: QualityStore;
+  /** Smoothed frame time from the governor, for the readout. */
+  frameMs: () => number;
 }
 
 const PauseView = ({
   store,
   onRestart,
   onQuit,
+  quality,
+  frameMs,
 }: {
   store: DialogStore;
-  onRestart: () => void;
-  onQuit: () => void;
-}) => {
+} & PauseMenuOpts) => {
   const resume = () => store.close();
   const restart = () => {
     store.close();
@@ -71,6 +78,8 @@ const PauseView = ({
           onClick={quit}
           className="w-full"
         />
+        <Divider label="Graphics" />
+        <GraphicsSettings quality={quality} frameMs={frameMs} />
       </VStack>
     </DialogShell>
   );
@@ -78,9 +87,7 @@ const PauseView = ({
 
 export const mountPauseMenu = (opts: PauseMenuOpts): PauseMenu => {
   const store = createDialogStore(false);
-  mountReactDialog(
-    <PauseView store={store} onRestart={opts.onRestart} onQuit={opts.onQuit} />,
-  );
+  mountReactDialog(<PauseView store={store} {...opts} />);
   return {
     open: () => store.open(),
     close: () => store.close(),

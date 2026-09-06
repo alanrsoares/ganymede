@@ -43,6 +43,7 @@ import {
   SHIELD_LAYOUT,
   SHIP_LAYOUT,
 } from "./overlay/frame";
+import type { QualitySettings, QualityStore } from "./quality";
 import { SPRITE_URLS, TEXTURE_LAYER_COUNT } from "./sprites";
 import { orthoPixels, type ViewProj } from "./view";
 
@@ -422,6 +423,8 @@ interface ScenePassInput {
   shipPasses: Record<ShipClass, MeshPass>;
   plumePass: MeshPass;
   frame: FrameInstances;
+  /** Engine plumes are a whole extra instanced pass; the low tier drops them. */
+  plumes: boolean;
 }
 
 // Pass 1: the scene, into the offscreen sceneTex (+depth for the rocks).
@@ -485,7 +488,9 @@ const encodeScenePass = (
       frame.ships.counts[cls],
     );
   }
-  input.plumePass.draw(pass, frame.ships.plumes, frame.ships.plumeCount);
+  if (input.plumes) {
+    input.plumePass.draw(pass, frame.ships.plumes, frame.ships.plumeCount);
+  }
 
   input.orbPass.draw(pass, frame.orbInstances, frame.orbCount);
   input.shieldPass.draw(pass, frame.shieldInstances, frame.shieldCount);
@@ -510,6 +515,7 @@ interface RenderFnDeps {
   plumePass: MeshPass;
   bloomPass: BloomPassManager;
   getView: () => ViewProj;
+  settings: () => QualitySettings;
 }
 
 // Builds the per-frame render() closure: write uniforms, encode the scene
@@ -527,7 +533,11 @@ const createRenderFn =
       deps.getView(),
     );
     const encoder = device.createCommandEncoder();
-    encodeScenePass(encoder, deps.bloomPass, { ...deps, frame });
+    encodeScenePass(encoder, deps.bloomPass, {
+      ...deps,
+      frame,
+      plumes: deps.settings().plumes,
+    });
     device.queue.submit([encoder.finish()]);
     deps.bloomPass.render(camera);
   };
@@ -566,11 +576,37 @@ const createView = (canvas: HTMLCanvasElement) => {
   };
 };
 
+/**
+ * The backing-store sizing rule — the one place the drawing-buffer size is
+ * decided (`bloomPass.resize` drives the canvas surface itself; see the
+ * auto-resize note there). Two separate quality levers: `dprCap` keeps a
+ * retina panel from asking for 4x the pixels, `renderScale` trades sharpness
+ * for fill rate below that. Factored out of `createRenderer` so that function
+ * stays a wiring list.
+ */
+const createResize =
+  (
+    canvas: HTMLCanvasElement,
+    settings: () => QualitySettings,
+    view: { rebuild: () => void },
+    bloomPass: BloomPassManager,
+  ) =>
+  () => {
+    const { dprCap, renderScale } = settings();
+    const dpr = Math.min(window.devicePixelRatio || 1, dprCap) * renderScale;
+    const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
+    const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+    bloomPass.resize(w, h);
+    // After the canvas, so the ortho is built for the size just applied.
+    view.rebuild();
+  };
+
 export const createRenderer = (
   { device, format, root, vgpu }: GpuContext,
   canvas: HTMLCanvasElement,
   textureView: GPUTextureView,
   sampler: GPUSampler,
+  quality: QualityStore,
 ): Renderer => {
   // Shared frame uniforms: resolution + time. Typed schema matches the WGSL
   // `Uniforms { resolution: vec2f, time: f32, _pad: f32 }` (16 bytes).
@@ -593,21 +629,23 @@ export const createRenderer = (
       sampler,
     );
   const meshPasses = createMeshPasses(device, format, uniformBuffer);
-  const bloomPass = createBloomPassManager(vgpu, canvas, format, DEPTH_FORMAT);
+  const settings = () => quality.settings();
+  const bloomPass = createBloomPassManager(
+    vgpu,
+    canvas,
+    format,
+    DEPTH_FORMAT,
+    settings,
+  );
 
   const view = createView(canvas);
   const { setCamera } = view;
 
-  const resize = () => {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
-    const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
-    canvas.width = w;
-    canvas.height = h;
-    view.rebuild();
-    bloomPass.resize(w, h);
-  };
+  const resize = createResize(canvas, settings, view, bloomPass);
   resize();
+  // A tier change resizes the backing store and the blur chain; the client box
+  // is unchanged, so the loop's own resize sync would never notice.
+  quality.subscribe(resize);
 
   return {
     resize,
@@ -625,6 +663,7 @@ export const createRenderer = (
       spriteBindGroup,
       ...meshPasses,
       bloomPass,
+      settings,
     }),
   };
 };

@@ -27,7 +27,11 @@ import { ARENA, initWorld, setOrbitPhase, update } from "~/world";
 const NOW = 5000;
 
 // A seeded World ticked N times, projected through a fresh overlay.
-const buildFrame = (seed: number, steps: number): FrameInstances => {
+const buildFrame = (
+  seed: number,
+  steps: number,
+  detail?: number,
+): FrameInstances => {
   let w = initWorld(seed);
   w = update({ kind: "tick", steps, now: NOW }, w);
   setOrbitPhase(w.age);
@@ -39,6 +43,7 @@ const buildFrame = (seed: number, steps: number): FrameInstances => {
     now: NOW,
     world: w,
     showHp: true,
+    detail,
   });
 };
 
@@ -135,4 +140,48 @@ test("projection is deterministic: same seed + now → identical frame", () => {
     expect(b.ships.instances[cls]).toEqual(a.ships.instances[cls]);
   }
   expect(b.ships.plumes).toEqual(a.ships.plumes);
+});
+
+// The graphics tier's particle budget. Shrapnel shares the rock buffer with the
+// asteroids, so the trim has to come out of the debris and leave gameplay
+// geometry alone. A seeded world carries no debris, so the field is injected.
+const frameWithShrapnel = (shrapnel: number, detail?: number) => {
+  let w = initWorld(42);
+  w = update({ kind: "tick", steps: 30, now: NOW }, w);
+  setOrbitPhase(w.age);
+  const items = Array.from({ length: shrapnel }, (_, i) => ({
+    id: 1000 + i,
+    x: 20 + i * 0.5,
+    y: 20,
+    vx: 0,
+    vy: 0,
+    spin: 0,
+    spinRate: 0,
+    life: 30,
+    variant: 0,
+  }));
+  const world = { ...w, projectiles: { items, nextId: 2000 } };
+  return createOverlay().build({
+    w: 1280,
+    h: 720,
+    gridW: ARENA.w,
+    gridH: ARENA.h,
+    now: NOW,
+    world,
+    showHp: true,
+    detail,
+  });
+};
+
+test("the detail budget trims shrapnel but never the asteroids", () => {
+  const rocks = buildFrame(42, 30).rockCount; // asteroids alone
+  const full = frameWithShrapnel(200).rockCount;
+  expect(full).toBe(MAX_ROCKS); // debris fills the buffer at full detail
+  // Detail 0 drops every fragment; the asteroids underneath are untouched.
+  expect(frameWithShrapnel(200, 0).rockCount).toBe(rocks);
+  // And it scales in between, out of the leftover budget only.
+  const half = frameWithShrapnel(200, 0.5).rockCount;
+  expect(half).toBe(rocks + Math.round((MAX_ROCKS - rocks) / 2));
+  // Omitting `detail` is the full frame — existing callers are unaffected.
+  expect(frameWithShrapnel(200, 1).rockCount).toBe(full);
 });
