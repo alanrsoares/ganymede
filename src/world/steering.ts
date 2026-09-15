@@ -676,13 +676,14 @@ export const flockSteer = (
   fx += pickDx;
   fy += pickDy;
 
-  const [healDx, healDy] = steerHealSeek(self, level);
-  fx += healDx;
-  fy += healDy;
-
-  const [padDx, padDy] = steerCenterPadSeek(self, level);
-  fx += padDx;
-  fy += padDy;
+  // Heal pads and the centre pad are arena furniture at absolute coordinates, so
+  // on a stage they are a pull toward somewhere the corridor left behind.
+  if (furniture) {
+    const [healDx, healDy] = steerHealSeek(self, level);
+    const [padDx, padDy] = steerCenterPadSeek(self, level);
+    fx += healDx + padDx;
+    fy += healDy + padDy;
+  }
 
   const [wanderDx, wanderDy] = steerWander(self, age, level);
   fx += wanderDx * flock;
