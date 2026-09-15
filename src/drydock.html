@@ -390,6 +390,14 @@
         justify-content: center;
         text-align: center;
       }
+      /* The other button rows: share the width out instead of filling it.
+         Kept up here with the rest of the bare-`button` rules so nothing more
+         specific is declared above them. */
+      .part-actions button,
+      .engine-actions button,
+      .code-actions button {
+        flex: 1 1 auto;
+      }
       /* Keep tab labels legible inside the narrow glass console. */
       .panel [role="tablist"] {
         width: 100%;
@@ -713,11 +721,6 @@
       .selected-part__chevron {
         color: var(--drydock-accent);
         font-size: 14px;
-      }
-      .part-actions button,
-      .engine-actions button,
-      .code-actions button {
-        flex: 1 1 auto;
       }
       .inspector-card {
         overflow: hidden;
@@ -1379,7 +1382,9 @@
         display: grid;
         gap: 0.12rem;
       }
-      .engine-card__title > span {
+      /* Named rather than `> span`: a bare descendant type selector here reads
+         as overriding the panel's collapse-toggle span, which it never does. */
+      .engine-card__anchor {
         color: var(--drydock-muted);
         font-size: 8px;
         letter-spacing: 0.1em;

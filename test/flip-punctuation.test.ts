@@ -13,6 +13,7 @@ import {
   DEFAULT_GRID_H,
   DEFAULT_GRID_W,
   FLIP_HALT_GENS,
+  type FlipState,
   hasArenaFurniture,
   initArcadeWorld,
   type MatchConfig,
@@ -118,16 +119,18 @@ const bannerUi = () => {
   return { ui: { banner } as unknown as Ui, banner };
 };
 
+const haltState = (gens: number): FlipState => ({
+  phase: "halt",
+  gens,
+  maxGens: beat.maxGens,
+  banner: beat.banner,
+  spawns: beat.spawns,
+  ids: [],
+});
+
 const halted = (w: World, gens: number): World => ({
   ...w,
-  flip: {
-    phase: "halt",
-    gens,
-    maxGens: beat.maxGens,
-    banner: beat.banner,
-    spawns: beat.spawns,
-    ids: [],
-  },
+  flip: haltState(gens),
 });
 
 test("the beat's line goes up with the brake and comes down in the fight", () => {
@@ -144,7 +147,7 @@ test("the beat's line goes up with the brake and comes down in the fight", () =>
   // Held briefly into act two, then out of the way of the fight it announced.
   const fighting = (gens: number): World => ({
     ...w,
-    flip: { ...halted(w, 0).flip!, phase: "fight", gens, ids: [2] },
+    flip: { ...haltState(0), phase: "fight", gens, ids: [2] },
   });
   handleFlipBanner(fighting(10), ui, state);
   expect(banner.val).toBe("ALL-RANGE MODE");
