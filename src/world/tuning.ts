@@ -253,6 +253,16 @@ export const fireRangeFor = (level: number, archetype?: Archetype): number =>
 // spread (bolts rotate apart), unlike the parallel-offset `spread` field.
 export const FAN_ANGLE_STEP = 0.14; // radians (~8°) between adjacent barrels
 
+// The stage emitter (#30): what a formation carrying `emitter: "spread"` fires
+// instead of an aimed salvo. Wider and fewer barrels than the pilot's Spread
+// augment, because its job is to deny a band of the corridor rather than to
+// concentrate damage — the gaps between bolts are the thing being authored.
+export const SPREAD_EMITTER_BARRELS = 5;
+export const SPREAD_EMITTER_STEP = 0.26; // radians (~15°) between barrels
+// How far down-stage a spread emitter aims when nothing is in its reach. It
+// fires regardless: an emitter that waits for a target is an aimed weapon.
+export const SPREAD_EMITTER_REACH = 120;
+
 // Nova (arcade Nova augment): a fuel-gated forward-cone blast that thins a
 // saturated front. Each stack past the first widens the arc and adds reach +
 // damage; at high stacks the arc saturates toward a full-circle panic nova.

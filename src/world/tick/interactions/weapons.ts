@@ -32,6 +32,9 @@ import {
   OVERCHARGE_MULT,
   PILOT_FIRE_MULT,
   SCORE_KILL,
+  SPREAD_EMITTER_BARRELS,
+  SPREAD_EMITTER_REACH,
+  SPREAD_EMITTER_STEP,
   shipRadius,
   type WeaponProfile,
   weaponFor,
@@ -264,6 +267,41 @@ const pilotAim = (ctx: TickCtx, s: Mutable<LightCycle>): Aim => {
   return diff === "easy" || diff === "normal" ? assistAim(ctx, s, aim) : aim;
 };
 
+// What an AI shooter aims at. An aimed weapon needs a target and holds fire
+// without one; a stage's spread emitter has no such patience — with nothing in
+// reach it fans down-stage (+y, the way the pilot is coming from) and lets the
+// corridor fly into it.
+const aiAim = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  target: { ship: LightCycle; dist: number } | null,
+  range: number,
+): Aim | null => {
+  if (target && target.dist <= range)
+    return { x: target.ship.x, y: target.ship.y };
+  if (s.emitter === "spread") return { x: s.x, y: s.y + SPREAD_EMITTER_REACH };
+  return nearestEnemyBaseAim(ctx, s);
+};
+
+// The salvo an AI shooter throws: its archetype profile, or the stage emitter's
+// fixed fan for a formation authored to hold a lane (#30).
+const aiWeapon = (
+  s: Mutable<LightCycle>,
+): { wp: WeaponProfile; coneStep: number } => {
+  const base = weaponFor(s.archetype, s.level);
+  return s.emitter === "spread"
+    ? {
+        wp: {
+          ...base,
+          pattern: "parallel",
+          barrels: SPREAD_EMITTER_BARRELS,
+          spread: 0,
+        },
+        coneStep: SPREAD_EMITTER_STEP,
+      }
+    : { wp: base, coneStep: 0 };
+};
+
 export const fireWeapon = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
@@ -289,14 +327,11 @@ export const fireWeapon = (
   const range = shipFireRange(s);
   const target = acquireTarget(s, moved, range, removed);
   // No enemy ship in range → strafe the nearest alive enemy base (the raid).
-  const aim: Aim | null =
-    target && target.dist <= range
-      ? { x: target.ship.x, y: target.ship.y }
-      : nearestEnemyBaseAim(ctx, s);
+  const aim = aiAim(ctx, s, target, range);
   if (!aim) return bulletId;
 
-  const wp = weaponFor(s.archetype, s.level);
-  const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp);
+  const { wp, coneStep } = aiWeapon(s);
+  const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp, coneStep);
   s.fireCooldown = applyFireCadence(s, wp);
   return nextId;
 };
