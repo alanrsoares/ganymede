@@ -146,6 +146,21 @@ const buildShip = (
   };
 };
 
+/**
+ * Build a ship at an exact spot, facing an exact way, with no RNG — what an
+ * authored stage formation needs (#30). Every field a rolled ship would have
+ * gets rolled for; only the choices the script already made are skipped.
+ */
+export const placeShip = (
+  id: number,
+  x: number,
+  y: number,
+  level: number,
+  archetype: Archetype,
+  team: Team,
+  dir: readonly [number, number] = [0, 1],
+): LightCycle => buildShip(id, x, y, level, archetype, team, dir);
+
 /** Build a ship with a color/direction/class drawn from the seed; returns seed. */
 export const rollShip = (
   seed: Seed,

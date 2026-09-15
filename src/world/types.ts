@@ -99,6 +99,44 @@ export interface RunConfig {
   readonly defeat: DefeatRule;
   readonly enemyTeams: readonly string[]; // ["orange", "emerald"]
   readonly waves?: WaveConfig; // arcade only
+  readonly stage?: StageScript; // scroll only: the authored formation script
+}
+
+// --- Authored stages (#30) ---------------------------------------------------
+// A scroll stage is a list of formations placed along the stage by distance.
+// The whole script is data: no code runs to decide what shows up, which is the
+// point — a stage is memorisable because it is the same every run, and it is
+// editable because the interesting part is a literal, not a spawner.
+
+/** Shape a formation holds as it enters, laid out around its centre point. */
+export type FormationShape = "line" | "vee" | "column" | "echelon";
+
+/**
+ * How a ship's bolts leave the barrel. "aimed" is what every ship in Ganymede
+ * has always done — track the nearest enemy and fire at it. "spread" is the
+ * shmup emitter: an n-way fan that doesn't care where you are, so a formation
+ * denies airspace instead of duelling (#30).
+ */
+export type Emitter = "aimed" | "spread";
+
+/** One formation, and where along the stage it arrives. */
+export interface StageEntry {
+  // Cells of stage travelled when this formation enters, measured from the
+  // stage start. The script is read in this order, so entries are sorted by it.
+  readonly at: number;
+  readonly x: number; // formation centre, in stage x (0..SCROLL_FIELD_W)
+  readonly shape: FormationShape;
+  readonly count: number; // ships in the formation
+  readonly hull: Archetype;
+  readonly level: number;
+  readonly emitter?: Emitter; // default "aimed"
+  readonly team?: string; // default: the run's first enemy team
+}
+
+/** A whole stage: entries in ascending `at` order. */
+export interface StageScript {
+  readonly name: string;
+  readonly entries: readonly StageEntry[];
 }
 
 // The arcade wave director (null outside arcade). Everything here is about
@@ -192,6 +230,11 @@ export interface LightCycle extends Entity {
   // reduced render size, short-reach bolts (MUSTER_DRONE_SIZE_MULT /
   // MUSTER_DRONE_RANGE_MULT). Unset on regular ships.
   readonly droneShip?: boolean;
+  // Bolt pattern for an AI shooter (#30). Unset = "aimed", the duelling
+  // behaviour every ship has always had; authored stage formations can carry
+  // "spread" instead, which fans bolts down-stage whether or not you're in the
+  // way. The pilot's own fan comes from augments, not from this.
+  readonly emitter?: Emitter;
   // Hits landed on each enemy base since the last level, keyed by base name.
   // Hit every alive enemy base `level` times → level up, then this resets.
   readonly baseHits: Readonly<Record<string, number>>;
@@ -522,6 +565,10 @@ export interface World {
   // with a phase once it has one; syncField only asks "is the scroll stopped".
   readonly scrollY: number;
   readonly scrollHalted: boolean;
+  // How far into the stage script the run has read: the index of the next
+  // formation still to enter (#30). A cursor rather than a filter over `at`, so
+  // a stage never re-spawns a formation it has already flown past.
+  readonly stageCursor: number;
   readonly controlModel: ControlModel;
   readonly controlledShipId: number | null;
   // Enemy the piloted ship's fire hard-locks onto (arcade/manual). Auto-acquired

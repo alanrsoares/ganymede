@@ -1,5 +1,6 @@
 import { syncField } from "~/world/field";
 import { advanceScroll, scrollStep } from "~/world/scroll";
+import { stageStep } from "~/world/stage";
 import type { World } from "~/world/types";
 import { arcadeStep } from "./arcade";
 import { createTickCtx } from "./context";
@@ -45,6 +46,7 @@ export const tick = (world: World, steps: number, now: number): World => {
 
   const next = finalizeTick(ctx, motion, hazards, interactions, projectiles);
   // Arcade rules run on the committed world (no-op in autobattle); a scroll
-  // stage feeds itself enemies the same way, having no bases to muster from.
-  return scrollStep(arcadeStep(next), steps);
+  // stage feeds itself enemies the same way, having no bases to muster from —
+  // from its authored script if it has one, from the trickle if it does not.
+  return stageStep(scrollStep(arcadeStep(next), steps));
 };

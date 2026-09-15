@@ -111,6 +111,7 @@ export function initWorld(
     run: null,
     scrollY: 0,
     scrollHalted: false,
+    stageCursor: 0,
     controlModel: "inertial",
     controlledShipId: null,
     lockedTargetId: null,
@@ -157,28 +158,41 @@ const pilotStart = (config: MatchConfig, team: string): Partial<LightCycle> => {
  * fresh run state (lives/wave), and the standard rock/pickup field. Enemy waves
  * are mustered lazily by `arcadeStep` on the first tick. `config.run` required.
  */
-export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
-  setOrbitPhase(0);
-  const cfg = config.run;
-  if (!cfg) throw new Error("initArcadeWorld: config.run is required");
-  syncField({ config, scrollY: 0, scrollHalted: false });
-  const teams = activeTeams(config);
-  const playerId = 1;
-  const [player, s1] = rollShip(
+// The pilot's own ship: rolled for its stat block, then moved to wherever this
+// format starts a human (a home base in the arena, the corridor on a stage).
+const rollPilot = (
+  seed0: Seed,
+  config: MatchConfig,
+  cfg: RunConfig,
+  id: number,
+): [LightCycle, Seed] => {
+  const [player, seed] = rollShip(
     seed0,
-    playerId,
+    id,
     0,
     0,
     PILOT_START_LEVEL,
     cfg.playerTeam,
     cfg.playerArchetype,
-    teams,
+    activeTeams(config),
   );
-  const placed = {
-    ...player,
-    invulnTime: SPAWN_INVULN_GENS, // spawn-in mercy window
-    ...pilotStart(config, cfg.playerTeam),
-  };
+  return [
+    {
+      ...player,
+      invulnTime: SPAWN_INVULN_GENS, // spawn-in mercy window
+      ...pilotStart(config, cfg.playerTeam),
+    },
+    seed,
+  ];
+};
+
+export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
+  setOrbitPhase(0);
+  const cfg = config.run;
+  if (!cfg) throw new Error("initArcadeWorld: config.run is required");
+  syncField({ config, scrollY: 0, scrollHalted: false });
+  const playerId = 1;
+  const [placed, s1] = rollPilot(seed0, config, cfg, playerId);
   const [rocks, s2] = rollMany(NUM_ASTEROIDS, s1, (s, i) =>
     rollAsteroid(s, i + 1),
   );
@@ -205,6 +219,7 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
     run: initArcadeRun(cfg),
     scrollY: 0,
     scrollHalted: false,
+    stageCursor: 0,
     controlModel: "inertial",
     controlledShipId: playerId,
     lockedTargetId: null,

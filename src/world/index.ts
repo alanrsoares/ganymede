@@ -7,5 +7,7 @@ export {
   SCROLL_SPAWN_GENS,
   scrollStep,
 } from "./scroll";
+export { stageStep, stageTravelled } from "./stage";
+export { STAGE_ONE } from "./stages";
 export * from "./types";
 export { update } from "./update";
