@@ -1,6 +1,12 @@
 // Calm deep-space backdrop: a dark vertical gradient, a drifting nebula haze,
 // and a couple of parallax star layers. Self-contained — reads only the frame
-// uniforms (resolution + time), no simulation buffers.
+// uniforms (resolution + time + camera), no simulation buffers.
+//
+// This is a fullscreen triangle in clip space: there is no world position for
+// `viewProj` to move, so the camera arrives as a pixel offset instead and each
+// layer shifts by its own fraction of it. That fraction *is* the layer's depth —
+// the near stars track the camera almost exactly, the nebula floor barely
+// budges, and a stage scrolling past reads as distance rather than a treadmill.
 
 struct Uniforms {
     resolution: vec2f,
@@ -8,8 +14,22 @@ struct Uniforms {
     _pad: f32,
     // World pixels -> clip space. Shared by every pass (see render/view.ts).
     viewProj: mat4x4f,
+    // The same camera in drawing-buffer pixels (see render/gpu.ts). Zero for
+    // all-range play, where the field origin never moves.
+    camera: vec2f,
+    _pad2: vec2f,
 }
 @group(0) @binding(0) var<uniform> u: Uniforms;
+
+// The depth ladder: each layer's share of the camera, far to near. Nothing
+// reaches 1.0 — a layer that tracked the camera exactly would sit in the play
+// plane and read as debris the pilot should be dodging. The base gradient and
+// the vignette take no share at all: they are the frame, not the world.
+const PAR_FLOOR = 0.06;
+const PAR_HAZE = 0.14;
+const PAR_STAR_FAR = 0.28;
+const PAR_STAR_MID = 0.55;
+const PAR_STAR_NEAR = 0.9;
 
 @vertex
 fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {
@@ -33,7 +53,9 @@ fn valueNoise(p: vec2f) -> f32 {
   return mix(mix(a, b, uv.x), mix(c, d, uv.x), uv.y);
 }
 
-// One twinkling star layer at a given grid density + drift.
+// One twinkling star layer at a given grid density + drift. `uv` already
+// carries this layer's share of the camera, so the cell grid slides with it and
+// new stars hash in off-screen — the field is infinite, never a looping tile.
 fn starLayer(uv: vec2f, density: f32, drift: f32, tw: f32) -> f32 {
   let g = uv * density + vec2f(drift, drift * 0.3);
   let cell = floor(g);
@@ -54,7 +76,10 @@ fn starLayer(uv: vec2f, density: f32, drift: f32, tw: f32) -> f32 {
 fn fs(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
   let uv = fragCoord.xy / u.resolution;
   let aspect = u.resolution.x / u.resolution.y;
+  // Both components of `auv` are fragCoord / resolution.y, so the camera
+  // converts to this space by that one divide — no aspect correction needed.
   let auv = vec2f(uv.x * aspect, uv.y);
+  let par = u.camera / u.resolution.y;
 
   // Base gradient: deep blue-black, a touch lighter toward the bottom.
   var col = mix(vec3f(0.015, 0.02, 0.04), vec3f(0.03, 0.05, 0.09), uv.y);
@@ -63,8 +88,9 @@ fn fs(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
   // clouds with warm pockets (matching the SpaceRage BG palette). Low frequency
   // + slow drift so it reads as far-away depth beneath everything else.
   let ft = u.time * 0.008;
-  let fn1 = valueNoise(auv * 1.3 + vec2f(ft, ft * 0.4));
-  let fn2 = valueNoise(auv * 2.4 - vec2f(ft * 0.3, ft * 0.6));
+  let fuv = auv + par * PAR_FLOOR;
+  let fn1 = valueNoise(fuv * 1.3 + vec2f(ft, ft * 0.4));
+  let fn2 = valueNoise(fuv * 2.4 - vec2f(ft * 0.3, ft * 0.6));
   let floorMask = smoothstep(0.35, 0.95, fn1 * 0.6 + fn2 * 0.4);
   let floorTint = mix(vec3f(0.02, 0.09, 0.11), vec3f(0.11, 0.05, 0.03), fn2);
   col += floorMask * floorTint;
@@ -72,19 +98,22 @@ fn fs(@builtin(position) fragCoord: vec4f) -> @location(0) vec4f {
   // Nearer drifting haze — two octaves of value noise, faint teal-violet, on top
   // of the floor for a second depth plane.
   let t = u.time * 0.02;
-  let n = valueNoise(auv * 3.0 + vec2f(t, t * 0.5)) * 0.6
-        + valueNoise(auv * 7.0 - vec2f(t * 0.7, t)) * 0.4;
+  let huv = auv + par * PAR_HAZE;
+  let n = valueNoise(huv * 3.0 + vec2f(t, t * 0.5)) * 0.6
+        + valueNoise(huv * 7.0 - vec2f(t * 0.7, t)) * 0.4;
   let nebula = smoothstep(0.6, 1.0, n);
   col += nebula * vec3f(0.05, 0.05, 0.12) * 0.5;
 
   // Parallax star layers (far = dim/slow, near = bright/fast).
   var stars = 0.0;
-  stars += starLayer(auv, 60.0, u.time * 0.006, u.time * 2.0) * 0.5;
-  stars += starLayer(auv, 30.0, u.time * 0.012, u.time * 3.0) * 0.8;
-  stars += starLayer(auv, 16.0, u.time * 0.02, u.time * 4.0);
+  stars += starLayer(auv + par * PAR_STAR_FAR, 60.0, u.time * 0.006, u.time * 2.0) * 0.5;
+  stars += starLayer(auv + par * PAR_STAR_MID, 30.0, u.time * 0.012, u.time * 3.0) * 0.8;
+  stars += starLayer(auv + par * PAR_STAR_NEAR, 16.0, u.time * 0.02, u.time * 4.0);
   // Colored stars: cluster toward cool-white, warm, or teal by a slow color
   // field, so the field isn't a uniform white sprinkle (matches the art).
-  let starHue = valueNoise(auv * 4.0 + vec2f(11.0, 7.0));
+  // The hue field travels with the star layers it tints (mid depth, so the
+  // clusters stay put relative to the stars rather than sliding through them).
+  let starHue = valueNoise((auv + par * PAR_STAR_MID) * 4.0 + vec2f(11.0, 7.0));
   let starTint = mix(vec3f(0.72, 0.86, 1.0), vec3f(1.0, 0.82, 0.6), starHue);
   col += vec3f(stars) * mix(vec3f(1.0), starTint, 0.55);
 
