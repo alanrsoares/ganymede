@@ -78,6 +78,19 @@ export const stepSimulation = (
   }
 };
 
+// Carry the HUD's control-model toggle into the sim (#29). The signal is the
+// player-facing source of truth, but the model has to live on the World to stay
+// deterministic, so this reconciles the two each frame — which also survives a
+// reset or a fresh match, where the new world starts back on inertial.
+export const syncControlModel = (
+  dispatch: (msg: Msg) => void,
+  world: World,
+  direct: boolean,
+) => {
+  const model = direct ? "direct" : "inertial";
+  if (world.controlModel !== model) dispatch({ kind: "controlModel", model });
+};
+
 // Deploy the launch fleet a ship at a time — each `replenish` mans the emptiest
 // live base, so a fresh match musters in staggered from the bases instead of
 // the whole fleet popping in at once.
@@ -238,6 +251,7 @@ export const updateHud = (ui: Ui, world: World) => {
   ui.status.val =
     `ships ${world.ships.items.length} · ${phase}` +
     ` · HP bars: ${ui.hpOn.val ? "on (h)" : "off (h)"}` +
+    ` · stick: ${world.controlModel} (i)` +
     rallyText;
   ui.controlledShip.val =
     world.controlledShipId !== null

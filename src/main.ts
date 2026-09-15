@@ -25,6 +25,7 @@ import {
   type Sim,
   stepDeploy,
   stepSimulation,
+  syncControlModel,
   updateHud,
   updateScreenShake,
 } from "~/runtime/frame";
@@ -318,6 +319,7 @@ const startRuntime = (
       // Adapt only while a live scene is actually being drawn: a dialog over a
       // frozen world has frame times that say nothing about the tier.
       adaptQuality(quality, governor, dt);
+      syncControlModel(dispatch, sim.world, ui.directOn.val);
       stepDeploy(dispatch, dt, loopState);
       // Suppress trickle reinforcement until the launch fleet finishes mustering.
       const reinforceRate =
