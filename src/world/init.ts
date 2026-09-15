@@ -111,6 +111,7 @@ export function initWorld(
     run: null,
     scrollY: 0,
     scrollHalted: false,
+    controlModel: "inertial",
     controlledShipId: null,
     lockedTargetId: null,
     controlKeys: {
@@ -204,6 +205,7 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
     run: initArcadeRun(cfg),
     scrollY: 0,
     scrollHalted: false,
+    controlModel: "inertial",
     controlledShipId: playerId,
     lockedTargetId: null,
     controlKeys: { ...NO_KEYS },

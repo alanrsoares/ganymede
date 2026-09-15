@@ -1,9 +1,10 @@
 import { spawnDroneBolt } from "~/world/factory";
+import { hasArenaFurniture } from "~/world/field";
 import { gridNeighbors } from "~/world/tick/broadphase";
 import type { TickCtx } from "~/world/tick/context";
 import type { MotionState } from "~/world/tick/motion";
 import { DRONE_FIRE_COOLDOWN } from "~/world/tuning";
-import { ARENA } from "~/world/types";
+import { ARENA, type LightCycle, type Mutable } from "~/world/types";
 import {
   AURA_BAND,
   applyForceFieldAuras,
@@ -34,6 +35,25 @@ export {
 export { resolveFieldEffects } from "./field";
 export { createInteractionState, type InteractionState } from "./state";
 
+// Everything one ship gets from the arena's fixed furniture: pad healing, the
+// centre finish, portal and base gravity, the portal hop, and docking at home.
+// It all sits at absolute coordinates in the all-range field, so a scroll stage
+// flies past where it would be and skips this entirely (hasArenaFurniture) —
+// the pull has to be as absent there as the picture is.
+const resolveFurniture = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  steps: number,
+): void => {
+  healAtPad(s, steps);
+  finishAtCenterPad(ctx, s, steps);
+  pullTowardPortalHorizon(s, steps);
+  applyBaseGravity(ctx, s, steps);
+  applyStarGravity(s, steps);
+  teleportThroughPortal(s);
+  dockAtHomeBase(ctx, s, steps);
+};
+
 /** Weapons, pickups, portals, mines, home base, and force-field auras. */
 export const resolveInteractions = (
   ctx: TickCtx,
@@ -45,6 +65,7 @@ export const resolveInteractions = (
   const { takenPickups } = interactions;
   let seed = ctx.seed;
   let { bulletId, missileId, mineId } = motion;
+  const furniture = hasArenaFurniture(ctx.world);
 
   for (const s of moved) {
     if (removed.has(s.id)) continue;
@@ -59,14 +80,8 @@ export const resolveInteractions = (
       missiles,
       missileId,
     );
-    healAtPad(s, steps);
-    finishAtCenterPad(ctx, s, steps);
-    pullTowardPortalHorizon(s, steps);
-    applyBaseGravity(ctx, s, steps);
-    applyStarGravity(s, steps);
-    teleportThroughPortal(s);
+    if (furniture) resolveFurniture(ctx, s, steps);
     [mineId, seed] = dropMine(ctx, s, mines, mineId, seed, steps);
-    dockAtHomeBase(ctx, s, steps);
   }
 
   // Escort drones auto-fire at the nearest enemy in range (bolts go through the

@@ -361,6 +361,12 @@ export const wireInput = (
     h: () => {
       ui.hpOn.val = !ui.hpOn.val;
     },
+    // The control-model A/B (#29). The key flips the same signal the HUD
+    // toggle writes, so the checkbox and the hotkey can't disagree; the loop
+    // is what carries it into the sim.
+    i: () => {
+      ui.directOn.val = !ui.directOn.val;
+    },
     m: () => audio.toggleMute(),
     ".": () => audio.skip(),
   };

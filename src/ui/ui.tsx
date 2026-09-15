@@ -87,6 +87,10 @@ export interface Ui {
   score: Signal<Readonly<Record<string, number>>>;
   counts: Signal<Readonly<Record<string, number>>>; // living ships per team
   hpOn: Signal<boolean>;
+  // Player control model (#29): true flies the direct/positional stick, false
+  // Ganymede's inertial thrust. A HUD toggle rather than a config choice — the
+  // question is which one *feels* right, and that needs an A/B mid-flight.
+  directOn: Signal<boolean>;
   banner: Signal<string>; // center win/draw banner ("" = hidden)
   activeTeamCount: Signal<number>; // scoreboard shows only the first N teams
   hudTitle: Signal<string>; // HUD heading — "Autobattle" / "Arcade"
@@ -355,10 +359,12 @@ const SimKnobs = memo(function SimKnobs({
 const Controls = ({
   cfg,
   hpOn,
+  directOn,
   simKnobsHidden,
 }: {
   cfg: UiConfig;
   hpOn: Signal<boolean>;
+  directOn: Signal<boolean>;
   simKnobsHidden: Signal<boolean>;
 }) => {
   const [controlsOpen, setControlsOpen] = useState(true);
@@ -386,6 +392,12 @@ const Controls = ({
         <SimKnobs cfg={cfg} simKnobsHidden={simKnobsHidden} />
         <div className={GRID}>
           <Toggle id="k-hp" text="hp bars" state={hpOn} accent={CYAN} />
+          <Toggle
+            id="k-direct"
+            text="direct stick"
+            state={directOn}
+            accent={CYAN}
+          />
         </div>
       </div>
     </HudPanel>
@@ -793,6 +805,7 @@ const ControlsInfoPanel = () => {
             { keys: "WASD / arrows", action: "Steer" },
             { keys: "Space", action: "Fire" },
             { keys: "1 - 7", action: "Weapons & abilities" },
+            { keys: "I", action: "Inertial / direct stick" },
           ]}
         />
         <HelpSection
@@ -841,6 +854,7 @@ const View = ({
   score,
   error,
   hpOn,
+  directOn,
   banner,
   counts,
   activeTeamCount,
@@ -855,6 +869,7 @@ const View = ({
   score: Signal<Readonly<Record<string, number>>>;
   error: Signal<string>;
   hpOn: Signal<boolean>;
+  directOn: Signal<boolean>;
   banner: Signal<string>;
   counts: Signal<Readonly<Record<string, number>>>;
   activeTeamCount: Signal<number>;
@@ -874,7 +889,12 @@ const View = ({
           arcadeLives={arcadeLives}
           controlledShip={controlledShip}
         />
-        <Controls cfg={cfg} hpOn={hpOn} simKnobsHidden={simKnobsHidden} />
+        <Controls
+          cfg={cfg}
+          hpOn={hpOn}
+          directOn={directOn}
+          simKnobsHidden={simKnobsHidden}
+        />
         <ScoreBox
           cfg={cfg}
           score={score}
@@ -891,19 +911,26 @@ const View = ({
   );
 };
 
+// Every reactive handle the HUD owns, made in one place so `mountUi` stays what
+// it says it is: create the signals, render the tree, hand back the ports.
+const createUiSignals = (cfg: UiConfig) => ({
+  status: signal(""),
+  score: signal<Readonly<Record<string, number>>>({}),
+  error: signal(""),
+  hpOn: signal(true),
+  directOn: signal(false),
+  banner: signal(""),
+  counts: signal<Readonly<Record<string, number>>>({}),
+  activeTeamCount: signal(cfg.teams.length),
+  hudTitle: signal("Autobattle"),
+  arcadeLives: signal<number | null>(null),
+  controlledShip: signal<LightCycle | null>(null),
+  chromeHidden: signal(false),
+  simKnobsHidden: signal(false),
+});
+
 export const mountUi = (cfg: UiConfig): Ui => {
-  const status = signal("");
-  const score = signal<Readonly<Record<string, number>>>({});
-  const error = signal("");
-  const hpOn = signal(true);
-  const banner = signal("");
-  const counts = signal<Readonly<Record<string, number>>>({});
-  const activeTeamCount = signal(cfg.teams.length);
-  const hudTitle = signal("Autobattle");
-  const arcadeLives = signal<number | null>(null);
-  const controlledShip = signal<LightCycle | null>(null);
-  const chromeHidden = signal(false);
-  const simKnobsHidden = signal(false);
+  const signals = createUiSignals(cfg);
 
   injectScorePopStyle();
 
@@ -911,34 +938,14 @@ export const mountUi = (cfg: UiConfig): Ui => {
   document.body.appendChild(container);
   createRoot(container).render(
     <AstryxRoot>
-      <View
-        cfg={cfg}
-        status={status}
-        score={score}
-        error={error}
-        hpOn={hpOn}
-        banner={banner}
-        counts={counts}
-        activeTeamCount={activeTeamCount}
-        hudTitle={hudTitle}
-        arcadeLives={arcadeLives}
-        controlledShip={controlledShip}
-        chromeHidden={chromeHidden}
-        simKnobsHidden={simKnobsHidden}
-      />
+      <View cfg={cfg} {...signals} />
     </AstryxRoot>,
   );
 
+  // The three the loop drives through setters instead of raw signals.
+  const { error, chromeHidden, simKnobsHidden, ...ports } = signals;
   return {
-    status,
-    score,
-    counts,
-    hpOn,
-    banner,
-    activeTeamCount,
-    hudTitle,
-    arcadeLives,
-    controlledShip,
+    ...ports,
     showError: (message) => {
       error.val = message;
     },

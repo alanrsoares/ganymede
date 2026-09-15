@@ -476,6 +476,21 @@ export const TEAM_BASES: readonly Base[] = TEAMS.map((t, i) => ({
 }));
 export const baseByName = new Map(TEAM_BASES.map((b) => [b.name, b]));
 
+/**
+ * How the pilot's stick maps to motion (#29).
+ *
+ * "inertial" is what Ganymede has always flown: the stick is thrust, speed is
+ * regulated back toward cruise, and the ship carries momentum through a turn
+ * and never comes to a stop. "direct" is the classic vertical shmup: the stick
+ * *is* velocity — full speed on press, dead stop on release, no drift.
+ *
+ * This lives on the World rather than in MatchConfig because the question it
+ * exists to answer is a feel comparison: flipping it mid-flight puts both
+ * models under the same thumb in the same stage, which is the only way the
+ * difference is legible.
+ */
+export type ControlModel = "inertial" | "direct";
+
 export interface RallyBeacon {
   readonly team: string;
   readonly x: number;
@@ -507,6 +522,7 @@ export interface World {
   // with a phase once it has one; syncField only asks "is the scroll stopped".
   readonly scrollY: number;
   readonly scrollHalted: boolean;
+  readonly controlModel: ControlModel;
   readonly controlledShipId: number | null;
   // Enemy the piloted ship's fire hard-locks onto (arcade/manual). Auto-acquired
   // and auto-advanced by the tick; cycled by the player. null = free aim.
@@ -536,6 +552,7 @@ export type Msg =
       readonly right: boolean;
       readonly space: boolean;
     }
+  | { readonly kind: "controlModel"; readonly model: ControlModel }
   | { readonly kind: "action"; readonly actionId: number }
   | { readonly kind: "cycleTarget"; readonly dir: 1 | -1 }
   | { readonly kind: "arcadeSkipIntermission" }
