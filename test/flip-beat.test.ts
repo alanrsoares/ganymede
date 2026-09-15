@@ -274,3 +274,48 @@ test("a stage with no flips never leaves the corridor", () => {
   expect(w.flip).toBeNull();
   expect(ARENA.wrapY).toBe(false);
 });
+
+// --- frame-rate independence -------------------------------------------------
+// A dropped frame hands the tick several generations at once. Everywhere else on
+// the stage that is exact — the rules scale linearly in `steps` — but the beat's
+// brake is a curve and its phases have boundaries, so a batch that spans either
+// would land the corridor somewhere the same generations taken one at a time
+// never would. The pilot's hull drifts with the camera, so the slip is silent;
+// these pin it. Only the stage scalar is compared: combat inside the batch is
+// its own approximation and is not what these are about.
+
+/** Fly `gens` generations in batches of `steps`, as a stuttering frame would. */
+const flyBatched = (w: World, gens: number, steps: number): World => {
+  let out = w;
+  for (let i = 0; i < gens / steps; i++) out = tick(out, steps, 16 * i);
+  return out;
+};
+
+test("a stuttering frame reaches the beat and brakes the same distance", () => {
+  // Authored off a step boundary on purpose. `scrollY` accumulates in floats, so
+  // a beat due at an exact multiple of SCROLL_RATE is decided by which side of
+  // the mark the rounding lands on — that is the accumulator, not the batching,
+  // and it would make this assertion about the wrong thing.
+  const w = flipWorld(withFlip({ ...beat, at: 61.8 }));
+  // Past the authored distance and on through the brake, so the run spans both
+  // the beat opening and the halt handing over.
+  const gens = 200;
+  const clean = flyBatched(w, gens, 1);
+  const stutter = flyBatched(w, gens, 5);
+  expect(clean.flip?.phase).toBe("fight");
+  expect(stutter.flip?.phase).toBe("fight");
+  expect(stutter.scrollY).toBeCloseTo(clean.scrollY, 9);
+});
+
+test("a stuttering frame winds back up over the same distance", () => {
+  const fight = flyToFight(flipWorld());
+  const live = fight.flip;
+  if (!live) throw new Error("the fight never opened");
+  const out: World = { ...fight, flip: { ...live, phase: "resume", gens: 0 } };
+  const gens = FLIP_RESUME_GENS + 10; // across resume → corridor, and beyond
+  const clean = flyBatched(out, gens, 1);
+  const stutter = flyBatched(out, gens, 5);
+  expect(clean.flip).toBeNull();
+  expect(stutter.flip).toBeNull();
+  expect(stutter.scrollY).toBeCloseTo(clean.scrollY, 9);
+});

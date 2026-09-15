@@ -19,7 +19,7 @@
 // same three phases from the runtime side.
 
 import { inField } from "./math";
-import { FLIP_HALT_GENS, FLIP_RESUME_GENS } from "./scroll";
+import { FLIP_HALT_GENS, FLIP_RESUME_GENS, SCROLL_RATE } from "./scroll";
 import { buildFormation, stageTravelled } from "./stage";
 import type { FlipState, StageFlip, World } from "./types";
 
@@ -144,4 +144,42 @@ export const flipStep = (world: World, steps: number): World => {
   const next = world.config.run?.stage?.flips?.[world.flipCursor];
   if (!next || next.at > stageTravelled(world)) return world;
   return beginHalt(world, next);
+};
+
+/**
+ * How many of a tick's `steps` may run as one batch before the beat's answer
+ * changes. A dropped frame hands the tick several generations at once, and the
+ * beat is the one part of the stage where that batching is visible: the brake
+ * eases per generation, so a batch that spans the easing would apply one
+ * instant's rate to the whole span, and a batch that spans a phase boundary
+ * would scroll its whole length at the phase it landed in. Both leave the
+ * corridor short of where the same generations would have taken it one at a
+ * time, and the pilot's hull drifts with the camera, so the error is silent.
+ *
+ * So the caller re-ticks in slices of this size: one generation at a time while
+ * the rate is easing, up to the phase's own boundary otherwise, and up to the
+ * distance still owed before an unclaimed beat is due. Everywhere else the
+ * stage runs at a flat rate and the whole batch is exact — the common case
+ * never pays for this.
+ */
+export const flipSlice = (world: World, steps: number): number => {
+  if (steps <= 1 || world.config.format !== "scroll" || world.run?.over) {
+    return steps;
+  }
+  const live = world.flip;
+  if (live) {
+    // The easing phases are a curve, so only a single generation is exact.
+    if (live.phase !== "fight") return 1;
+    // The fight holds position; all that batching can blur is the cap, and the
+    // wipe it is really waiting on is only ever read at the top of a tick.
+    return Math.max(1, Math.min(steps, live.maxGens - live.gens));
+  }
+  const next = world.config.run?.stage?.flips?.[world.flipCursor];
+  if (!next) return steps;
+  // Full rate here by definition — no beat is up — so the distance still owed
+  // converts straight to generations. Floored, so the slice stops short of the
+  // mark rather than across it, and a beat already due falls through to 1: it
+  // opens this tick, and the brake it opens is a curve.
+  const away = next.at - stageTravelled(world);
+  return Math.max(1, Math.min(steps, Math.floor(away / SCROLL_RATE)));
 };
