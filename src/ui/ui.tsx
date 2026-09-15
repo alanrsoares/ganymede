@@ -655,6 +655,8 @@ const ManualHeader = ({
         className="px-1.5 py-0.5 text-[10px]"
         style={{ pointerEvents: "auto" }}
         onClick={onToggle}
+        aria-label={open ? "Collapse pilot controls" : "Expand pilot controls"}
+        aria-expanded={open}
       >
         {open ? "▾" : "▸"}
       </HudButton>
