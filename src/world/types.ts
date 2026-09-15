@@ -139,6 +139,13 @@ export interface StageEntry {
 }
 
 /**
+ * A formation stripped of when it shows up: the shape itself. The corridor
+ * places one by distance (StageEntry), the flip beat places one in the window
+ * (FlipSpawn), and both build it the same way.
+ */
+export type FormationSpec = Omit<StageEntry, "at" | "drop">;
+
+/**
  * A formation's unclaimed reward, tracked until the last of its ships is gone.
  * `x`/`y` trail the survivors, so the drop lands where the fight ended rather
  * than where the formation entered.
@@ -150,10 +157,56 @@ export interface StageDrop {
   readonly y: number;
 }
 
+// --- The all-range flip (#31) ------------------------------------------------
+// Mid-stage the scroll stops and the corridor closes into the toroidal arena:
+// act two is the game Ganymede has always been, one stage-length up the y axis.
+// The beat is authored like everything else on a stage — it happens at a
+// distance, with a hand-placed ambush, and it ends when the ambush is wiped.
+
+/**
+ * One formation waiting in the flip's arena. Unlike a StageEntry it is placed
+ * in the window rather than ahead of it: the arena is 480x270 and the ambush is
+ * already inside it when the scroll stops, so both coordinates are offsets from
+ * the window's top-left corner.
+ */
+export type FlipSpawn = FormationSpec & {
+  readonly y: number; // 0..DEFAULT_GRID_H, down from the window's top edge
+};
+
+/** An authored flip beat: where it opens, what is waiting, and its time cap. */
+export interface StageFlip {
+  readonly at: number; // cells of stage travelled when the scroll halts
+  readonly banner: string; // the line the beat announces itself with
+  readonly spawns: readonly FlipSpawn[];
+  // Failsafe only. The beat ends when the ambush is wiped — that is the deal
+  // the pilot is playing to. The cap exists so one drone stuck orbiting a rock
+  // can't hang the run forever; it should be generous enough never to fire in
+  // a fight that is going normally.
+  readonly maxGens: number;
+}
+
 /** A whole stage: entries in ascending `at` order. */
 export interface StageScript {
   readonly name: string;
   readonly entries: readonly StageEntry[];
+  // Flip beats, also in ascending `at` order. A stage with none never leaves
+  // the corridor.
+  readonly flips?: readonly StageFlip[];
+}
+
+/**
+ * The flip beat while it is up. Non-null is the whole signal: the scroll holds,
+ * the field wraps, and the arena's furniture comes back (see field.ts). The
+ * easing and the audio crossfade the beat is owed hang off this too.
+ */
+export interface FlipState {
+  readonly gens: number; // generations since the beat opened
+  readonly maxGens: number; // failsafe cap, copied from the script
+  readonly banner: string;
+  // Ships the beat is waiting on. The beat closes when none of them are left
+  // alive — tracked by id rather than by counting hostiles so a stray survivor
+  // from the corridor can't hold act two open.
+  readonly ids: readonly number[];
 }
 
 // The arcade wave director (null outside arcade). Everything here is about
@@ -475,8 +528,12 @@ const orbitPoint = (deg: number): { x: number; y: number } => {
   const r =
     orbitRadius() * (1 + DRIFT_RADIUS * Math.sin(t * OMEGA_RADIUS + base * 3));
   // The whole ring's centre bobs slowly on its own little epicycle near the star.
-  const cx = ARENA.w / 2 + DRIFT_CENTER * Math.sin(t * OMEGA_CENTER);
-  const cy = ARENA.h / 2 + DRIFT_CENTER * Math.cos(t * OMEGA_CENTER * 1.3);
+  // Measured from the field origin, not from zero: the all-range field starts at
+  // 0,0 so nothing moves there, but the flip beat's arena sits a stage-length up
+  // the y axis, and the ring has to be centred in *that* window (#31).
+  const cx = ARENA.x0 + ARENA.w / 2 + DRIFT_CENTER * Math.sin(t * OMEGA_CENTER);
+  const cy =
+    ARENA.y0 + ARENA.h / 2 + DRIFT_CENTER * Math.cos(t * OMEGA_CENTER * 1.3);
   return {
     x: cx + r * Math.sin(a),
     y: cy - r * Math.cos(a),
@@ -505,10 +562,10 @@ export const HEAL_PADS: readonly [Pad, Pad] = [
 // promotes when it crosses here). Equidistant from all eight ring bodies.
 export const CENTER_PAD: Pad = {
   get x() {
-    return Math.round(ARENA.w / 2);
+    return Math.round(ARENA.x0 + ARENA.w / 2);
   },
   get y() {
-    return Math.round(ARENA.h / 2);
+    return Math.round(ARENA.y0 + ARENA.h / 2);
   },
   r: 20,
 };
@@ -585,11 +642,15 @@ export interface World {
   readonly config: MatchConfig; // match setup (team count, length, format)
   readonly run: RunState | null; // piloted-run state (null in autobattle)
   // Scroll stage position: where the camera window's top edge sits along the
-  // stage, in cells. 0 outside a scroll run. `scrollHalted` is the flip beat
-  // holding it still — #31 owns the easing, and may well replace the boolean
-  // with a phase once it has one; syncField only asks "is the scroll stopped".
+  // stage, in cells. 0 outside a scroll run.
   readonly scrollY: number;
-  readonly scrollHalted: boolean;
+  // The all-range flip beat (#31), non-null while it is up: the scroll holds
+  // here and the field closes into a torus. One field rather than a halted flag
+  // beside it, so "is the scroll stopped" and "why" can never disagree.
+  readonly flip: FlipState | null;
+  // How many flip beats the stage has already played: the index of the next one
+  // still to open. Same cursor discipline as `stageCursor`.
+  readonly flipCursor: number;
   // How far into the stage script the run has read: the index of the next
   // formation still to enter (#30). A cursor rather than a filter over `at`, so
   // a stage never re-spawns a formation it has already flown past.

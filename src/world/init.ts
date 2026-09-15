@@ -72,7 +72,7 @@ export function initWorld(
   // field has to describe this world before any of it is rolled — otherwise a
   // fresh match inherits wherever the last run's stage had scrolled to, and the
   // same seed stops meaning the same opening.
-  syncField({ config, scrollY: 0, scrollHalted: false });
+  syncField({ config, scrollY: 0, flip: null });
   const teams = activeTeams(config);
   const initialShips = config.initialShips;
   // Roll each ship (its team is drawn from the seed), then plant it at that
@@ -110,7 +110,8 @@ export function initWorld(
     config,
     run: null,
     scrollY: 0,
-    scrollHalted: false,
+    flip: null,
+    flipCursor: 0,
     stageCursor: 0,
     stageDrops: [],
     controlModel: "inertial",
@@ -198,7 +199,7 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
   setOrbitPhase(0);
   const cfg = config.run;
   if (!cfg) throw new Error("initArcadeWorld: config.run is required");
-  syncField({ config, scrollY: 0, scrollHalted: false });
+  syncField({ config, scrollY: 0, flip: null });
   const playerId = 1;
   const [placed, s1] = rollPilot(seed0, config, cfg, playerId);
   const [rocks, s2] = rollMany(NUM_ASTEROIDS, s1, (s, i) =>
@@ -226,7 +227,8 @@ export function initArcadeWorld(seed0: Seed, config: MatchConfig): World {
     config,
     run: initArcadeRun(cfg),
     scrollY: 0,
-    scrollHalted: false,
+    flip: null,
+    flipCursor: 0,
     stageCursor: 0,
     stageDrops: [],
     controlModel: "inertial",

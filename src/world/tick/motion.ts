@@ -1,7 +1,7 @@
 import { angleTo, easeAngle, elastic, lerp, normalize } from "~/engine/physics";
 import type { PilotMods } from "~/world/augments";
 import { advanceAsteroid, advanceMissile } from "~/world/factory";
-import { hasArenaFurniture } from "~/world/field";
+import { hasBaseObjective } from "~/world/field";
 import {
   clampFieldX,
   clampFieldY,
@@ -109,7 +109,7 @@ const shipAccel = (
     world.age,
     neighbors,
     carriers,
-    hasArenaFurniture(world),
+    hasBaseObjective(world),
   );
 };
 
@@ -179,7 +179,7 @@ const directVelocity = (
 ): Velocity => {
   const [ix, iy] = manualInput(world.controlKeys);
   const drift =
-    world.config.format === "scroll" && !world.scrollHalted ? -SCROLL_RATE : 0;
+    world.config.format === "scroll" && !world.flip ? -SCROLL_RATE : 0;
   const still = ix === 0 && iy === 0;
   return {
     vx: ix * cruise,

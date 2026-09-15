@@ -27,7 +27,7 @@ import {
 /** Everything `syncField` reads. Narrow so a world under construction — one
  * that has a config but no entities yet — can derive the field it rolls its
  * scenery onto (see init.ts). */
-export type FieldInputs = Pick<World, "config" | "scrollY" | "scrollHalted">;
+export type FieldInputs = Pick<World, "config" | "scrollY" | "flip">;
 
 // Requested extent, set by the resize edge. Kept apart from ARENA itself so a
 // resize can never leave the field half-written mid-tick, and so a scroll stage
@@ -60,19 +60,36 @@ export const syncField = (world: FieldInputs): void => {
   ARENA.y0 = world.scrollY;
   ARENA.w = SCROLL_FIELD_W;
   ARENA.h = DEFAULT_GRID_H;
-  // Halted = the flip beat: the arena closes back into a torus in place.
-  ARENA.wrapX = world.scrollHalted;
-  ARENA.wrapY = world.scrollHalted;
+  // The flip beat: the arena closes back into a torus in place.
+  ARENA.wrapX = world.flip !== null;
+  ARENA.wrapY = world.flip !== null;
 };
 
 /**
- * True while the arena's fixed furniture — team bases, the centre pad, portals,
- * heal pads — is part of the world. It sits at absolute coordinates in the
- * all-range field, so a scroll stage flies past where it would be: it is
- * neither drawn nor collided with there. (What the flip's arena contains is
- * #31's question.)
+ * True while the arena's ring of furniture — team bases, the centre pad,
+ * portals, heal pads — is drawn and collided with. The ring is centred on the
+ * field, so during the flip beat it is centred on the window: act two is fought
+ * around the same eight bodies the all-range game has always had. A scrolling
+ * corridor has none of them — it flies past where they would be.
  */
-export const hasArenaFurniture = (world: {
+export const hasArenaFurniture = (world: FurnitureInputs): boolean =>
+  world.config.format !== "scroll" || world.flip != null;
+
+type FurnitureInputs = {
+  config: { format: MatchConfig["format"] };
+  flip?: World["flip"];
+};
+
+/**
+ * True while the base raid — docking at home, the centre-pad cash-in, shooting
+ * at enemy bases, and the AI's trek home — is a thing the world plays.
+ *
+ * The flip beat keeps the ring as *terrain* but never as an objective: a
+ * thirty-second brawl with a raid economy bolted on is two games at once, and
+ * the raid is the one that doesn't belong in a stage. So the bases are there to
+ * fly around and be blocked by, and nothing scores off them.
+ */
+export const hasBaseObjective = (world: {
   config: { format: MatchConfig["format"] };
 }): boolean => world.config.format !== "scroll";
 

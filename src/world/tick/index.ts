@@ -1,4 +1,5 @@
 import { syncField } from "~/world/field";
+import { flipStep } from "~/world/flip";
 import { advanceScroll, scrollStep } from "~/world/scroll";
 import { stageStep } from "~/world/stage";
 import type { World } from "~/world/types";
@@ -25,8 +26,10 @@ import {
 /** Advance the entity world by `steps` generations; returns the next world. */
 export const tick = (world: World, steps: number, now: number): World => {
   // Stage first, then the field it implies: everything below wraps and culls
-  // against a field that already reflects this tick's scroll position.
-  const scrolled = advanceScroll(world, steps);
+  // against a field that already reflects this tick's scroll position. The flip
+  // beat (#31) is settled before the scroll moves, so a tick is either scrolled
+  // or fought in the arena — a halted scroll simply has nowhere to advance to.
+  const scrolled = advanceScroll(flipStep(world, steps), steps);
   syncField(scrolled);
   const ctx = createTickCtx(scrolled, steps, now);
   const motion = advanceMotion(ctx);
