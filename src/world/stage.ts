@@ -6,12 +6,14 @@
 // rather than generated. The trickle in scroll.ts stays as the fallback for a
 // run with no script (see scrollStep).
 
-import { placeShip } from "./factory";
+import { placePickup, placeShip } from "./factory";
 import { activeTeams } from "./tuning";
 import {
   ARENA,
   type FormationShape,
   type LightCycle,
+  type Pickup,
+  type StageDrop,
   type StageEntry,
   type World,
 } from "./types";
@@ -78,27 +80,106 @@ const formationShips = (
   return ships;
 };
 
-/**
- * Enter every formation the stage has now reached. Runs after the tick has
- * committed, so the ships it adds fly for the first time on the next one — the
- * same deal the wave director and the trickle get.
- */
-export const stageStep = (world: World): World => {
+// Enter every formation the stage has now reached, and open a pending reward
+// for each one authored to carry a drop.
+const enterFormations = (world: World): World => {
   const script = world.config.run?.stage;
-  if (!script || world.config.format !== "scroll") return world;
-  if (world.scrollHalted || world.run?.over) return world;
-
+  if (!script) return world;
   const travelled = stageTravelled(world);
   let cursor = world.stageCursor;
   let nextId = world.ships.nextId;
   const items = [...world.ships.items];
+  const drops = [...world.stageDrops];
   while (cursor < script.entries.length) {
     const entry = script.entries[cursor];
     if (entry.at > travelled) break;
-    items.push(...formationShips(world, entry, nextId));
+    const flight = formationShips(world, entry, nextId);
+    items.push(...flight);
+    if (entry.drop !== undefined) {
+      drops.push({
+        ids: flight.map((s) => s.id),
+        kind: entry.drop,
+        x: entry.x,
+        y: world.scrollY,
+      });
+    }
     nextId += entry.count;
     cursor += 1;
   }
   if (cursor === world.stageCursor) return world;
-  return { ...world, stageCursor: cursor, ships: { items, nextId } };
+  return {
+    ...world,
+    stageCursor: cursor,
+    stageDrops: drops,
+    ships: { items, nextId },
+  };
+};
+
+/** Mean position of a formation's survivors, or null once they are all gone. */
+const survivorCentre = (
+  world: World,
+  ids: readonly number[],
+): [number, number] | null => {
+  let n = 0;
+  let sx = 0;
+  let sy = 0;
+  for (const s of world.ships.items) {
+    if (!ids.includes(s.id)) continue;
+    sx += s.x;
+    sy += s.y;
+    n += 1;
+  }
+  return n === 0 ? null : [sx / n, sy / n];
+};
+
+/**
+ * True when the formation left the field alive rather than being shot down.
+ * Ships are culled once they fall behind the window, so a formation the pilot
+ * simply flew away from vanishes the same way a destroyed one does — the last
+ * place it was seen is what tells the two apart, and a wake-side exit pays
+ * nothing. Otherwise every formation is a guaranteed power-up for dodging.
+ */
+const escaped = (d: StageDrop): boolean =>
+  d.y > ARENA.y0 + ARENA.h || d.x < 0 || d.x > ARENA.w;
+
+// Settle the pending rewards: track the survivors, and pay out where the last
+// of them died.
+const resolveDrops = (world: World): World => {
+  if (world.stageDrops.length === 0) return world;
+  const pending: StageDrop[] = [];
+  const dropped: Pickup[] = [];
+  let nextId = world.pickups.nextId;
+  for (const d of world.stageDrops) {
+    const centre = survivorCentre(world, d.ids);
+    if (centre) {
+      pending.push({ ...d, x: centre[0], y: centre[1] });
+      continue;
+    }
+    if (escaped(d)) continue;
+    dropped.push(placePickup(nextId, d.x, d.y, d.kind));
+    nextId += 1;
+  }
+  if (dropped.length === 0 && pending.length === world.stageDrops.length) {
+    return { ...world, stageDrops: pending };
+  }
+  return {
+    ...world,
+    stageDrops: pending,
+    pickups: {
+      items: [...world.pickups.items, ...dropped],
+      nextId,
+    },
+  };
+};
+
+/**
+ * Enter every formation the stage has now reached, then settle what the ones
+ * already flying owe. Runs after the tick has committed, so the ships it adds
+ * fly for the first time on the next one — the same deal the wave director and
+ * the trickle get.
+ */
+export const stageStep = (world: World): World => {
+  if (world.config.format !== "scroll") return world;
+  if (world.scrollHalted || world.run?.over) return world;
+  return resolveDrops(enterFormations(world));
 };

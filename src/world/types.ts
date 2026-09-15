@@ -131,6 +131,23 @@ export interface StageEntry {
   readonly level: number;
   readonly emitter?: Emitter; // default "aimed"
   readonly team?: string; // default: the run's first enemy team
+  // Reward for wiping the whole formation: a power-up left where the last of
+  // them died. Authored, not rolled — this is the shmup's "shoot the right big
+  // thing and it drops something", so which formation pays out is level design.
+  // A formation that escapes down-stage drops nothing.
+  readonly drop?: PickupKind;
+}
+
+/**
+ * A formation's unclaimed reward, tracked until the last of its ships is gone.
+ * `x`/`y` trail the survivors, so the drop lands where the fight ended rather
+ * than where the formation entered.
+ */
+export interface StageDrop {
+  readonly ids: readonly number[];
+  readonly kind: PickupKind;
+  readonly x: number;
+  readonly y: number;
 }
 
 /** A whole stage: entries in ascending `at` order. */
@@ -364,6 +381,14 @@ export interface Projectile extends Entity {
 // 9 muster — reinforces the collector's team with a pair of AI allies.
 // 10 drones — a short-lived escort of orbiting drones that auto-fire at enemies.
 export type PickupKind = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+
+// Names for the kinds a stage script hands out (#30) that didn't already have
+// one (MUSTER_KIND/DRONE_KIND are below). The rest are still rolled by number;
+// these exist so a formation's reward reads as a design choice in the stage
+// literal instead of a magic index.
+export const HEAL_KIND: PickupKind = 0;
+export const SHIELD_KIND: PickupKind = 1;
+export const OVERCHARGE_KIND: PickupKind = 3;
 export const PICKUP_KINDS = 9; // autobattle roll bound (kinds 0..8)
 export const ARCADE_PICKUP_KINDS = 11; // arcade roll bound (adds 9 muster, 10 drones)
 export const MUSTER_KIND = 9;
@@ -569,6 +594,9 @@ export interface World {
   // formation still to enter (#30). A cursor rather than a filter over `at`, so
   // a stage never re-spawns a formation it has already flown past.
   readonly stageCursor: number;
+  // Formation rewards still owed (#30): one per authored `drop` whose formation
+  // is still flying. Empty outside a scripted stage.
+  readonly stageDrops: readonly StageDrop[];
   readonly controlModel: ControlModel;
   readonly controlledShipId: number | null;
   // Enemy the piloted ship's fire hard-locks onto (arcade/manual). Auto-acquired

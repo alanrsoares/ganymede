@@ -417,6 +417,18 @@ export function spawnDroneBolt(
   };
 }
 
+/**
+ * Drop a power-up at an exact spot, no RNG — an authored formation's reward
+ * (#30). It sits still in stage coordinates, so it slides down the screen with
+ * everything else and has to be flown back down to.
+ */
+export const placePickup = (
+  id: number,
+  x: number,
+  y: number,
+  kind: PickupKind,
+): Pickup => ({ id, x, y, vx: 0, vy: 0, kind, bob: 0 });
+
 /** Build a drifting power-up bubble with a random kind + trajectory. */
 export function rollPickup(
   seed: Seed,
