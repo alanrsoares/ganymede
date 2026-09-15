@@ -369,6 +369,11 @@ interface FuelSource {
   dist: number;
 }
 
+// Whether an ally is a carrier still holding a shareable reserve. Only the
+// inline fallback needs this: a pre-filtered carrier list has already applied it.
+const sharesFuel = (o: LightCycle): boolean =>
+  isCarrier(o.archetype) && o.fuel > o.maxFuel * FUEL_SHARE_RESERVE;
+
 /**
  * Nearest reachable fuel source for `self`: its home base, or the closest
  * same-team carrier still holding a shareable reserve (carriers refuel allies
@@ -383,23 +388,20 @@ const nearestFuelSource = (
   self: LightCycle,
   ships: readonly LightCycle[],
   carriers?: readonly LightCycle[],
+  furniture = true,
 ): FuelSource | null => {
   let best: FuelSource | null = null;
   const consider = (x: number, y: number) => {
     const dist = Math.hypot(deltaX(self.x, x), deltaY(self.y, y));
     if (!best || dist < best.dist) best = { x, y, dist };
   };
-  const homeBase = baseByName.get(self.colorName);
+  // A stage has no home to trek back to (furniture = false); a carrier in the
+  // formation is the only top-up there is.
+  const homeBase = furniture ? baseByName.get(self.colorName) : undefined;
   if (homeBase) consider(homeBase.x, homeBase.y);
   for (const o of carriers ?? ships) {
     if (o.id === self.id || o.colorName !== self.colorName) continue;
-    // Pre-filtered list skips the per-element carrier/fuel test (already applied).
-    if (
-      !carriers &&
-      (!isCarrier(o.archetype) || o.fuel <= o.maxFuel * FUEL_SHARE_RESERVE)
-    ) {
-      continue;
-    }
+    if (!carriers && !sharesFuel(o)) continue;
     consider(o.x, o.y);
   }
   return best;
@@ -575,13 +577,18 @@ const steerCommandOrObjective = (
   baseHp: Readonly<Record<string, number>>,
   rally: RallyBeacon | null,
   carriers?: readonly LightCycle[],
+  furniture = true,
 ): [number, number] => {
   // Survival first: break for the nearest fuel source once the tank can no
   // longer safely cover the trip there (range-aware, not a fixed fraction).
-  const source = nearestFuelSource(self, ships, carriers);
+  const source = nearestFuelSource(self, ships, carriers, furniture);
   if (source && mustRefuel(self, source)) return steerFuelReturn(self, source);
   const [rx, ry] = steerRally(self, rally);
-  return rx !== 0 || ry !== 0 ? [rx, ry] : steerObjective(self, level, baseHp);
+  if (rx !== 0 || ry !== 0) return [rx, ry];
+  // The objective is the base raid and the centre pad — arena furniture. On a
+  // stage there is nothing to raid, so the flock's whole mission is the pilot,
+  // which is what stops a scroll stage reading as somebody else's team battle.
+  return furniture ? steerObjective(self, level, baseHp) : [0, 0];
 };
 
 /**
@@ -625,6 +632,9 @@ export const flockSteer = (
   // Pre-filtered fuel-capable carriers (fuelCarriers), shared across ships so the
   // nearest-fuel-source scan is O(carriers) not O(ships). Omit → inline scan.
   carriers?: readonly LightCycle[],
+  // False on a scroll stage: no bases, no pads, no portals (hasArenaFurniture),
+  // so every term that steers toward one is off.
+  furniture = true,
 ): [number, number] => {
   // Combat/mission terms first: the nearest enemy in engage range doubles as the
   // combat flag, and the objective term tells us if the ship is on a goal.
@@ -641,6 +651,7 @@ export const flockSteer = (
     baseHp,
     rally,
     carriers,
+    furniture,
   );
 
   // Committed (fighting or on a goal) → damp formation-keeping so it can't drag

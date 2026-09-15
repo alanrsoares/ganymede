@@ -6,6 +6,7 @@ import {
   spawnEmpMissile,
   spawnMissile,
 } from "~/world/factory";
+import { hasArenaFurniture } from "~/world/field";
 import { deltaX, deltaY, distSq, wrapX, wrapY } from "~/world/math";
 import { hit, killShip, type TickCtx } from "~/world/tick/context";
 import {
@@ -63,6 +64,9 @@ const nearestEnemyBaseAim = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
 ): Aim | null => {
+  // A stage flies past where the bases are (hasArenaFurniture): there is
+  // nothing out there to strafe, and firing at it lobbed bolts off the map.
+  if (!hasArenaFurniture(ctx.world)) return null;
   const range = shipFireRange(s);
   let best = range * range;
   let tx: number | null = null;
