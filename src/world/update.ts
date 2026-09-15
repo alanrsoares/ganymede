@@ -554,6 +554,8 @@ export function update(msg: Msg, world: World): World {
           space: msg.space,
         },
       };
+    case "controlModel":
+      return { ...world, controlModel: msg.model };
     case "action":
       return handleUserAction(world, msg.actionId);
     case "arcadeSkipIntermission":

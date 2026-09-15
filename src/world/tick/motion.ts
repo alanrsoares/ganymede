@@ -9,6 +9,7 @@ import {
   wrapX,
   wrapY,
 } from "~/world/math";
+import { SCROLL_RATE } from "~/world/scroll";
 import { flockSteer, fuelCarriers } from "~/world/steering";
 import {
   BOOST_MULT,
@@ -65,13 +66,22 @@ const shipCruise = (s: LightCycle, empty: boolean): number =>
     ? FUEL_DRIFT_SPEED
     : cruiseFor(s.archetype, s.level) * (s.boostTime > 0 ? BOOST_MULT : 1);
 
-const getManualSteer = (keys: World["controlKeys"]): [number, number] => {
+// The stick as a unit vector (zero when centred). Normalised, so a diagonal is
+// not a free speed bonus in either control model.
+const manualInput = (keys: World["controlKeys"]): [number, number] => {
   const ix = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
   const iy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
   if (ix === 0 && iy === 0) return [0, 0];
   const len = Math.hypot(ix, iy);
-  const force = 3.5;
-  return [(ix / len) * force, (iy / len) * force];
+  return [ix / len, iy / len];
+};
+
+/** Thrust the inertial model puts behind a fully-deflected stick. */
+const MANUAL_THRUST = 3.5;
+
+const getManualSteer = (keys: World["controlKeys"]): [number, number] => {
+  const [ix, iy] = manualInput(keys);
+  return [ix * MANUAL_THRUST, iy * MANUAL_THRUST];
 };
 
 /** Steering acceleration: none when out of fuel, else the flocking/AI steer. */
@@ -118,6 +128,65 @@ const nextPosition = (
   return { x: clampFieldX(x, r), y: clampFieldY(y, r) };
 };
 
+// Where a ship is going this step: velocity plus the heading the hull points
+// along (they part company only when a direct-control stick is centred).
+interface Velocity {
+  vx: number;
+  vy: number;
+  hx: number;
+  hy: number;
+}
+
+/**
+ * Inertial flight — every AI ship, and the pilot under the "inertial" model.
+ * Steering is thrust: it bends the existing velocity, and speed is eased back
+ * toward cruise every step, so a ship always carries momentum through a turn
+ * and never comes to a stop.
+ */
+const inertialVelocity = (
+  s: LightCycle,
+  ax: number,
+  ay: number,
+  cruise: number,
+  steps: number,
+): Velocity => {
+  const speedEase = SPEED_EASE_LVL[s.level - 1] ?? 0.08;
+  const sp = Math.hypot(s.vx, s.vy) || cruise;
+  const [hx, hy] = normalize(
+    [s.vx + ax * steps, s.vy + ay * steps],
+    [s.dx, s.dy],
+  );
+  const nextSp = lerp(sp, cruise, Math.min(1, speedEase * steps));
+  return { vx: hx * nextSp, vy: hy * nextSp, hx, hy };
+};
+
+/**
+ * Direct flight (#29) — the classic vertical shmup: the stick *is* velocity.
+ * Full speed on press, dead stop on release, nothing accumulated in between.
+ *
+ * Two details keep "stopped" honest. The heading holds when the stick is
+ * centred, so a parked hull keeps its nose where the pilot last pointed it
+ * rather than snapping to a default. And on a scroll stage the window is moving
+ * underneath, so stopped has to mean stopped *on screen*: a centred stick rides
+ * the stage at its own rate instead of sliding off the trailing edge.
+ */
+const directVelocity = (
+  s: LightCycle,
+  world: World,
+  cruise: number,
+): Velocity => {
+  const [ix, iy] = manualInput(world.controlKeys);
+  const drift =
+    world.config.format === "scroll" && !world.scrollHalted ? -SCROLL_RATE : 0;
+  const still = ix === 0 && iy === 0;
+  return {
+    vx: ix * cruise,
+    vy: iy * cruise + drift,
+    hx: still ? s.dx : ix,
+    hy: still ? s.dy : iy,
+  };
+};
+
 const advanceShip = (
   s: LightCycle,
   world: World,
@@ -135,18 +204,14 @@ const advanceShip = (
   const piloted = world.run != null && world.controlledShipId === s.id;
   const cruise = shipCruise(s, empty) * (piloted ? mods.speedMul : 1);
   const [ax, ay] = shipAccel(s, empty, world, baseHp, neighbors, carriers);
-  const bvx = s.vx + ax * steps;
-  const bvy = s.vy + ay * steps;
-  const speedEase = SPEED_EASE_LVL[s.level - 1] ?? 0.08;
-  const turnEase =
-    world.controlledShipId === s.id
-      ? 0.35
-      : (TURN_EASE_LVL[s.level - 1] ?? 0.14);
-  const sp = Math.hypot(s.vx, s.vy) || cruise;
-  const [hx, hy] = normalize([bvx, bvy], [s.dx, s.dy]);
-  const nextSp = lerp(sp, cruise, Math.min(1, speedEase * steps));
-  const vx = hx * nextSp;
-  const vy = hy * nextSp;
+  const manual = world.controlledShipId === s.id;
+  const turnEase = manual ? 0.35 : (TURN_EASE_LVL[s.level - 1] ?? 0.14);
+  // A dead engine drifts under either model — with no fuel there is no stick to
+  // be direct with, so the momentum path keeps it flotsam.
+  const { vx, vy, hx, hy } =
+    manual && !empty && world.controlModel === "direct"
+      ? directVelocity(s, world, cruise)
+      : inertialVelocity(s, ax, ay, cruise, steps);
   const beamTime = s.beamActive ? s.beamTime - steps : s.beamTime;
   return {
     ...s,
