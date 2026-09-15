@@ -9,6 +9,8 @@ import {
   DEFAULT_GRID_W,
   initArcadeWorld,
   type MatchConfig,
+  OVERCHARGE_KIND,
+  type PickupKind,
   SCROLL_RATE,
   type StageScript,
   setGridBounds,
@@ -206,4 +208,66 @@ test("an aimed formation holds fire instead", () => {
   // Same formation, same distance, no emitter — a scroll stage has no bases to
   // strafe, so an aimed ship with no target in range has nothing to shoot at.
   expect(formationBolts()).toBe(0);
+});
+
+// --- formation drops ---------------------------------------------------------
+
+const dropScript = (drop?: PickupKind): StageScript => ({
+  name: "test",
+  entries: [
+    { at: 6, x: 240, shape: "line", count: 1, hull: "scout", level: 1, drop },
+  ],
+});
+
+// Fly to the formation's entry, let it settle a few gens, then take it off the
+// field where it stands — a kill, as far as the stage is concerned.
+const wipeFormation = (drop?: PickupKind): { before: World; after: World } => {
+  let w = flyToEntry(stageWorld(dropScript(drop)));
+  for (let i = 0; i < 5; i++) w = tick(w, 1, 16 * i);
+  const shot: World = {
+    ...w,
+    ships: {
+      ...w.ships,
+      items: w.ships.items.filter((s) => s.id === w.controlledShipId),
+    },
+  };
+  return { before: w, after: tick(shot, 1, 16) };
+};
+
+test("a wiped formation leaves its reward where it died", () => {
+  const { before, after } = wipeFormation(OVERCHARGE_KIND);
+  const gained = after.pickups.items.filter(
+    (p) => !before.pickups.items.some((q) => q.id === p.id),
+  );
+  expect(gained.length).toBe(1);
+  expect(gained[0].kind).toBe(OVERCHARGE_KIND);
+  // Where the fight ended, not where the formation entered.
+  const killed = enemies(before)[0];
+  expect(gained[0].x).toBeCloseTo(killed.x, 5);
+  expect(gained[0].y).toBeCloseTo(killed.y, 5);
+});
+
+test("a formation authored without a reward leaves nothing", () => {
+  // Drops are level design: every formation paying out is the same as none of
+  // them paying out.
+  const { before, after } = wipeFormation();
+  expect(after.pickups.items.length).toBe(before.pickups.items.length);
+});
+
+test("a formation that left down-stage pays nothing", () => {
+  // Ships are culled once they fall behind the window, so a formation the pilot
+  // dodged disappears the same way a destroyed one does. The last place it was
+  // seen is what tells them apart — otherwise the reward is for surviving the
+  // stage, and flying past everything is the optimal line.
+  const w = flyToEntry(stageWorld(dropScript()));
+  const owed = (y: number): World => ({
+    ...w,
+    stageDrops: [{ ids: [9999], kind: OVERCHARGE_KIND, x: 240, y }],
+  });
+  const escaped = tick(owed(ARENA.y0 + ARENA.h + 10), 1, 16);
+  expect(escaped.pickups.items.length).toBe(w.pickups.items.length);
+  expect(escaped.stageDrops.length).toBe(0);
+
+  const killed = tick(owed(ARENA.y0 + ARENA.h * 0.5), 1, 16);
+  expect(killed.pickups.items.length).toBe(w.pickups.items.length + 1);
 });
