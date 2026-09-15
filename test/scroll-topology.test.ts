@@ -21,7 +21,7 @@ import {
 } from "~/world";
 import { inField, wrapX, wrapY } from "~/world/math";
 import { tick } from "~/world/tick";
-import { CULL_MARGIN, DEFAULT_CONFIG } from "~/world/tuning";
+import { CULL_MARGIN, DEFAULT_CONFIG, FUEL_DRIFT_SPEED } from "~/world/tuning";
 
 afterEach(() => setGridBounds(DEFAULT_GRID_W, DEFAULT_GRID_H));
 
@@ -237,6 +237,29 @@ test("scenery refills onto the live window, not back at world zero", () => {
     expect(inField(r.x, r.y)).toBe(true);
   }
   expect(w.asteroids.items.length).toBeGreaterThan(0);
+});
+
+test("the furniture's gravity is absent too, not just its picture", () => {
+  // hasArenaFurniture promises the bases/pads/portals are neither drawn nor
+  // collided with on a stage. Their gravity wells were still pulling on ships
+  // flying past world zero — an invisible tug on a stage with no bases in it.
+  let w = scrollWorld();
+  const pilot = w.ships.items[0];
+  // Just off a team base, well inside its horizon (dead centre is excluded by
+  // the well's own singularity guard, which would make this vacuous).
+  const base = TEAM_BASES[0];
+  w = {
+    ...w,
+    asteroids: { items: [], nextId: 1 },
+    ships: {
+      ...w.ships,
+      items: [{ ...pilot, x: base.x + 6, y: base.y, vx: 0, vy: 0, fuel: 0 }],
+    },
+  };
+  // Engine off, so the only thing that could add to this velocity is a well:
+  // a dead ship coasts at exactly the drift speed and no faster.
+  const flown = tick(w, 1, 16).ships.items[0];
+  expect(Math.hypot(flown.vx, flown.vy)).toBeCloseTo(FUEL_DRIFT_SPEED, 9);
 });
 
 // --- regressions caught in review ------------------------------------------
