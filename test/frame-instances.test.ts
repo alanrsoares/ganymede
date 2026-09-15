@@ -22,6 +22,7 @@ import {
   SHIELD_LAYOUT,
   SHIP_LAYOUT,
 } from "~/render/overlay/frame";
+import { fieldViewport } from "~/render/view";
 import { ARENA, initWorld, setOrbitPhase, update } from "~/world";
 
 const NOW = 5000;
@@ -36,10 +37,7 @@ const buildFrame = (
   w = update({ kind: "tick", steps, now: NOW }, w);
   setOrbitPhase(w.age);
   return createOverlay().build({
-    w: 1280,
-    h: 720,
-    gridW: ARENA.w,
-    gridH: ARENA.h,
+    cellPx: fieldViewport(1280, 720, ARENA.w, ARENA.h).scale,
     now: NOW,
     world: w,
     showHp: true,
@@ -162,10 +160,7 @@ const frameWithShrapnel = (shrapnel: number, detail?: number) => {
   }));
   const world = { ...w, projectiles: { items, nextId: 2000 } };
   return createOverlay().build({
-    w: 1280,
-    h: 720,
-    gridW: ARENA.w,
-    gridH: ARENA.h,
+    cellPx: fieldViewport(1280, 720, ARENA.w, ARENA.h).scale,
     now: NOW,
     world,
     showHp: true,

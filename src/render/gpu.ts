@@ -64,6 +64,12 @@ const FrameUniforms = d.struct({
   // Shared view-projection (world pixels → clip). Identity ortho today; a
   // camera writes a different matrix here and every pass follows.
   viewProj: d.mat4x4f,
+  // The same camera as a translation in drawing-buffer pixels. The scene passes
+  // read it through `viewProj`; the background can't — it is a fullscreen
+  // triangle in clip space with no world position to transform — so it gets the
+  // offset directly and parallaxes its layers by hand.
+  camera: d.vec2f,
+  _pad2: d.vec2f,
 });
 const Instance = d.struct({
   posSize: d.vec4f, // [cx, cy, hx, hy]
@@ -393,12 +399,23 @@ const writeFrameUniforms = (
   instances: Float32Array<ArrayBuffer>,
   instanceCount: number,
   viewProj: ViewProj,
+  camera: { x: number; y: number },
 ) => {
   const { device, canvas } = deps;
   device.queue.writeBuffer(
     deps.uniformBuffer,
     0,
-    new Float32Array([canvas.width, canvas.height, time, 0, ...viewProj]),
+    new Float32Array([
+      canvas.width,
+      canvas.height,
+      time,
+      0,
+      ...viewProj,
+      camera.x,
+      camera.y,
+      0,
+      0,
+    ]),
   );
   device.queue.writeBuffer(
     deps.instanceBuffer,
@@ -515,6 +532,7 @@ interface RenderFnDeps {
   plumePass: MeshPass;
   bloomPass: BloomPassManager;
   getView: () => ViewProj;
+  getCamera: () => { x: number; y: number };
   settings: () => QualitySettings;
 }
 
@@ -531,6 +549,7 @@ const createRenderFn =
       frame.instances,
       frame.count,
       deps.getView(),
+      deps.getCamera(),
     );
     const encoder = device.createCommandEncoder();
     encodeScenePass(encoder, deps.bloomPass, {
@@ -567,6 +586,8 @@ const createView = (canvas: HTMLCanvasElement) => {
   return {
     rebuild,
     get: (): ViewProj => viewProj,
+    /** The camera as the backdrop wants it: raw pixels, not baked into a matrix. */
+    camera: () => ({ x: camX, y: camY }),
     setCamera: (x: number, y: number) => {
       if (x === camX && y === camY) return;
       camX = x;
@@ -608,8 +629,9 @@ export const createRenderer = (
   sampler: GPUSampler,
   quality: QualityStore,
 ): Renderer => {
-  // Shared frame uniforms: resolution + time. Typed schema matches the WGSL
-  // `Uniforms { resolution: vec2f, time: f32, _pad: f32 }` (16 bytes).
+  // Shared frame uniforms: resolution + time + the view and the camera that
+  // produced it. The typed schema is the one place their sizes are decided;
+  // every WGSL `Uniforms` struct mirrors a prefix of it.
   const uniformBuffer = root.unwrap(
     root.createBuffer(FrameUniforms).$usage("uniform"),
   );
@@ -653,6 +675,7 @@ export const createRenderer = (
     view: view.get,
     render: createRenderFn({
       getView: view.get,
+      getCamera: view.camera,
       device,
       canvas,
       uniformBuffer,

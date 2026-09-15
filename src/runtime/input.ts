@@ -3,7 +3,7 @@
 // grid-dimension sync. No sim logic lives here — every handler just emits a Msg.
 
 import type { Renderer } from "~/render/gpu";
-import { screenToWorld, type ViewProj } from "~/render/view";
+import { fieldViewport, screenToWorld, type ViewProj } from "~/render/view";
 import { type Codex, mountCodex } from "~/ui/codex";
 import type { PauseMenu } from "~/ui/pauseMenu";
 import { mountShipCard } from "~/ui/shipCard";
@@ -59,10 +59,15 @@ const pointerCell = (
     canvas.clientWidth,
     canvas.clientHeight,
   );
-  return {
-    x: (p.x / canvas.width) * ARENA.w,
-    y: (p.y / canvas.height) * ARENA.h,
-  };
+  // The same cell scale the overlay drew with — the pointer and the picture
+  // have to divide by the same number or a gutter puts them out of step.
+  const { scale } = fieldViewport(
+    canvas.width,
+    canvas.height,
+    ARENA.w,
+    ARENA.h,
+  );
+  return { x: p.x / scale, y: p.y / scale };
 };
 
 // Re-derive the sim grid from the canvas aspect ratio (height locked).

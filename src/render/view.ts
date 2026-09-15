@@ -43,6 +43,39 @@ export const orthoPixels = (
     1,
   ]);
 
+/**
+ * Where the field sits inside the drawing buffer: how many pixels a cell is
+ * worth, and the margin left over on each side.
+ *
+ * One scale for both axes, which is the whole point. The all-range field is
+ * derived from the canvas aspect, so it fills any window and both axes agree
+ * anyway; a scroll stage is a fixed 480x270 and only agrees at 16:9. Stretching
+ * it to an ultrawide window would widen the play area without widening the
+ * world the formations are authored against (#30), so the leftover becomes
+ * gutter instead — the backdrop shows through it, and the field keeps its shape.
+ */
+export interface Viewport {
+  /** Drawing-buffer pixels per cell. */
+  scale: number;
+  /** Half the leftover, on each axis: the field is centred in the window. */
+  offsetX: number;
+  offsetY: number;
+}
+
+export const fieldViewport = (
+  canvasW: number,
+  canvasH: number,
+  gridW: number,
+  gridH: number,
+): Viewport => {
+  const scale = Math.min(canvasW / gridW, canvasH / gridH);
+  return {
+    scale,
+    offsetX: (canvasW - gridW * scale) / 2,
+    offsetY: (canvasH - gridH * scale) / 2,
+  };
+};
+
 /** World pixels → normalised device coords (the perspective divide included). */
 export const project = (m: ViewProj, x: number, y: number, z = 0): Vec3 => {
   const cw = m[3] * x + m[7] * y + m[11] * z + m[15];

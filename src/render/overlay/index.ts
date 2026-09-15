@@ -35,10 +35,8 @@ import { createPusher, type PushFn } from "./push";
 import { drawShips } from "./ships";
 
 export interface OverlayFrame {
-  w: number;
-  h: number;
-  gridW: number;
-  gridH: number;
+  /** Drawing-buffer pixels per cell — `fieldViewport().scale`. */
+  cellPx: number;
   now: number;
   world: World;
   showHp: boolean;
@@ -162,10 +160,12 @@ export const createOverlay = (): Overlay => {
   const { push, reset, getCount } = createPusher(bufs.instances);
 
   return {
-    build: ({ w, h, gridW, gridH, now, world, showHp, detail = 1 }) => {
+    build: ({ cellPx, now, world, showHp, detail = 1 }) => {
       reset();
-      const cellPx = w / gridW;
-      const cellPy = h / gridH;
+      // Cells are square on screen, so the two axes take the same scale. They
+      // stay separate parameters below only because every draw helper already
+      // names both; passing one value twice is the seam, not a coincidence.
+      const cellPy = cellPx;
 
       // Arena furniture — bases, portals, heal pads, the orbit ring — belongs
       // to the all-range field. A scroll stage flies past fixed structures that

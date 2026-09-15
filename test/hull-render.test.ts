@@ -186,12 +186,15 @@ const hasAdapter = await (async (): Promise<boolean> => {
 })();
 
 describe.skipIf(!hasAdapter)("headless hull rendering with vgpu", () => {
-  test.each([
-    ...SHIP_CLASSES,
-  ])("%s renders visible geometry", async (cls: ShipClass) => {
-    const view = orthoPixels(WIDTH, HEIGHT, DEPTH_SCALE);
-    expect(countVisiblePixels(await drawHull(cls, view))).toBeGreaterThan(100);
-  });
+  test.each([...SHIP_CLASSES])(
+    "%s renders visible geometry",
+    async (cls: ShipClass) => {
+      const view = orthoPixels(WIDTH, HEIGHT, DEPTH_SCALE);
+      expect(countVisiblePixels(await drawHull(cls, view))).toBeGreaterThan(
+        100,
+      );
+    },
+  );
 
   // The seam's whole point: one uniform moves every pass. Shift the view a
   // quarter screen right and the same hull draws a quarter screen right.

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  fieldViewport,
   orthoPixels,
   project,
   screenToWorld,
@@ -114,5 +115,53 @@ describe("a non-identity view moves the scene coherently", () => {
     const panned = screenToWorld(moved, 320, 180, 640, 360);
     expect(panned.x - still.x).toBeCloseTo(120, 4);
     expect(panned.y - still.y).toBeCloseTo(45, 4);
+  });
+});
+
+describe("the field viewport", () => {
+  // A scroll stage is a fixed 480x270 — 16:9 exactly, which is the case the
+  // window was built around.
+  const SW = 480;
+  const SH = 270;
+
+  test("a 16:9 window takes the whole frame, no gutter", () => {
+    const vp = fieldViewport(1920, 1080, SW, SH);
+    expect(vp.scale).toBeCloseTo(4, 6);
+    expect(vp.offsetX).toBeCloseTo(0, 6);
+    expect(vp.offsetY).toBeCloseTo(0, 6);
+  });
+
+  test("an ultrawide window pillarboxes rather than stretching", () => {
+    // 21:9. The old rule (width / gridW) would have scaled x by 5.25 and y by
+    // 4, widening the play area past the world the formations sit in.
+    const vp = fieldViewport(2520, 1080, SW, SH);
+    expect(vp.scale).toBeCloseTo(4, 6);
+    expect(vp.offsetX).toBeCloseTo(300, 6);
+    expect(vp.offsetY).toBeCloseTo(0, 6);
+  });
+
+  test("a tall window letterboxes the same way", () => {
+    const vp = fieldViewport(1920, 1440, SW, SH);
+    expect(vp.scale).toBeCloseTo(4, 6);
+    expect(vp.offsetY).toBeCloseTo(180, 6);
+    expect(vp.offsetX).toBeCloseTo(0, 6);
+  });
+
+  test("the all-range field still fills any window", () => {
+    // Its extent is derived from the canvas aspect (height locked to 270), so
+    // there is nothing left over to gutter — this is the no-op case the change
+    // has to stay, or every autobattle frame would shrink.
+    for (const [w, h] of [
+      [1920, 1080],
+      [2520, 1080],
+      [1024, 768],
+    ]) {
+      const gridH = 270;
+      const gridW = Math.round(gridH * ((w ?? 1) / (h ?? 1)));
+      const vp = fieldViewport(w ?? 1, h ?? 1, gridW, gridH);
+      // Rounding the grid to whole cells leaves at most half a cell over.
+      expect(vp.offsetX).toBeLessThan(vp.scale / 2);
+      expect(vp.offsetY).toBeLessThan(vp.scale / 2);
+    }
   });
 });
