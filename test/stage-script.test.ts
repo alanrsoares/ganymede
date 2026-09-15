@@ -135,16 +135,26 @@ test("a vee trails its wings", () => {
 });
 
 test("a wide formation authored at the edge stays inside the corridor", () => {
+  // The whole formation slides inward; clamping each ship to the edge instead
+  // would stack the outer three on one x and lose the shape that was authored.
   const edge: StageScript = {
     name: "test",
     entries: [
       { at: 60, x: 6, shape: "line", count: 5, hull: "scout", level: 1 },
     ],
   };
-  for (const s of enemies(flyToEntry(stageWorld(edge)))) {
-    expect(s.x).toBeGreaterThanOrEqual(0);
-    expect(s.x).toBeLessThanOrEqual(ARENA.w);
+  const xs = enemies(flyToEntry(stageWorld(edge)))
+    .map((s) => s.x)
+    .sort((a, b) => a - b);
+  expect(xs.length).toBe(5);
+  for (const x of xs) {
+    expect(x).toBeGreaterThanOrEqual(0);
+    expect(x).toBeLessThanOrEqual(ARENA.w);
   }
+  const gap = xs[1] - xs[0];
+  expect(gap).toBeGreaterThan(0);
+  for (let i = 1; i < xs.length; i++)
+    expect(xs[i] - xs[i - 1]).toBeCloseTo(gap, 9);
 });
 
 test("a script does nothing outside a scroll stage", () => {

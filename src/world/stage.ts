@@ -50,9 +50,26 @@ const formationOffset = (
 /** Cells of stage flown so far. Forward is -y, so travel is a falling scrollY. */
 export const stageTravelled = (world: World): number => -world.scrollY;
 
+/** Margin kept between a formation's outermost ship and the corridor edge. */
+const EDGE_MARGIN = 8;
+
+/**
+ * Slide the whole formation inside the corridor rather than clamping each ship
+ * to the edge: a per-ship clamp stacks the outer ships on one x and throws away
+ * the spacing the shape was authored for.
+ */
+const formationCentre = (entry: StageEntry, offsets: [number, number][]) => {
+  const xs = offsets.map(([ox]) => ox);
+  const lo = EDGE_MARGIN - Math.min(...xs);
+  const hi = ARENA.w - EDGE_MARGIN - Math.max(...xs);
+  // A formation wider than the corridor can't fit; centre it and let the edges
+  // spill rather than pinning it to one side.
+  if (hi < lo) return (lo + hi) / 2;
+  return Math.min(hi, Math.max(lo, entry.x));
+};
+
 // Build one formation's ships. They enter nose-down (+y) — pointed at the
-// pilot, who is flying up-stage at them — and are clamped inside the field
-// width so a wide formation authored near an edge doesn't muster off-screen.
+// pilot, who is flying up-stage at them.
 const formationShips = (
   world: World,
   entry: StageEntry,
@@ -61,10 +78,14 @@ const formationShips = (
   const teams = activeTeams(world.config);
   const name = entry.team ?? world.config.run?.enemyTeams[0];
   const team = teams.find((t) => t.name === name) ?? teams[teams.length - 1];
+  const offsets: [number, number][] = [];
+  for (let i = 0; i < entry.count; i++)
+    offsets.push(formationOffset(entry.shape, i, entry.count));
+  const centre = formationCentre(entry, offsets);
   const ships: LightCycle[] = [];
   for (let i = 0; i < entry.count; i++) {
-    const [ox, oy] = formationOffset(entry.shape, i, entry.count);
-    const x = Math.min(ARENA.w - 8, Math.max(8, entry.x + ox));
+    const [ox, oy] = offsets[i];
+    const x = centre + ox;
     const y = world.scrollY - FORM_AHEAD + oy;
     const ship = placeShip(
       firstId + i,
