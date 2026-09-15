@@ -20,6 +20,7 @@ import {
   createResizeSync,
   createStarters,
   handleArcadeEnd,
+  handleFlipBanner,
   handleMatchEnd,
   initLoopState,
   type Sim,
@@ -69,9 +70,12 @@ const ATTRACT_CONFIG: MatchConfig = {
 const canvas = document.getElementById("gpu-canvas") as HTMLCanvasElement;
 
 // Soundtrack scene from game state: pre-game screens → menu bed, a live match →
-// battle or arcade.
+// battle or arcade. The flip beat (#31) takes the battle bed regardless of the
+// run it is inside: act two *is* the all-range game, and the crossfade
+// `setScene` already does is the audio half of the gear change — the corridor's
+// bed pulls back as the scroll brakes and comes back when it resumes.
 const sceneFor = (world: World, inMatch: boolean): Scene =>
-  !inMatch ? "menu" : world.run ? "arcade" : "battle";
+  !inMatch ? "menu" : world.flip ? "battle" : world.run ? "arcade" : "battle";
 
 // Acquire the GPU device/context, wire up the "device lost" surface, and build
 // the renderer. Split out of `main` purely to keep that function short.
@@ -345,6 +349,7 @@ const startRuntime = (
     );
     updateScreenShake(canvas, sim.world, now, loopState, gfx.shake);
     updateHud(ui, sim.world);
+    handleFlipBanner(sim.world, ui, loopState);
     // Surface (or dismiss) the arcade augment offer from live sim state.
     augmentOffer.sync(sim.world.run?.offer ?? null);
     // setScene is idempotent, so calling it each frame is fine.

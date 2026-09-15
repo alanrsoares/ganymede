@@ -67,6 +67,10 @@ export interface TickCtx {
   spawnedDrones: Omit<Drone, "id">[]; // escort drones queued by a drone pickup
   burstAt: BurstSpec[];
   removed: Set<number>;
+  // Enemies of the run's team destroyed this tick. Counted where they die, so a
+  // ship that leaves the field any other way — culled off a scroll stage, lost
+  // to the field cap — is not a kill.
+  kills: number;
 }
 
 export const createTickCtx = (
@@ -89,6 +93,7 @@ export const createTickCtx = (
   spawnedDrones: [],
   burstAt: [],
   removed: new Set<number>(),
+  kills: 0,
 });
 
 export function replace(ctx: TickCtx) {
@@ -105,6 +110,12 @@ export function replace(ctx: TickCtx) {
 }
 
 export function killShip(ctx: TickCtx, s: Mutable<LightCycle>) {
+  // The run's kill count, banked at the one place a ship is actually destroyed.
+  // The wave director used to infer it from a drop in the live enemy count,
+  // which a scroll stage has no version of — its enemies fly off the bottom of
+  // the window as often as they blow up, and nothing there counts waves.
+  const team = ctx.world.config.run?.playerTeam;
+  if (team !== undefined && s.colorName !== team) ctx.kills += 1;
   ctx.burstAt.push({
     x: Math.floor(s.x),
     y: Math.floor(s.y),

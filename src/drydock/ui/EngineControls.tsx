@@ -24,7 +24,7 @@ const EngineRow = ({
       <StackItem size="fill">
         <div className="engine-card__title">
           <Text type="label">engine {index + 1}</Text>
-          <span>plume anchor</span>
+          <span className="engine-card__anchor">plume anchor</span>
         </div>
       </StackItem>
       {removable && (

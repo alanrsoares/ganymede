@@ -28,6 +28,11 @@ const scriptConfig = (
 ): MatchConfig => ({
   ...DEFAULT_CONFIG,
   format,
+  // What the lobby launches a run with. Without it the autobattle replacement
+  // rule is still live, and a long enough flight musters a reinforcement no
+  // player would ever see — counting ids then measures the fixture, not the
+  // script.
+  reinforceGens: 0,
   run: {
     playerRole: "pilot",
     difficulty: "normal",
@@ -96,7 +101,10 @@ test("a formation enters once and only once", () => {
   const entered = flyToEntry(stageWorld(oneLine));
   const later = fly(entered, 400);
   expect(later.stageCursor).toBe(1);
-  expect(later.ships.nextId).toBe(entered.ships.nextId);
+  // Hostile ids stop at the three the line issued; anything drawn after that
+  // belongs to the pilot's own respawn.
+  const ids = enemies(later).map((s) => s.id);
+  for (const id of ids) expect(id).toBeLessThan(entered.ships.nextId);
 });
 
 test("the cursor survives a tick", () => {
@@ -107,9 +115,16 @@ test("the cursor survives a tick", () => {
 
 test("a script replaces the placeholder trickle", () => {
   // Long enough to cross several trickle beats (SCROLL_SPAWN_GENS): a scripted
-  // stage's population is exactly what was authored, nothing more.
-  const flown = fly(stageWorld(oneLine), 400);
-  expect(flown.ships.nextId).toBe(stageWorld(oneLine).ships.nextId + 3);
+  // stage's opposition is exactly what was authored, nothing more. Counted as
+  // hostile ids ever seen rather than raw ids issued, since the pilot's own
+  // respawn draws ids too and has nothing to do with the script.
+  let w = stageWorld(oneLine);
+  const seen = new Set<number>();
+  for (let i = 0; i < Math.ceil(400 / SCROLL_RATE); i++) {
+    w = tick(w, 1, 16 * i);
+    for (const s of enemies(w)) seen.add(s.id);
+  }
+  expect(seen.size).toBe(3);
 });
 
 test("a line forms up abreast, ahead of the window", () => {

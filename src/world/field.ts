@@ -60,10 +60,17 @@ export const syncField = (world: FieldInputs): void => {
   ARENA.y0 = world.scrollY;
   ARENA.w = SCROLL_FIELD_W;
   ARENA.h = DEFAULT_GRID_H;
-  // The flip beat: the arena closes back into a torus in place.
-  ARENA.wrapX = world.flip !== null;
-  ARENA.wrapY = world.flip !== null;
+  // The flip beat: the arena closes back into a torus in place. Only while the
+  // beat is actually being fought — the phases either side of it are the
+  // corridor braking and winding back up, and a moving window with the wraps on
+  // would fold ships across edges that are still sliding.
+  ARENA.wrapX = inArena(world);
+  ARENA.wrapY = inArena(world);
 };
+
+/** True while the flip's torus is up: the fight phase, and nothing either side. */
+const inArena = (world: { flip?: World["flip"] }): boolean =>
+  world.flip?.phase === "fight";
 
 /**
  * True while the arena's ring of furniture — team bases, the centre pad,
@@ -73,7 +80,7 @@ export const syncField = (world: FieldInputs): void => {
  * corridor has none of them — it flies past where they would be.
  */
 export const hasArenaFurniture = (world: FurnitureInputs): boolean =>
-  world.config.format !== "scroll" || world.flip != null;
+  world.config.format !== "scroll" || inArena(world);
 
 type FurnitureInputs = {
   config: { format: MatchConfig["format"] };

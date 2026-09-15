@@ -195,14 +195,31 @@ export interface StageScript {
 }
 
 /**
- * The flip beat while it is up. Non-null is the whole signal: the scroll holds,
- * the field wraps, and the arena's furniture comes back (see field.ts). The
- * easing and the audio crossfade the beat is owed hang off this too.
+ * Which part of the beat is playing. The topology swap is instant — it is six
+ * numbers on ARENA — but a cut straight from full scroll into a torus reads as
+ * the game losing its place rather than changing gear (#32). So the corridor
+ * eases to a stop first and eases back up afterwards, and only the middle
+ * phase is the arena:
+ *
+ *   halt   — scroll decelerating, still a corridor, banner up, ambush unplanted
+ *   fight  — scroll stopped, both axes wrapping, furniture back, ambush flying
+ *   resume — scroll accelerating, a corridor again, nothing left to wait on
+ */
+export type FlipPhase = "halt" | "fight" | "resume";
+
+/**
+ * The flip beat while it is up. Non-null is the whole signal that the corridor
+ * is not running at rate; `phase` says how much of the arena is up with it —
+ * the field wraps and the furniture comes back for "fight" only (see field.ts).
  */
 export interface FlipState {
-  readonly gens: number; // generations since the beat opened
+  readonly phase: FlipPhase;
+  readonly gens: number; // generations since the current phase began
   readonly maxGens: number; // failsafe cap, copied from the script
   readonly banner: string;
+  // The ambush, carried from the script so it can be planted when the halt
+  // lands rather than while the window is still sliding under it.
+  readonly spawns: readonly FlipSpawn[];
   // Ships the beat is waiting on. The beat closes when none of them are left
   // alive — tracked by id rather than by counting hostiles so a stray survivor
   // from the corridor can't hold act two open.

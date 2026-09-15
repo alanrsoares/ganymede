@@ -16,6 +16,7 @@ import {
   initWorld,
   type MatchConfig,
   type Msg,
+  type RunState,
   setOrbitPhase,
   type World,
 } from "~/world";
@@ -45,6 +46,10 @@ export interface LoopState {
   prevAge: number;
   deployRemaining: number; // launch-fleet ships still to muster in
   deployTimer: number; // seconds until the next muster spawn
+  // The flip banner this loop put on screen ("" = the banner is someone
+  // else's). Kept so the beat only ever clears a line it wrote itself and can
+  // never wipe a win/game-over banner out from under its timeout.
+  flipBanner: string;
 }
 
 export const initLoopState = (): LoopState => ({
@@ -55,6 +60,7 @@ export const initLoopState = (): LoopState => ({
   prevAge: 0,
   deployRemaining: 0,
   deployTimer: 0,
+  flipBanner: "",
 });
 
 // Advance the fixed-timestep sim by however many ticks have accumulated, and
@@ -154,6 +160,34 @@ export const handleArcadeEnd = (
   }
 };
 
+// How far into the fight the beat's line stays up, in generations. It announces
+// the gear change; once the ambush is being shot at, it is in the way.
+const FLIP_BANNER_HOLD_GENS = 90;
+
+/** The line the flip beat wants on screen this frame ("" = none). */
+const flipBannerText = (world: World): string => {
+  const flip = world.flip;
+  if (!flip || world.run?.over) return "";
+  // Up for the whole brake, so the line lands with the stop rather than after
+  // it, then held briefly into act two.
+  const showing =
+    flip.phase === "halt" ||
+    (flip.phase === "fight" && flip.gens < FLIP_BANNER_HOLD_GENS);
+  return showing ? flip.banner : "";
+};
+
+// The flip beat's announcement (#31): the banner half of the punctuation the
+// hard cut shipped without. Driven off the live world rather than a timeout,
+// so it follows the beat if the brake is interrupted or the run ends under it.
+export const handleFlipBanner = (world: World, ui: Ui, state: LoopState) => {
+  const text = flipBannerText(world);
+  if (text === state.flipBanner) return;
+  // Only ever write over our own line: a win/game-over banner owns the slot
+  // while its timeout runs, and this must not step on it.
+  if (text || ui.banner.val === state.flipBanner) ui.banner.val = text;
+  state.flipBanner = text;
+};
+
 // Build this frame's instance buffers from the World and hand them to the GPU
 // renderer.
 export const buildAndRender = (
@@ -218,18 +252,20 @@ export const updateScreenShake = (
 
 // The HUD status/phase line for the current world (arcade wave/lives, autobattle
 // reinforce/sudden-death, or endless).
+const getRunPhaseText = (world: World, a: RunState): string => {
+  if (a.over) return "game over";
+  const tier = augmentTier(a.augments);
+  const mk = tier > 0 ? ` · Mk ${tier}` : ""; // prestige readout past L5
+  const w = a.waves;
+  if (w) return `wave ${w.wave} · ${w.waveRemaining + w.pending} enemies${mk}`;
+  // No wave director (a scroll stage) → the wave counter has nothing to say,
+  // and with no scoreboard beside it the run's own points belong here.
+  const points = world.score[world.config.run?.playerTeam ?? ""] ?? 0;
+  return `${points} pts · ${a.kills} kills${mk}`;
+};
+
 const getHudPhaseText = (world: World): string => {
-  const a = world.run;
-  if (a) {
-    const tier = augmentTier(a.augments);
-    const mk = tier > 0 ? ` · Mk ${tier}` : ""; // prestige readout past L5
-    const w = a.waves;
-    if (a.over) return "game over";
-    // No wave director (a scroll stage) → the wave counter has nothing to say.
-    return w
-      ? `wave ${w.wave} · ${w.waveRemaining + w.pending} enemies${mk}`
-      : `${a.kills} kills${mk}`;
-  }
+  if (world.run) return getRunPhaseText(world, world.run);
   if (world.winner) return "match over";
   if (world.config.format === "endless") return "endless";
   const remain = world.config.reinforceGens - world.age;
@@ -294,6 +330,7 @@ export const createStarters = (sim: Sim, ui: Ui, loopState: LoopState) => {
     reset(cfg);
     ui.hudTitle.val = "Autobattle";
     ui.setSimKnobsHidden(false);
+    ui.setScoreHidden(false);
     loopState.deployRemaining = cfg.initialShips;
     loopState.deployTimer = DEPLOY_INTERVAL_S;
   };
@@ -305,6 +342,9 @@ export const createStarters = (sim: Sim, ui: Ui, loopState: LoopState) => {
     const diff = cfg.run?.difficulty ?? "normal";
     ui.hudTitle.val = `Arcade · ${diff[0].toUpperCase()}${diff.slice(1)}`;
     ui.setSimKnobsHidden(true);
+    // A stage is flown against a script, not against rival teams: the board
+    // would rank four colours where only two are ever on the field.
+    ui.setScoreHidden(cfg.format === "scroll");
     loopState.deployRemaining = 0;
     loopState.deployTimer = 0;
   };

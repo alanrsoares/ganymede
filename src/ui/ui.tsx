@@ -103,6 +103,10 @@ export interface Ui {
   // Hide the sim-tuning knobs (tempo/reinforce). In arcade these are fixed by
   // the wave phase, so the player doesn't get to tune them.
   setSimKnobsHidden: (hidden: boolean) => void;
+  // Hide the team scoreboard. A scroll stage is one pilot against a script —
+  // its "teams" are only there because every ship needs a colour — so ranking
+  // them is chrome that says nothing.
+  setScoreHidden: (hidden: boolean) => void;
 }
 
 const HUD_LIVE = "mt-1 text-[12px] text-[#a9e8d6]";
@@ -890,6 +894,7 @@ const View = ({
   controlledShip,
   chromeHidden,
   simKnobsHidden,
+  scoreHidden,
 }: {
   cfg: UiConfig;
   status: Signal<string>;
@@ -905,6 +910,7 @@ const View = ({
   controlledShip: Signal<LightCycle | null>;
   chromeHidden: Signal<boolean>;
   simKnobsHidden: Signal<boolean>;
+  scoreHidden: Signal<boolean>;
 }) => {
   const bump = useScoreBump(score, cfg.teams);
   return (
@@ -922,13 +928,17 @@ const View = ({
           directOn={directOn}
           simKnobsHidden={simKnobsHidden}
         />
-        <ScoreBox
-          cfg={cfg}
-          score={score}
-          bump={bump}
-          counts={counts}
-          activeTeamCount={activeTeamCount}
-        />
+        {/* A scroll stage has no teams to rank — one pilot flying against
+            whatever the script sends — so the board goes away there. */}
+        <ChromeGate hidden={scoreHidden}>
+          <ScoreBox
+            cfg={cfg}
+            score={score}
+            bump={bump}
+            counts={counts}
+            activeTeamCount={activeTeamCount}
+          />
+        </ChromeGate>
         <Banner banner={banner} />
         <ManualPanel controlledShip={controlledShip} />
         <ControlsInfoPanel />
@@ -954,6 +964,7 @@ const createUiSignals = (cfg: UiConfig) => ({
   controlledShip: signal<LightCycle | null>(null),
   chromeHidden: signal(false),
   simKnobsHidden: signal(false),
+  scoreHidden: signal(false),
 });
 
 export const mountUi = (cfg: UiConfig): Ui => {
@@ -969,8 +980,9 @@ export const mountUi = (cfg: UiConfig): Ui => {
     </AstryxRoot>,
   );
 
-  // The three the loop drives through setters instead of raw signals.
-  const { error, chromeHidden, simKnobsHidden, ...ports } = signals;
+  // The four the loop drives through setters instead of raw signals.
+  const { error, chromeHidden, simKnobsHidden, scoreHidden, ...ports } =
+    signals;
   return {
     ...ports,
     showError: (message) => {
@@ -981,6 +993,9 @@ export const mountUi = (cfg: UiConfig): Ui => {
     },
     setSimKnobsHidden: (hidden) => {
       simKnobsHidden.val = hidden;
+    },
+    setScoreHidden: (hidden) => {
+      scoreHidden.val = hidden;
     },
   };
 };

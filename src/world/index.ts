@@ -7,9 +7,13 @@ export {
 export { initArcadeWorld, initWorld } from "./init";
 export {
   advanceScroll,
+  FLIP_HALT_GENS,
+  FLIP_RESUME_GENS,
   SCROLL_FIELD_W,
   SCROLL_RATE,
   SCROLL_SPAWN_GENS,
+  scrollFactor,
+  scrollSpeed,
   scrollStep,
 } from "./scroll";
 export { stageStep, stageTravelled } from "./stage";
