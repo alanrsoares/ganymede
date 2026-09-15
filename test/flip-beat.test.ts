@@ -9,6 +9,8 @@ import {
   CENTER_PAD,
   DEFAULT_GRID_H,
   DEFAULT_GRID_W,
+  FLIP_HALT_GENS,
+  FLIP_RESUME_GENS,
   hasArenaFurniture,
   hasBaseObjective,
   initArcadeWorld,
@@ -65,8 +67,8 @@ const flipWorld = (stage: StageScript = withFlip()): World => {
   };
 };
 
-/** Tick until the beat is up (or give up), so a test can inspect act two. */
-const flyToFlip = (w: World, limit = 2000): World => {
+/** Tick until the beat claims the stage: the brake, before any of the arena. */
+const flyToHalt = (w: World, limit = 2000): World => {
   let out = w;
   for (let i = 0; i < limit; i++) {
     out = tick(out, 1, 16 * i);
@@ -75,18 +77,28 @@ const flyToFlip = (w: World, limit = 2000): World => {
   throw new Error("the flip never opened");
 };
 
+/** Tick on through the brake, so a test can inspect act two itself. */
+const flyToFight = (w: World, limit = 2000): World => {
+  let out = flyToHalt(w, limit);
+  for (let i = 0; i < limit; i++) {
+    if (out.flip?.phase === "fight") return out;
+    out = tick(out, 1, 16 * i);
+  }
+  throw new Error("the brake never landed");
+};
+
 test("the scroll halts at the authored distance", () => {
-  const open = flyToFlip(flipWorld());
+  const open = flyToFight(flipWorld());
   expect(open.flip?.banner).toBe("ALL-RANGE MODE");
   // Forward is -y, so travelled is -scrollY; the beat opens the tick it is
-  // reached and the stage holds there.
+  // reached and the stage brakes to a stop just past it.
   expect(-open.scrollY).toBeGreaterThanOrEqual(beat.at);
   const held = tick(open, 30, 16);
   expect(held.scrollY).toBeCloseTo(open.scrollY, 9);
 });
 
 test("the window closes into exactly today's arena, in place", () => {
-  const open = flyToFlip(flipWorld());
+  const open = flyToFight(flipWorld());
   expect(ARENA).toMatchObject({
     x0: 0,
     y0: open.scrollY,
@@ -98,7 +110,7 @@ test("the window closes into exactly today's arena, in place", () => {
 });
 
 test("the ambush is waiting inside the window, not beyond it", () => {
-  const open = flyToFlip(flipWorld());
+  const open = flyToFight(flipWorld());
   const ids = open.flip?.ids ?? [];
   expect(ids).toHaveLength(3);
   for (const s of open.ships.items.filter((s) => ids.includes(s.id))) {
@@ -110,7 +122,7 @@ test("the ambush is waiting inside the window, not beyond it", () => {
 });
 
 test("the ring of furniture re-centres on the window", () => {
-  const open = flyToFlip(flipWorld());
+  const open = flyToFight(flipWorld());
   // The arena's centre pad is the star everything orbits. On a stage it sits a
   // stage-length away; during the beat it is back in the middle of the screen.
   expect(CENTER_PAD.y).toBeCloseTo(open.scrollY + DEFAULT_GRID_H / 2, 0);
@@ -120,7 +132,7 @@ test("the ring of furniture re-centres on the window", () => {
 });
 
 test("wiping the ambush resumes the corridor where it stopped", () => {
-  const open = flyToFlip(flipWorld());
+  const open = flyToFight(flipWorld());
   const ids = open.flip?.ids ?? [];
   const wiped: World = {
     ...open,
@@ -129,23 +141,36 @@ test("wiping the ambush resumes the corridor where it stopped", () => {
       items: open.ships.items.filter((s) => !ids.includes(s.id)),
     },
   };
+  // The torus opens back into a corridor the moment the fight is settled...
   const resumed = tick(wiped, 1, 16);
-  expect(resumed.flip).toBeNull();
-  expect(resumed.scrollY).toBeCloseTo(open.scrollY - SCROLL_RATE, 9);
+  expect(resumed.flip?.phase).toBe("resume");
   expect(ARENA.wrapY).toBe(false);
+
+  // ...and the corridor winds back up to rate rather than snapping to it, so
+  // the wind-up covers less ground than a full-rate run of the same length.
+  let out = resumed;
+  for (let i = 0; i < FLIP_RESUME_GENS; i++) out = tick(out, 1, 16 * i);
+  expect(out.flip).toBeNull();
+  const travelled = open.scrollY - out.scrollY;
+  expect(travelled).toBeGreaterThan(0);
+  expect(travelled).toBeLessThan(SCROLL_RATE * FLIP_RESUME_GENS);
+  // Back at full rate once the beat is done with.
+  const after = tick(out, 1, 16);
+  expect(after.scrollY).toBeCloseTo(out.scrollY - SCROLL_RATE, 9);
 });
 
 test("the failsafe cap ends a beat nothing can finish", () => {
-  const open = flyToFlip(flipWorld());
+  const open = flyToFight(flipWorld());
   // Nobody touches the ambush: only the cap can close this.
   let out = open;
-  for (let i = 0; i < beat.maxGens + 2; i++) out = tick(out, 1, 16 * i);
+  const span = beat.maxGens + FLIP_RESUME_GENS + 2;
+  for (let i = 0; i < span; i++) out = tick(out, 1, 16 * i);
   expect(out.flip).toBeNull();
   expect(out.scrollY).toBeLessThan(open.scrollY);
 });
 
 test("a beat plays once — the cursor never rereads it", () => {
-  const open = flyToFlip(flipWorld());
+  const open = flyToFight(flipWorld());
   expect(open.flipCursor).toBe(1);
   let out = open;
   for (let i = 0; i < beat.maxGens + 600; i++) out = tick(out, 1, 16 * i);
@@ -157,9 +182,11 @@ test("the corridor ahead is cleared, so nothing wraps in from nowhere", () => {
   // A formation forms up beyond the leading edge, inside the cull margin — it
   // is out of shot but still alive. With both axes closing it would otherwise
   // fold in from the opposite edge, a ship materialising on screen with no
-  // run-in. Flown up to the tick before the beat, then given a straggler.
-  let w = flipWorld();
-  while (-w.scrollY < beat.at) w = tick(w, 1, 16);
+  // run-in. Flown to the last tick of the brake — the corridor is cleared when
+  // the topology actually closes, not when the beat is claimed — then given a
+  // straggler ahead of the window and one in the wake.
+  let w = flyToHalt(flipWorld());
+  while ((w.flip?.gens ?? 0) < FLIP_HALT_GENS - 1) w = tick(w, 1, 16);
   const pilot = w.ships.items[0];
   const ahead = { ...pilot, id: 900, colorName: "orange", y: w.scrollY - 40 };
   const wake = { ...pilot, id: 901, colorName: "orange", y: w.scrollY + 300 };
@@ -169,7 +196,7 @@ test("the corridor ahead is cleared, so nothing wraps in from nowhere", () => {
     16,
   );
 
-  expect(open.flip).not.toBeNull();
+  expect(open.flip?.phase).toBe("fight");
   const ids = open.ships.items.map((s) => s.id);
   expect(ids).not.toContain(900);
   expect(ids).not.toContain(901);
@@ -182,24 +209,27 @@ test("a formation cleared for the beat owes no reward", () => {
   // Its ships were never shot down — the beat made room for itself. The wake
   // test in `escaped` can't catch this one: the formation was *ahead* of the
   // window, so without dropping the debt it pays out for nothing.
-  const w = flipWorld({
-    name: "test",
-    entries: [
-      {
-        // Late enough that it is still forming up beyond the leading edge when
-        // the beat opens at 60.
-        at: 58,
-        x: 240,
-        shape: "line",
-        count: 3,
-        hull: "scout",
-        level: 1,
-        drop: OVERCHARGE_KIND,
-      },
-    ],
-    flips: [beat],
-  });
-  const open = flyToFlip(w);
+  //
+  // Planted by hand at the last tick of the brake: an authored formation has
+  // the whole brake to fly into shot, and one that arrives in time is act two's
+  // cast rather than something the beat cleared.
+  let w = flyToHalt(flipWorld());
+  while ((w.flip?.gens ?? 0) < FLIP_HALT_GENS - 1) w = tick(w, 1, 16);
+  const pilot = w.ships.items[0];
+  const ahead = { ...pilot, id: 900, colorName: "orange", y: w.scrollY - 40 };
+  const open = tick(
+    {
+      ...w,
+      ships: { items: [...w.ships.items, ahead], nextId: 901 },
+      stageDrops: [
+        { ids: [900], kind: OVERCHARGE_KIND, x: ahead.x, y: ahead.y },
+      ],
+    },
+    1,
+    16,
+  );
+  expect(open.flip?.phase).toBe("fight");
+  expect(open.ships.items.map((s) => s.id)).not.toContain(900);
   expect(open.stageDrops).toHaveLength(0);
 
   // Wipe the ambush and let the corridor resume: the debt stays settled, and
@@ -213,13 +243,13 @@ test("a formation cleared for the beat owes no reward", () => {
       items: open.ships.items.filter((s) => !ids.includes(s.id)),
     },
   };
-  for (let i = 0; i < 20; i++) out = tick(out, 1, 16 * i);
+  for (let i = 0; i < FLIP_RESUME_GENS + 2; i++) out = tick(out, 1, 16 * i);
   expect(out.flip).toBeNull();
   expect(out.stageDrops).toHaveLength(0);
 });
 
 test("a beat still closes if the script goes away under it", () => {
-  const open = flyToFlip(flipWorld());
+  const open = flyToFight(flipWorld());
   // Same run, script dropped mid-beat. Closing must not need it: a held scroll
   // with no way back to the corridor is a hung run.
   const ids = open.flip?.ids ?? [];
@@ -232,7 +262,10 @@ test("a beat still closes if the script goes away under it", () => {
       items: open.ships.items.filter((s) => !ids.includes(s.id)),
     },
   };
-  expect(tick(orphaned, 1, 16).flip).toBeNull();
+  let out = tick(orphaned, 1, 16);
+  expect(out.flip?.phase).toBe("resume");
+  for (let i = 0; i < FLIP_RESUME_GENS; i++) out = tick(out, 1, 16 * i);
+  expect(out.flip).toBeNull();
 });
 
 test("a stage with no flips never leaves the corridor", () => {

@@ -10,7 +10,7 @@ import {
   wrapX,
   wrapY,
 } from "~/world/math";
-import { SCROLL_RATE } from "~/world/scroll";
+import { scrollSpeed } from "~/world/scroll";
 import { flockSteer, fuelCarriers } from "~/world/steering";
 import {
   BOOST_MULT,
@@ -178,8 +178,9 @@ const directVelocity = (
   cruise: number,
 ): Velocity => {
   const [ix, iy] = manualInput(world.controlKeys);
-  const drift =
-    world.config.format === "scroll" && !world.flip ? -SCROLL_RATE : 0;
+  // Whatever the stage is doing this tick, including the part-rate easing at
+  // either end of a flip beat — a brake the pilot has to fight is not a stop.
+  const drift = -scrollSpeed(world);
   const still = ix === 0 && iy === 0;
   return {
     vx: ix * cruise,

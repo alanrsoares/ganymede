@@ -10,7 +10,7 @@
 import { nextInt, nextRange } from "~/engine/rng";
 import { rollShip } from "./factory";
 import { activeTeams, MAX_ENEMY_SHIPS, SPAWN_INVULN_GENS } from "./tuning";
-import { ARENA, type World } from "./types";
+import { ARENA, type FlipState, type World } from "./types";
 
 /**
  * Playfield width for a scroll stage, in cells — fixed, not derived from the
@@ -29,13 +29,53 @@ export const SCROLL_FIELD_W = 480;
 export const SCROLL_RATE = 0.6;
 
 /**
- * Advance the stage. A halted scroll (the flip beat) holds its position, and
- * anything that is not a scroll stage has nowhere to advance to.
+ * Generations the corridor spends braking into a beat, and getting back up to
+ * rate afterwards. The stop is the punctuation the flip is owed (#31): the
+ * topology swap itself is instant, but a cut from full scroll straight into a
+ * torus reads as a dropped frame rather than a gear change. Roughly half a
+ * second each at the default tempo — long enough to feel deliberate, short
+ * enough that the pilot is never waiting on it.
+ */
+export const FLIP_HALT_GENS = 36;
+export const FLIP_RESUME_GENS = 30;
+
+/** Ease in and out rather than ramp: a linear brake still lands with a corner. */
+const smoothstep = (t: number): number => t * t * (3 - 2 * t);
+
+/**
+ * Fraction of full scroll rate the stage runs at this tick. 1 in the corridor,
+ * 0 in the fight, and easing between the two across the beat's outer phases.
+ */
+export const scrollFactor = (flip: FlipState | null): number => {
+  if (!flip) return 1;
+  switch (flip.phase) {
+    case "fight":
+      return 0;
+    case "halt":
+      return 1 - smoothstep(Math.min(1, flip.gens / FLIP_HALT_GENS));
+    case "resume":
+      return smoothstep(Math.min(1, flip.gens / FLIP_RESUME_GENS));
+  }
+};
+
+/**
+ * Cells of stage the window climbs per generation, right now. The one answer
+ * to "how fast is the world moving" — the camera follows the field origin, and
+ * a directly-driven hull cancels this to hold still on screen (motion.ts), so
+ * both have to read the same number or the stop drags the pilot with it.
+ */
+export const scrollSpeed = (world: Pick<World, "config" | "flip">): number =>
+  world.config.format !== "scroll" ? 0 : SCROLL_RATE * scrollFactor(world.flip);
+
+/**
+ * Advance the stage. A beat in its fight phase holds position, the phases
+ * either side of it move at part rate, and anything that is not a scroll stage
+ * has nowhere to advance to.
  */
 export const advanceScroll = (world: World, steps: number): World =>
-  world.config.format !== "scroll" || world.flip
+  world.config.format !== "scroll"
     ? world
-    : { ...world, scrollY: world.scrollY - SCROLL_RATE * steps };
+    : { ...world, scrollY: world.scrollY - scrollSpeed(world) * steps };
 
 // --- enemies ----------------------------------------------------------------
 // Fallback opposition for a scroll run with no script attached. A stage has no
