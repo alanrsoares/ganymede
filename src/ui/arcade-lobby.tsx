@@ -13,6 +13,7 @@ import {
   type ArcadeDifficulty,
   type Archetype,
   type MatchConfig,
+  STAGE_ONE,
 } from "~/world";
 import { ARCADE_TIERS } from "~/world/tuning";
 import {
@@ -84,7 +85,7 @@ export const buildRunConfig = (
               spawn: tier.spawn,
             },
           }
-        : {}),
+        : { stage: STAGE_ONE }),
       enemyTeams: ["orange", "emerald"],
     },
   };
