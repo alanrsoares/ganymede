@@ -1,6 +1,7 @@
 import { angleTo, easeAngle, elastic, lerp, normalize } from "~/engine/physics";
 import type { PilotMods } from "~/world/augments";
 import { advanceAsteroid, advanceMissile } from "~/world/factory";
+import { hasArenaFurniture } from "~/world/field";
 import {
   clampFieldX,
   clampFieldY,
@@ -108,6 +109,7 @@ const shipAccel = (
     world.age,
     neighbors,
     carriers,
+    hasArenaFurniture(world),
   );
 };
 
@@ -187,6 +189,18 @@ const directVelocity = (
   };
 };
 
+/**
+ * Tank after this step. A scroll stage burns nothing: it has no bases to dock
+ * at and no pads to sip from, so a burning tank there is a countdown to a dead
+ * engine wedged against the trailing edge of the window with no way back. Fuel
+ * stays a real resource in the arena, where there is somewhere to refill it,
+ * and abilities still spend it on a stage — only thrust is free.
+ */
+const burnFuel = (s: LightCycle, world: World, steps: number): number =>
+  world.config.format === "scroll"
+    ? s.fuel
+    : Math.max(0, s.fuel - FUEL_BURN * steps);
+
 const advanceShip = (
   s: LightCycle,
   world: World,
@@ -235,7 +249,7 @@ const advanceShip = (
     boostTime: Math.max(0, s.boostTime - steps),
     portalCooldown: Math.max(0, s.portalCooldown - steps),
     fireCooldown: Math.max(0, s.fireCooldown - steps),
-    fuel: Math.max(0, s.fuel - FUEL_BURN * steps),
+    fuel: burnFuel(s, world, steps),
   };
 };
 
