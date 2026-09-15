@@ -25,8 +25,13 @@ export const SCROLL_FIELD_W = 480;
  * toward smaller y, so anything at a fixed world position drifts down the
  * screen and the pilot reads as flying up-stage. Everything ahead is therefore
  * at smaller y than the window, and the wake it leaves is at larger y.
+ *
+ * Playtested down from 0.6: at that rate a formation crossed the window before
+ * it was worth engaging, and a drop it left behind was out of the wake before
+ * the pilot could turn back for it. Distances in a stage script are in cells,
+ * so this changes how long each beat is on screen, not how the stage is spaced.
  */
-export const SCROLL_RATE = 0.6;
+export const SCROLL_RATE = 0.4;
 
 /**
  * Generations the corridor spends braking into a beat, and getting back up to
