@@ -6,6 +6,7 @@ import {
   spawnEmpMissile,
   spawnMissile,
 } from "~/world/factory";
+import { hasArenaFurniture } from "~/world/field";
 import { deltaX, deltaY, distSq, wrapX, wrapY } from "~/world/math";
 import { hit, killShip, type TickCtx } from "~/world/tick/context";
 import {
@@ -32,6 +33,9 @@ import {
   OVERCHARGE_MULT,
   PILOT_FIRE_MULT,
   SCORE_KILL,
+  SPREAD_EMITTER_BARRELS,
+  SPREAD_EMITTER_REACH,
+  SPREAD_EMITTER_STEP,
   shipRadius,
   type WeaponProfile,
   weaponFor,
@@ -60,6 +64,9 @@ const nearestEnemyBaseAim = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
 ): Aim | null => {
+  // A stage flies past where the bases are (hasArenaFurniture): there is
+  // nothing out there to strafe, and firing at it lobbed bolts off the map.
+  if (!hasArenaFurniture(ctx.world)) return null;
   const range = shipFireRange(s);
   let best = range * range;
   let tx: number | null = null;
@@ -264,6 +271,45 @@ const pilotAim = (ctx: TickCtx, s: Mutable<LightCycle>): Aim => {
   return diff === "easy" || diff === "normal" ? assistAim(ctx, s, aim) : aim;
 };
 
+// What an AI shooter aims at. An aimed weapon needs a target and holds fire
+// without one; a stage's spread emitter has no such patience — with nothing in
+// reach it fans down-stage (+y, the way the pilot is coming from) and lets the
+// corridor fly into it.
+const aiAim = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  target: { ship: LightCycle; dist: number } | null,
+  range: number,
+): Aim | null => {
+  // The emitter is checked first on purpose: its fan is a fixed feature of the
+  // corridor, not a reaction to the pilot. A spread formation that started
+  // tracking the moment the pilot wandered into range would be an aimed ship
+  // with extra barrels, and the gaps between bolts would stop being authorable.
+  if (s.emitter === "spread") return { x: s.x, y: s.y + SPREAD_EMITTER_REACH };
+  if (target && target.dist <= range)
+    return { x: target.ship.x, y: target.ship.y };
+  return nearestEnemyBaseAim(ctx, s);
+};
+
+// The salvo an AI shooter throws: its archetype profile, or the stage emitter's
+// fixed fan for a formation authored to hold a lane (#30).
+const aiWeapon = (
+  s: Mutable<LightCycle>,
+): { wp: WeaponProfile; coneStep: number } => {
+  const base = weaponFor(s.archetype, s.level);
+  return s.emitter === "spread"
+    ? {
+        wp: {
+          ...base,
+          pattern: "parallel",
+          barrels: SPREAD_EMITTER_BARRELS,
+          spread: 0,
+        },
+        coneStep: SPREAD_EMITTER_STEP,
+      }
+    : { wp: base, coneStep: 0 };
+};
+
 export const fireWeapon = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
@@ -289,14 +335,11 @@ export const fireWeapon = (
   const range = shipFireRange(s);
   const target = acquireTarget(s, moved, range, removed);
   // No enemy ship in range → strafe the nearest alive enemy base (the raid).
-  const aim: Aim | null =
-    target && target.dist <= range
-      ? { x: target.ship.x, y: target.ship.y }
-      : nearestEnemyBaseAim(ctx, s);
+  const aim = aiAim(ctx, s, target, range);
   if (!aim) return bulletId;
 
-  const wp = weaponFor(s.archetype, s.level);
-  const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp);
+  const { wp, coneStep } = aiWeapon(s);
+  const nextId = spawnSalvo(ctx, s, aim, bullets, bulletId, wp, coneStep);
   s.fireCooldown = applyFireCadence(s, wp);
   return nextId;
 };

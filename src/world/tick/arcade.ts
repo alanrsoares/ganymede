@@ -6,6 +6,7 @@
 import { nextRange } from "~/engine/rng";
 import { bakeCaps, pilotMods, rollOffer } from "~/world/augments";
 import { rollShip } from "~/world/factory";
+import { pilotStart } from "~/world/init";
 import {
   activeTeams,
   BASE_MAX_HP,
@@ -120,7 +121,13 @@ function spawnWave(
   return next;
 }
 
-/** Respawn the player at `lvl` at their base (with i-frames) and hand control. */
+/**
+ * Respawn the player at `lvl` (with i-frames) and hand control back. In the
+ * arena that is their home base; on a stage there is no base to launch from, so
+ * they come back in the live window exactly where the stage started them —
+ * without this, a death mid-stage put the pilot back at a base the stage flew
+ * past long ago, off the field entirely.
+ */
 function respawnPlayer(world: World, cfg: RunConfig, lvl: number): World {
   const { world: next, id } = spawnAt(
     world,
@@ -129,7 +136,17 @@ function respawnPlayer(world: World, cfg: RunConfig, lvl: number): World {
     cfg.playerArchetype,
     SPAWN_INVULN_GENS,
   );
-  return { ...next, controlledShipId: id };
+  const start = pilotStart(world.config, cfg.playerTeam, world.scrollY);
+  return {
+    ...next,
+    controlledShipId: id,
+    ships: {
+      ...next.ships,
+      items: next.ships.items.map((s) =>
+        s.id === id ? { ...s, ...start } : s,
+      ),
+    },
+  };
 }
 
 /** True while the controlled ship is still on the field. */

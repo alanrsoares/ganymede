@@ -247,6 +247,8 @@ export const finalizeTick = (
     // carries that position forward rather than deriving a new one.
     scrollY: world.scrollY,
     scrollHalted: world.scrollHalted,
+    stageCursor: world.stageCursor,
+    stageDrops: world.stageDrops,
     controlModel: world.controlModel,
     controlledShipId: world.controlledShipId,
     lockedTargetId: resolveLock(world, ships),

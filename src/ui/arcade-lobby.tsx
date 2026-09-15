@@ -13,6 +13,7 @@ import {
   type ArcadeDifficulty,
   type Archetype,
   type MatchConfig,
+  STAGE_ONE,
 } from "~/world";
 import { ARCADE_TIERS } from "~/world/tuning";
 import {
@@ -63,8 +64,12 @@ export const buildRunConfig = (
   shape: RunFormat = "arena",
 ): MatchConfig => {
   const tier = ARCADE_TIERS[difficulty];
+  // A stage is one pilot against one hostile force: a second enemy team would
+  // spend the stage fighting the first one, which reads as somebody else's war
+  // rather than a wave coming at you.
+  const enemyTeams = shape === "stage" ? ["orange"] : ["orange", "emerald"];
   return {
-    teams: 3, // cyan (player) + orange + emerald; pink dormant
+    teams: enemyTeams.length + 1, // the player's team plus its opposition
     initialShips: 0,
     reinforceRate: 0,
     tempo: ARCADE_TEMPO,
@@ -84,8 +89,8 @@ export const buildRunConfig = (
               spawn: tier.spawn,
             },
           }
-        : {}),
-      enemyTeams: ["orange", "emerald"],
+        : { stage: STAGE_ONE }),
+      enemyTeams,
     },
   };
 };

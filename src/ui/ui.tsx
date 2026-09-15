@@ -633,14 +633,33 @@ const Banner = memo(function Banner({ banner }: { banner: Signal<string> }) {
   );
 });
 
-const ManualHeader = ({ s }: { s: LightCycle }) => {
+const ManualHeader = ({
+  s,
+  open,
+  onToggle,
+}: {
+  s: LightCycle;
+  open: boolean;
+  onToggle: () => void;
+}) => {
   const archetypeLabel = s.archetype.toUpperCase();
   const levelLabel = `L${s.level}`;
   return (
-    <div className="flex justify-between items-center border-b border-gold/20 pb-1">
+    <div className="flex justify-between items-center gap-3 border-b border-gold/20 pb-1">
       <span className="font-bold text-[12px] uppercase text-[#ffc66d]">
         🎮 CONTROL: {archetypeLabel} {levelLabel}
       </span>
+      {/* The panel itself is click-through so it never eats a canvas click;
+          the collapse toggle is the one part that has to take the pointer. */}
+      <HudButton
+        className="px-1.5 py-0.5 text-[10px]"
+        style={{ pointerEvents: "auto" }}
+        onClick={onToggle}
+        aria-label={open ? "Collapse pilot controls" : "Expand pilot controls"}
+        aria-expanded={open}
+      >
+        {open ? "▾" : "▸"}
+      </HudButton>
     </div>
   );
 };
@@ -729,6 +748,10 @@ const ManualPanel = memo(function ManualPanel({
   controlledShip: Signal<LightCycle | null>;
 }) {
   const s = useSignal(controlledShip);
+  // Collapsed, the panel is just its title bar: the stats and the ability list
+  // are reference material, and on a scroll stage they sit over the corridor
+  // the pilot is flying into.
+  const [open, setOpen] = useState(true);
   return (
     <HudPanel
       accent="amber"
@@ -741,9 +764,13 @@ const ManualPanel = memo(function ManualPanel({
     >
       {s ? (
         <div className="flex flex-col gap-1.5">
-          <ManualHeader s={s} />
-          <ManualStats s={s} />
-          <ManualActions s={s} />
+          <ManualHeader s={s} open={open} onToggle={() => setOpen((o) => !o)} />
+          {open ? (
+            <>
+              <ManualStats s={s} />
+              <ManualActions s={s} />
+            </>
+          ) : null}
         </div>
       ) : (
         <div />

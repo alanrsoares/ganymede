@@ -38,11 +38,11 @@ export const advanceScroll = (world: World, steps: number): World =>
     : { ...world, scrollY: world.scrollY - SCROLL_RATE * steps };
 
 // --- enemies ----------------------------------------------------------------
-// Placeholder opposition until the formation script lands (#30). A stage has no
+// Fallback opposition for a scroll run with no script attached. A stage has no
 // bases to muster from, so enemies are rolled in ahead of the window — above
 // the top edge, since forward is -y — and fly down into view under the normal
-// AI. It is a trickle, not a design: authored formations are the whole point of
-// #30, and this exists so the stage is not an empty corridor before then.
+// AI. It is a trickle, not a design: a run that carries a stage script (#30)
+// takes its enemies from there instead and never reaches this.
 
 /** Generations between trickle spawns. */
 export const SCROLL_SPAWN_GENS = 90;
@@ -58,7 +58,7 @@ const crossedSpawnBeat = (age: number, steps: number): boolean =>
 export const scrollStep = (world: World, steps: number): World => {
   const cfg = world.config.run;
   if (world.config.format !== "scroll" || world.scrollHalted) return world;
-  if (!cfg || world.run?.over) return world;
+  if (!cfg || world.run?.over || cfg.stage) return world;
   if (!crossedSpawnBeat(world.age, steps)) return world;
 
   const enemies = world.ships.items.filter(
