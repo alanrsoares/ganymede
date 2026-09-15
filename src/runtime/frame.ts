@@ -16,6 +16,7 @@ import {
   initWorld,
   type MatchConfig,
   type Msg,
+  type RunState,
   setOrbitPhase,
   type World,
 } from "~/world";
@@ -251,18 +252,20 @@ export const updateScreenShake = (
 
 // The HUD status/phase line for the current world (arcade wave/lives, autobattle
 // reinforce/sudden-death, or endless).
+const getRunPhaseText = (world: World, a: RunState): string => {
+  if (a.over) return "game over";
+  const tier = augmentTier(a.augments);
+  const mk = tier > 0 ? ` · Mk ${tier}` : ""; // prestige readout past L5
+  const w = a.waves;
+  if (w) return `wave ${w.wave} · ${w.waveRemaining + w.pending} enemies${mk}`;
+  // No wave director (a scroll stage) → the wave counter has nothing to say,
+  // and with no scoreboard beside it the run's own points belong here.
+  const points = world.score[world.config.run?.playerTeam ?? ""] ?? 0;
+  return `${points} pts · ${a.kills} kills${mk}`;
+};
+
 const getHudPhaseText = (world: World): string => {
-  const a = world.run;
-  if (a) {
-    const tier = augmentTier(a.augments);
-    const mk = tier > 0 ? ` · Mk ${tier}` : ""; // prestige readout past L5
-    const w = a.waves;
-    if (a.over) return "game over";
-    // No wave director (a scroll stage) → the wave counter has nothing to say.
-    return w
-      ? `wave ${w.wave} · ${w.waveRemaining + w.pending} enemies${mk}`
-      : `${a.kills} kills${mk}`;
-  }
+  if (world.run) return getRunPhaseText(world, world.run);
   if (world.winner) return "match over";
   if (world.config.format === "endless") return "endless";
   const remain = world.config.reinforceGens - world.age;
@@ -327,6 +330,7 @@ export const createStarters = (sim: Sim, ui: Ui, loopState: LoopState) => {
     reset(cfg);
     ui.hudTitle.val = "Autobattle";
     ui.setSimKnobsHidden(false);
+    ui.setScoreHidden(false);
     loopState.deployRemaining = cfg.initialShips;
     loopState.deployTimer = DEPLOY_INTERVAL_S;
   };
@@ -338,6 +342,9 @@ export const createStarters = (sim: Sim, ui: Ui, loopState: LoopState) => {
     const diff = cfg.run?.difficulty ?? "normal";
     ui.hudTitle.val = `Arcade · ${diff[0].toUpperCase()}${diff.slice(1)}`;
     ui.setSimKnobsHidden(true);
+    // A stage is flown against a script, not against rival teams: the board
+    // would rank four colours where only two are ever on the field.
+    ui.setScoreHidden(cfg.format === "scroll");
     loopState.deployRemaining = 0;
     loopState.deployTimer = 0;
   };
