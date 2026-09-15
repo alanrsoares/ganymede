@@ -242,7 +242,10 @@ export const finalizeTick = (
     age: nextAge,
     winner: decideWinner(world.winner, nextAge, ships.items, world.config),
     config: world.config,
-    run: world.run,
+    run:
+      world.run && ctx.kills > 0
+        ? { ...world.run, kills: world.run.kills + ctx.kills }
+        : world.run,
     // The stage was advanced before the tick ran (see world/scroll.ts), so this
     // carries that position forward rather than deriving a new one.
     scrollY: world.scrollY,

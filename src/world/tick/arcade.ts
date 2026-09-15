@@ -174,7 +174,8 @@ function loseLife(world: World, a: RunState, cfg: RunConfig): World {
 
 /**
  * Fight-phase wave machine: muster the current wave when the field is clear,
- * otherwise track kills and advance the wave once the last enemy falls.
+ * otherwise trickle the reserve in and advance the wave once the last enemy
+ * falls. Kills are banked where ships die (see `killShip`), not counted here.
  */
 function advanceWave(
   world: World,
@@ -203,10 +204,6 @@ function advanceWave(
       waveMaxLevel: maxLevel,
     });
   }
-  // Enemies only leave the field by dying now (the ship trim guards them from
-  // eviction), so a drop in the live count is a real kill — no phantom kills.
-  const kills = a.kills + Math.max(0, w.waveRemaining - enemyCount);
-
   // Trickle: refill open slots from the reserve as the front thins.
   let next = world;
   let alive = enemyCount;
@@ -236,7 +233,6 @@ function advanceWave(
       baseHp: { ...next.baseHp, [cfg.playerTeam]: BASE_MAX_HP },
       run: {
         ...a,
-        kills,
         offer,
         waves: {
           ...w,
@@ -251,7 +247,7 @@ function advanceWave(
   }
   return {
     ...next,
-    run: { ...a, kills, waves: { ...w, waveRemaining: alive, pending } },
+    run: { ...a, waves: { ...w, waveRemaining: alive, pending } },
   };
 }
 
