@@ -4,6 +4,7 @@
 
 import type { CameraView, Renderer } from "~/render/gpu";
 import type { Overlay } from "~/render/overlay";
+import { fieldViewport } from "~/render/view";
 import type { Lobby } from "~/ui/arcade-lobby";
 import { recordScore, runScore } from "~/ui/highscores";
 import type { Setup } from "~/ui/setup";
@@ -155,17 +156,17 @@ export const buildAndRender = (
   // Align the furniture ring to the world being drawn (the sim advances age
   // between renders; this keeps rendered bases/portals/pads on the live orbit).
   setOrbitPhase(world.age);
+  // Where the field lands in the window, and how big a cell is there.
+  const vp = fieldViewport(canvas.width, canvas.height, ARENA.w, ARENA.h);
   // Follow the stage: the field origin is where the window sits, so the camera
-  // is that origin in pixels. Zero for all-range play, where the origin is 0,0.
+  // is that origin in pixels, less the gutter that centres the field. Zero for
+  // all-range play, where the origin is 0,0 and the field fills the window.
   renderer.setCamera(
-    (ARENA.x0 / ARENA.w) * canvas.width,
-    (ARENA.y0 / ARENA.h) * canvas.height,
+    ARENA.x0 * vp.scale - vp.offsetX,
+    ARENA.y0 * vp.scale - vp.offsetY,
   );
   const frame = overlay.build({
-    w: canvas.width,
-    h: canvas.height,
-    gridW: ARENA.w,
-    gridH: ARENA.h,
+    cellPx: vp.scale,
     now,
     world,
     showHp,
