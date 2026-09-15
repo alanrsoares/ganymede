@@ -281,9 +281,13 @@ const aiAim = (
   target: { ship: LightCycle; dist: number } | null,
   range: number,
 ): Aim | null => {
+  // The emitter is checked first on purpose: its fan is a fixed feature of the
+  // corridor, not a reaction to the pilot. A spread formation that started
+  // tracking the moment the pilot wandered into range would be an aimed ship
+  // with extra barrels, and the gaps between bolts would stop being authorable.
+  if (s.emitter === "spread") return { x: s.x, y: s.y + SPREAD_EMITTER_REACH };
   if (target && target.dist <= range)
     return { x: target.ship.x, y: target.ship.y };
-  if (s.emitter === "spread") return { x: s.x, y: s.y + SPREAD_EMITTER_REACH };
   return nearestEnemyBaseAim(ctx, s);
 };
 
