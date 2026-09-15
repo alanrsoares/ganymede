@@ -7,7 +7,17 @@
 // standard shmup shape — read the formation, dodge it, then read two at once —
 // and every number in it is a guess until it has been flown.
 
-import type { StageScript } from "./types";
+// Formation rewards: a wiped formation leaves its power-up where the last of it
+// died. Which formations pay out — and with what — is level design, not a roll:
+// the spread emitters are the ones worth stopping to clear, so they are the
+// ones that pay.
+import {
+  DRONE_KIND,
+  MUSTER_KIND,
+  OVERCHARGE_KIND,
+  SHIELD_KIND,
+  type StageScript,
+} from "./types";
 
 /**
  * The first stage: roughly two minutes of corridor, escalating from single
@@ -34,6 +44,7 @@ export const STAGE_ONE: StageScript = {
       hull: "fighter",
       level: 2,
       emitter: "spread",
+      drop: OVERCHARGE_KIND,
     },
     { at: 1420, x: 90, shape: "echelon", count: 3, hull: "scout", level: 2 },
     { at: 1420, x: 390, shape: "echelon", count: 3, hull: "scout", level: 2 },
@@ -57,6 +68,7 @@ export const STAGE_ONE: StageScript = {
       hull: "fighter",
       level: 2,
       emitter: "spread",
+      drop: SHIELD_KIND,
     },
     { at: 1940, x: 240, shape: "vee", count: 5, hull: "interceptor", level: 3 },
 
@@ -71,6 +83,7 @@ export const STAGE_ONE: StageScript = {
       hull: "fighter",
       level: 3,
       emitter: "spread",
+      drop: MUSTER_KIND,
     },
 
     // Last third: formations overlap, so there is no beat with nothing in it.
@@ -84,6 +97,7 @@ export const STAGE_ONE: StageScript = {
       hull: "fighter",
       level: 4,
       emitter: "spread",
+      drop: OVERCHARGE_KIND,
     },
     { at: 3240, x: 150, shape: "column", count: 3, hull: "scout", level: 3 },
     { at: 3240, x: 330, shape: "column", count: 3, hull: "scout", level: 3 },
@@ -95,6 +109,7 @@ export const STAGE_ONE: StageScript = {
       hull: "heavy",
       level: 4,
       emitter: "spread",
+      drop: DRONE_KIND,
     },
     {
       at: 3800,
