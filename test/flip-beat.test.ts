@@ -13,6 +13,7 @@ import {
   hasBaseObjective,
   initArcadeWorld,
   type MatchConfig,
+  OVERCHARGE_KIND,
   SCROLL_RATE,
   type StageFlip,
   type StageScript,
@@ -175,6 +176,63 @@ test("the corridor ahead is cleared, so nothing wraps in from nowhere", () => {
   // The pilot and the beat's own ambush are what act two is fought with.
   expect(ids).toContain(pilot.id);
   for (const id of open.flip?.ids ?? []) expect(ids).toContain(id);
+});
+
+test("a formation cleared for the beat owes no reward", () => {
+  // Its ships were never shot down — the beat made room for itself. The wake
+  // test in `escaped` can't catch this one: the formation was *ahead* of the
+  // window, so without dropping the debt it pays out for nothing.
+  const w = flipWorld({
+    name: "test",
+    entries: [
+      {
+        // Late enough that it is still forming up beyond the leading edge when
+        // the beat opens at 60.
+        at: 58,
+        x: 240,
+        shape: "line",
+        count: 3,
+        hull: "scout",
+        level: 1,
+        drop: OVERCHARGE_KIND,
+      },
+    ],
+    flips: [beat],
+  });
+  const open = flyToFlip(w);
+  expect(open.stageDrops).toHaveLength(0);
+
+  // Wipe the ambush and let the corridor resume: the debt stays settled, and
+  // `resolveDrops` pays out of nothing else. (Bare pickup count won't do — the
+  // scenery pool refills itself as the stage flies.)
+  const ids = open.flip?.ids ?? [];
+  let out: World = {
+    ...open,
+    ships: {
+      ...open.ships,
+      items: open.ships.items.filter((s) => !ids.includes(s.id)),
+    },
+  };
+  for (let i = 0; i < 20; i++) out = tick(out, 1, 16 * i);
+  expect(out.flip).toBeNull();
+  expect(out.stageDrops).toHaveLength(0);
+});
+
+test("a beat still closes if the script goes away under it", () => {
+  const open = flyToFlip(flipWorld());
+  // Same run, script dropped mid-beat. Closing must not need it: a held scroll
+  // with no way back to the corridor is a hung run.
+  const ids = open.flip?.ids ?? [];
+  const run = flipConfig(withFlip()).run;
+  const orphaned: World = {
+    ...open,
+    config: { ...open.config, run: run && { ...run, stage: undefined } },
+    ships: {
+      ...open.ships,
+      items: open.ships.items.filter((s) => !ids.includes(s.id)),
+    },
+  };
+  expect(tick(orphaned, 1, 16).flip).toBeNull();
 });
 
 test("a stage with no flips never leaves the corridor", () => {

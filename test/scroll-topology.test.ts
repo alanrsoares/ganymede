@@ -26,8 +26,10 @@ import { CULL_MARGIN, DEFAULT_CONFIG, FUEL_DRIFT_SPEED } from "~/world/tuning";
 
 afterEach(() => setGridBounds(DEFAULT_GRID_W, DEFAULT_GRID_H));
 
-// A flip beat already up, waiting on nobody: enough to close the topology.
-const FLIP: FlipState = { gens: 0, maxGens: 2640, banner: "TEST", ids: [] };
+// A flip beat already up, still waiting on the ship the test world flies (id
+// 1): an ambush with nobody left in it closes on the next tick, which is the
+// opposite of the freeze these tests are about.
+const FLIP: FlipState = { gens: 0, maxGens: 2640, banner: "TEST", ids: [1] };
 
 const scrollConfig = (): MatchConfig => ({
   ...DEFAULT_CONFIG,

@@ -31,17 +31,25 @@ import type { StageFlip, World } from "./types";
  * Read while the field is still the open corridor, so `inField` still has an
  * outside to reject.
  */
-const clearOffscreen = (world: World): World => ({
-  ...world,
-  ships: {
-    ...world.ships,
-    items: world.ships.items.filter(
-      // Margin 0, not the cull's: the beat's cast is what is *on screen*, and
-      // the cull's slack is exactly the band a ship would fold in from.
-      (s) => s.id === world.controlledShipId || inField(s.x, s.y, 0),
+const clearOffscreen = (world: World): World => {
+  const items = world.ships.items.filter(
+    // Margin 0, not the cull's: the beat's cast is what is *on screen*, and
+    // the cull's slack is exactly the band a ship would fold in from.
+    (s) => s.id === world.controlledShipId || inField(s.x, s.y, 0),
+  );
+  const alive = new Set(items.map((s) => s.id));
+  return {
+    ...world,
+    ships: { ...world.ships, items },
+    // A reward is for shooting the formation down. One cleared off the field to
+    // make room for the beat was not shot down by anyone, and `escaped` won't
+    // catch it — that only rejects the wake, and this formation was ahead of
+    // the window. So the debt goes with the ships.
+    stageDrops: world.stageDrops.filter((d) =>
+      d.ids.some((id) => alive.has(id)),
     ),
-  },
-});
+  };
+};
 
 /** Plant the beat's ambush in the window and open the state that holds it up. */
 const openFlip = (world: World, beat: StageFlip): World => {
@@ -86,9 +94,10 @@ const ambushWiped = (world: World, ids: readonly number[]): boolean =>
  */
 export const flipStep = (world: World, steps: number): World => {
   if (world.config.format !== "scroll" || world.run?.over) return world;
-  const script = world.config.run?.stage;
-  if (!script?.flips) return world;
 
+  // Closing a beat asks nothing of the script: a flip that is up has already
+  // been read, and a world whose script went away mid-beat (a reset, a config
+  // swap) must still be able to end it rather than hold the scroll forever.
   const live = world.flip;
   if (live) {
     const gens = live.gens + steps;
@@ -99,7 +108,7 @@ export const flipStep = (world: World, steps: number): World => {
     return { ...world, flip: { ...live, gens } };
   }
 
-  const next = script.flips[world.flipCursor];
+  const next = world.config.run?.stage?.flips?.[world.flipCursor];
   if (!next || next.at > stageTravelled(world)) return world;
   return openFlip(world, next);
 };
