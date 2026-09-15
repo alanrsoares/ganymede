@@ -71,7 +71,6 @@ export const STAGE_ONE: StageScript = {
       hull: "fighter",
       level: 3,
       emitter: "spread",
-      team: "emerald",
     },
 
     // Last third: formations overlap, so there is no beat with nothing in it.
@@ -96,7 +95,6 @@ export const STAGE_ONE: StageScript = {
       hull: "heavy",
       level: 4,
       emitter: "spread",
-      team: "emerald",
     },
     {
       at: 3800,
