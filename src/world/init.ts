@@ -133,18 +133,25 @@ const NO_KEYS = {
   space: false,
 } as const;
 
-// Where the pilot starts. An arena run launches from its team base; a scroll
-// stage has no bases, so it opens low and centred in the first window with the
-// nose up-stage, the way a scroller opens. Forward is -y (see world/scroll.ts),
-// so "low" is the larger y.
-const pilotStart = (config: MatchConfig, team: string): Partial<LightCycle> => {
+/**
+ * Where the pilot starts — and where a respawn puts them back (see arcade.ts).
+ * An arena run launches from its team base; a scroll stage has no bases, so it
+ * opens low and centred in the *live* window with the nose up-stage, the way a
+ * scroller opens. Forward is -y (see world/scroll.ts), so "low" is the larger
+ * y, and the window's top edge is `scrollY`.
+ */
+export const pilotStart = (
+  config: MatchConfig,
+  team: string,
+  scrollY = 0,
+): Partial<LightCycle> => {
   if (config.format !== "scroll") {
     const base = baseByName.get(team);
     return base ? { x: base.x, y: base.y } : {};
   }
   return {
     x: SCROLL_FIELD_W / 2,
-    y: DEFAULT_GRID_H * 0.72,
+    y: scrollY + DEFAULT_GRID_H * 0.72,
     dx: 0,
     dy: -1,
     vx: 0,
