@@ -246,7 +246,8 @@ export const finalizeTick = (
     // The stage was advanced before the tick ran (see world/scroll.ts), so this
     // carries that position forward rather than deriving a new one.
     scrollY: world.scrollY,
-    scrollHalted: world.scrollHalted,
+    flip: world.flip,
+    flipCursor: world.flipCursor,
     stageCursor: world.stageCursor,
     stageDrops: world.stageDrops,
     controlModel: world.controlModel,

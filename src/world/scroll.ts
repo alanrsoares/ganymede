@@ -33,7 +33,7 @@ export const SCROLL_RATE = 0.6;
  * anything that is not a scroll stage has nowhere to advance to.
  */
 export const advanceScroll = (world: World, steps: number): World =>
-  world.config.format !== "scroll" || world.scrollHalted
+  world.config.format !== "scroll" || world.flip
     ? world
     : { ...world, scrollY: world.scrollY - SCROLL_RATE * steps };
 
@@ -57,7 +57,7 @@ const crossedSpawnBeat = (age: number, steps: number): boolean =>
 
 export const scrollStep = (world: World, steps: number): World => {
   const cfg = world.config.run;
-  if (world.config.format !== "scroll" || world.scrollHalted) return world;
+  if (world.config.format !== "scroll" || world.flip) return world;
   if (!cfg || world.run?.over || cfg.stage) return world;
   if (!crossedSpawnBeat(world.age, steps)) return world;
 

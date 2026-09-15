@@ -8,6 +8,7 @@ import {
   ARENA,
   DEFAULT_GRID_H,
   DEFAULT_GRID_W,
+  type FlipState,
   initArcadeWorld,
   initWorld,
   type MatchConfig,
@@ -24,6 +25,9 @@ import { tick } from "~/world/tick";
 import { CULL_MARGIN, DEFAULT_CONFIG, FUEL_DRIFT_SPEED } from "~/world/tuning";
 
 afterEach(() => setGridBounds(DEFAULT_GRID_W, DEFAULT_GRID_H));
+
+// A flip beat already up, waiting on nobody: enough to close the topology.
+const FLIP: FlipState = { gens: 0, maxGens: 2640, banner: "TEST", ids: [] };
 
 const scrollConfig = (): MatchConfig => ({
   ...DEFAULT_CONFIG,
@@ -83,13 +87,13 @@ test("the tick advances the stage, and the field origin follows it", () => {
 });
 
 test("a halted stage holds position — the flip beat's freeze", () => {
-  let w = { ...scrollWorld(), scrollHalted: true };
+  let w: World = { ...scrollWorld(), flip: FLIP };
   w = tick(w, 10, 16);
   expect(w.scrollY).toBe(0);
 });
 
 test("the flip closes the window into exactly today's arena", () => {
-  const w = { ...scrollWorld(), scrollY: 4200, scrollHalted: true };
+  const w = { ...scrollWorld(), scrollY: 4200, flip: FLIP };
   syncField(w);
   expect(ARENA).toMatchObject({
     x0: 0,
@@ -276,12 +280,12 @@ test("a fresh world derives its own field before rolling scenery", () => {
   syncField({
     config: scrollConfig(),
     scrollY: -9000,
-    scrollHalted: false,
+    flip: null,
   });
 
   // Same seed, same config: the opening must not depend on what ran before.
   const a = initWorld(99 as Seed);
-  syncField({ config: scrollConfig(), scrollY: -9000, scrollHalted: false });
+  syncField({ config: scrollConfig(), scrollY: -9000, flip: null });
   const b = initWorld(99 as Seed);
   expect(a.asteroids.items.map((r) => [r.x, r.y])).toEqual(
     b.asteroids.items.map((r) => [r.x, r.y]),

@@ -120,4 +120,37 @@ export const STAGE_ONE: StageScript = {
       level: 4,
     },
   ],
+  // The flip beat (#31), sited just past the stage's halfway mark: late enough
+  // that the corridor has taught its grammar and the pilot has settled into it,
+  // early enough that there is a whole third act to resume into. Coordinates
+  // here are inside the 480x270 window, not along the stage: the ambush is
+  // already around the pilot when the scroll stops. Three formations, one
+  // ahead and two behind the flanks, so the first instinct — keep flying up —
+  // is the one that gets you shot in the back. That is the lesson of act two.
+  flips: [
+    {
+      at: 2100,
+      banner: "ALL-RANGE MODE",
+      maxGens: 2640, // ~60s failsafe; a wipe should land long before it
+      spawns: [
+        { x: 240, y: 50, shape: "vee", count: 5, hull: "fighter", level: 3 },
+        {
+          x: 90,
+          y: 200,
+          shape: "echelon",
+          count: 3,
+          hull: "interceptor",
+          level: 3,
+        },
+        {
+          x: 390,
+          y: 200,
+          shape: "echelon",
+          count: 3,
+          hull: "interceptor",
+          level: 3,
+        },
+      ],
+    },
+  ],
 };

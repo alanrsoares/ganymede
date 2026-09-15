@@ -11,10 +11,10 @@ import { activeTeams } from "./tuning";
 import {
   ARENA,
   type FormationShape,
+  type FormationSpec,
   type LightCycle,
   type Pickup,
   type StageDrop,
-  type StageEntry,
   type World,
 } from "./types";
 
@@ -58,45 +58,48 @@ const EDGE_MARGIN = 8;
  * to the edge: a per-ship clamp stacks the outer ships on one x and throws away
  * the spacing the shape was authored for.
  */
-const formationCentre = (entry: StageEntry, offsets: [number, number][]) => {
+const formationCentre = (spec: FormationSpec, offsets: [number, number][]) => {
   const xs = offsets.map(([ox]) => ox);
   const lo = EDGE_MARGIN - Math.min(...xs);
   const hi = ARENA.w - EDGE_MARGIN - Math.max(...xs);
   // A formation wider than the corridor can't fit; centre it and let the edges
   // spill rather than pinning it to one side.
   if (hi < lo) return (lo + hi) / 2;
-  return Math.min(hi, Math.max(lo, entry.x));
+  return Math.min(hi, Math.max(lo, spec.x));
 };
 
-// Build one formation's ships. They enter nose-down (+y) — pointed at the
-// pilot, who is flying up-stage at them.
-const formationShips = (
+/**
+ * Build one formation's ships around `noseY`, the y its leading ship sits on.
+ * They face nose-down (+y) — pointed at the pilot, who is flying up-stage at
+ * them. The corridor forms them up beyond the leading edge; the flip beat (#31)
+ * plants them inside the window, which is the only difference between the two.
+ */
+export const buildFormation = (
   world: World,
-  entry: StageEntry,
+  spec: FormationSpec,
   firstId: number,
+  noseY: number,
 ): LightCycle[] => {
   const teams = activeTeams(world.config);
-  const name = entry.team ?? world.config.run?.enemyTeams[0];
+  const name = spec.team ?? world.config.run?.enemyTeams[0];
   const team = teams.find((t) => t.name === name) ?? teams[teams.length - 1];
   const offsets: [number, number][] = [];
-  for (let i = 0; i < entry.count; i++)
-    offsets.push(formationOffset(entry.shape, i, entry.count));
-  const centre = formationCentre(entry, offsets);
+  for (let i = 0; i < spec.count; i++)
+    offsets.push(formationOffset(spec.shape, i, spec.count));
+  const centre = formationCentre(spec, offsets);
   const ships: LightCycle[] = [];
-  for (let i = 0; i < entry.count; i++) {
+  for (let i = 0; i < spec.count; i++) {
     const [ox, oy] = offsets[i];
-    const x = centre + ox;
-    const y = world.scrollY - FORM_AHEAD + oy;
     const ship = placeShip(
       firstId + i,
-      x,
-      y,
-      entry.level,
-      entry.hull,
+      centre + ox,
+      noseY + oy,
+      spec.level,
+      spec.hull,
       team,
       [0, 1],
     );
-    ships.push(entry.emitter ? { ...ship, emitter: entry.emitter } : ship);
+    ships.push(spec.emitter ? { ...ship, emitter: spec.emitter } : ship);
   }
   return ships;
 };
@@ -114,7 +117,12 @@ const enterFormations = (world: World): World => {
   while (cursor < script.entries.length) {
     const entry = script.entries[cursor];
     if (entry.at > travelled) break;
-    const flight = formationShips(world, entry, nextId);
+    const flight = buildFormation(
+      world,
+      entry,
+      nextId,
+      world.scrollY - FORM_AHEAD,
+    );
     items.push(...flight);
     if (entry.drop !== undefined) {
       drops.push({
@@ -201,6 +209,6 @@ const resolveDrops = (world: World): World => {
  */
 export const stageStep = (world: World): World => {
   if (world.config.format !== "scroll") return world;
-  if (world.scrollHalted || world.run?.over) return world;
+  if (world.flip || world.run?.over) return world;
   return resolveDrops(enterFormations(world));
 };

@@ -1,5 +1,5 @@
 import { spawnDroneBolt } from "~/world/factory";
-import { hasArenaFurniture } from "~/world/field";
+import { hasArenaFurniture, hasBaseObjective } from "~/world/field";
 import { gridNeighbors } from "~/world/tick/broadphase";
 import type { TickCtx } from "~/world/tick/context";
 import type { MotionState } from "~/world/tick/motion";
@@ -35,22 +35,35 @@ export {
 export { resolveFieldEffects } from "./field";
 export { createInteractionState, type InteractionState } from "./state";
 
-// Everything one ship gets from the arena's fixed furniture: pad healing, the
-// centre finish, portal and base gravity, the portal hop, and docking at home.
-// It all sits at absolute coordinates in the all-range field, so a scroll stage
-// flies past where it would be and skips this entirely (hasArenaFurniture) —
-// the pull has to be as absent there as the picture is.
-const resolveFurniture = (
+// Everything one ship gets from the ring of furniture it is flying around: pad
+// healing, portal and base gravity, the portal hop. The ring is centred on the
+// field, so a scrolling corridor has none of it and the flip beat has all of it
+// — the pull has to be as present or absent as the picture is.
+const resolveTerrain = (
   ctx: TickCtx,
   s: Mutable<LightCycle>,
   steps: number,
 ): void => {
   healAtPad(s, steps);
-  finishAtCenterPad(ctx, s, steps);
   pullTowardPortalHorizon(s, steps);
   applyBaseGravity(ctx, s, steps);
   applyStarGravity(s, steps);
   teleportThroughPortal(s);
+};
+
+// The raid on top of the terrain: promoting at the centre pad and docking at
+// home to refuel and cash in. Arena only — the flip beat borrows the arena's
+// furniture for a fight, not its economy (hasBaseObjective), and a world with
+// the raid on always has the terrain it sits on.
+const resolveFurniture = (
+  ctx: TickCtx,
+  s: Mutable<LightCycle>,
+  steps: number,
+  raid: boolean,
+): void => {
+  resolveTerrain(ctx, s, steps);
+  if (!raid) return;
+  finishAtCenterPad(ctx, s, steps);
   dockAtHomeBase(ctx, s, steps);
 };
 
@@ -65,7 +78,8 @@ export const resolveInteractions = (
   const { takenPickups } = interactions;
   let seed = ctx.seed;
   let { bulletId, missileId, mineId } = motion;
-  const furniture = hasArenaFurniture(ctx.world);
+  const terrain = hasArenaFurniture(ctx.world);
+  const raid = hasBaseObjective(ctx.world);
 
   for (const s of moved) {
     if (removed.has(s.id)) continue;
@@ -80,7 +94,7 @@ export const resolveInteractions = (
       missiles,
       missileId,
     );
-    if (furniture) resolveFurniture(ctx, s, steps);
+    if (terrain) resolveFurniture(ctx, s, steps, raid);
     [mineId, seed] = dropMine(ctx, s, mines, mineId, seed, steps);
   }
 
